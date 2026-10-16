@@ -1,7 +1,7 @@
 package com.server.zelo.common.api;
 
 
-import com.server.zelo.common.execption.ErrorCode;
+import com.server.zelo.common.exception.ErrorCode;
 
 public record ApiResponse<T>(
         boolean success,

@@ -1,0 +1,49 @@
+language: "ko-KR"
+tone_instructions: "한국어로, 반말로, 간결하고 근거를 들어 리뷰해."
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+        - main
+        - dev
+
+  path_filters:
+      - "!build/**"
+      - "!.gradle/**"
+      - "!.idea/**"
+      - "!gradle/wrapper/**"
+      - "!**/*.iml"
+      - "!HELP.md"
+
+  path_instructions:
+    - path: "src/main/java/**/controller/**"
+      instructions: |
+          - 요청 DTO 검증(@Valid 등)과 적절한 HTTP 상태 코드 사용 여부를 확인.
+          - 비즈니스 로직이 컨트롤러에 들어가 있지 않은지 확인.
+    - path: "src/main/java/**/service/**"
+      instructions: |
+          - 트랜잭션 경계(@Transactional, readOnly)가 적절한지 확인.
+          - N+1 쿼리, 동시성 문제(포인트 차감 등 race condition)를 중점적으로 봐.
+          - 예외는 공통 에러 코드 체계를 따르는지 확인.
+    - path: "src/main/java/**/global/**"
+      instructions: |
+          - 보안 설정(permitAll 범위 등) 변경이 의도치 않게 엔드포인트를 노출하지 않는지 확인.
+    - path: "src/main/java/**/common/**"
+      instructions: |
+        - 중복 설정이 없는지, 비효율적이지 않는지 확인.
+    - path: "src/test/**"
+      instructions: |
+          - 테스트가 실제 동작을 검증하는지, 경계/실패 케이스를 포함하는지 확인.
+chat:
+  auto_reply: true

@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'jacoco'
     id 'org.springframework.boot' version '4.1.1'
     id 'io.spring.dependency-management' version '1.1.7'
     id "org.sonarqube" version "7.5.0.8588"
@@ -19,6 +20,11 @@ sonar {
     properties {
         property "sonar.projectKey", "spa-2_zelo"
         property "sonar.organization", "spa-2"
+        // 소나큐브 위치
+        property "sonar.host.url", "https://sonarcloud.io"
+        // JaCoCo 리포트 위치
+        property "sonar.coverage.jacoco.xmlReportPaths",
+                "${layout.buildDirectory.get()}/reports/jacoco/test/jacocoTestReport.xml"
     }
 }
 
@@ -45,4 +51,22 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    //  테스트 끝나면 리포트 생성
+    finalizedBy tasks.named('jacocoTestReport')
+}
+
+// JaCoCo 리포트 설정
+tasks.named('jacocoTestReport') {
+    dependsOn tasks.named('test')
+    reports {
+        // SonarQube가 읽는 형식
+        xml.required = true
+        // 로컬에서 사람이 보는 용도 (build/reports/jacoco/test/html/index.html)
+        html.required = true
+    }
+}
+
+// sonar 실행 전에 리포트가 반드시 만들어지도록 설정
+tasks.named('sonar') {
+    dependsOn tasks.named('jacocoTestReport')
 }

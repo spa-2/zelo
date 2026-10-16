@@ -1,0 +1,52 @@
+name: Link issue from branch
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // 브랜치명 feat/#12-send-message 또는 feat/12-send-message → 12
+            const m = pr.head.ref.match(/\/#?(\d+)/);
+            if (!m) return;
+            const num = m[1];
+
+            let body = pr.body || '';
+
+            // 1) 이미 Closes #12가 채워져 있으면 본문은 그대로 둠
+            const filled = new RegExp(
+              `(close[sd]?|fix(e[sd])?|resolve[sd]?)\\s+#${num}\\b`, 'i'
+            ).test(body);
+
+            if (!filled) {
+              // 2) 템플릿의 빈 "Closes #" 칸이 있으면 거기에 번호를 채움
+              const emptySlot = /(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#(?!\d)/i;
+              if (emptySlot.test(body)) {
+                body = body.replace(emptySlot, (kw) => `${kw}${num}`);
+              } else {
+                // 3) 칸이 없으면 맨 아래에 추가
+                body = `${body}\n\nCloses #${num}`.trim();
+              }
+            }
+
+            const title = pr.title.includes(`#${num}`)
+              ? pr.title
+              : `${pr.title} (#${num})`;
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              title,
+              body,
+            });

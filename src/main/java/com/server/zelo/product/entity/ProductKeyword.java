@@ -38,11 +38,21 @@ public class ProductKeyword extends BaseCreatedEntity {
     @Column(name = "keyword", nullable = false, length = 30)
     private Keyword keyword;
 
+    /**
+     * 키워드와 연결할 상품을 초기화한다.
+     */
     private ProductKeyword(Product product, Keyword keyword) {
         this.product = product;
         this.keyword = keyword;
     }
 
+    /**
+     * 상품과 키워드의 연결을 생성한다.
+     *
+     * @param product 키워드를 연결할 상품
+     * @param keyword 상품에 연결할 키워드
+     * @return 생성한 상품 키워드 연결
+     */
     public static ProductKeyword of(Product product, Keyword keyword) {
         return new ProductKeyword(product, keyword);
     }

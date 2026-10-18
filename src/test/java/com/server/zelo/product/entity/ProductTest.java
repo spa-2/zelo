@@ -15,6 +15,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ExtendWith(MockitoExtension.class)
 class ProductTest {
 
+    /**
+     * 유효한 가격과 내용량으로 생성하면 재료의 카테고리와 초기 판매 상태를 갖는지 검증한다.
+     *
+     * @param price 유효한 상품 가격
+     * @param contentAmount 유효한 상품 내용량
+     */
     @ParameterizedTest
     @CsvSource({"0, 1", "1000, 10", "2147483647, 2147483647"})
     void 유효한_가격과_내용량으로_상품을_생성한다(Integer price, Integer contentAmount) {
@@ -33,6 +39,11 @@ class ProductTest {
         assertThat(product.getStatus()).isEqualTo(ProductStatus.ON_SALE);
     }
 
+    /**
+     * 가격이 없거나 음수이면 INVALID_PRICE 오류가 발생하는지 검증한다.
+     *
+     * @param price 유효하지 않은 상품 가격
+     */
     @ParameterizedTest
     @NullSource
     @ValueSource(ints = {-1, Integer.MIN_VALUE})
@@ -47,6 +58,11 @@ class ProductTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRICE));
     }
 
+    /**
+     * 내용량이 없거나 0 이하이면 INVALID_INPUT 오류가 발생하는지 검증한다.
+     *
+     * @param contentAmount 유효하지 않은 상품 내용량
+     */
     @ParameterizedTest
     @NullSource
     @ValueSource(ints = {0, -1, Integer.MIN_VALUE})

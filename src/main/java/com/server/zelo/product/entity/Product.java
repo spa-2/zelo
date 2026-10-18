@@ -65,6 +65,11 @@ public class Product extends BaseTimeEntity {
     @Column(name = "status", nullable = false, length = 20)
     private ProductStatus status;
 
+    /**
+     * 가격과 내용량을 검증하고 재료의 카테고리, 판매량 0, 판매 중 상태로 초기화한다.
+     *
+     * @throws BusinessException 가격이 없거나 음수인 경우 또는 내용량이 없거나 0 이하인 경우
+     */
     private Product(String productCode, Ingredient ingredient, String name,
                     String description, Integer price, Integer contentAmount) {
         if (price == null || price < 0) {
@@ -85,6 +90,19 @@ public class Product extends BaseTimeEntity {
         this.status = ProductStatus.ON_SALE;
     }
 
+    /**
+     * 재료의 카테고리를 따르는 상품을 판매량 0, 판매 중 상태로 생성한다.
+     *
+     * @param productCode 외부 노출용 상품 코드
+     * @param ingredient 상품의 재료와 카테고리를 제공하는 재료
+     * @param name 상품 이름
+     * @param description 상품 설명 (없으면 null)
+     * @param price 0 이상의 가격
+     * @param contentAmount 재료의 기본 단위 기준으로 0보다 큰 내용량
+     * @return 생성한 상품
+     * @throws BusinessException 가격이 없거나 음수이면 {@link ErrorCode#INVALID_PRICE},
+     *                          내용량이 없거나 0 이하이면 {@link ErrorCode#INVALID_INPUT}으로 발생
+     */
     public static Product of(String productCode, Ingredient ingredient, String name,
                              String description, Integer price, Integer contentAmount) {
         return new Product(productCode, ingredient, name, description, price, contentAmount);

@@ -28,11 +28,21 @@ public class Category extends BaseCreatedEntity {
     @Column(name = "agent_orderable", nullable = false)
     private boolean isAgentOrderable;
 
+    /**
+     * 카테고리 이름과 AI 주문 허용 여부를 초기화한다.
+     */
     private Category(String name, boolean isAgentOrderable) {
         this.name = name;
         this.isAgentOrderable = isAgentOrderable;
     }
 
+    /**
+     * 지정한 이름과 AI 주문 허용 여부로 카테고리를 생성한다.
+     *
+     * @param name 카테고리 이름
+     * @param isAgentOrderable AI 주문 허용 여부
+     * @return 생성한 카테고리
+     */
     public static Category of(String name, boolean isAgentOrderable) {
         return new Category(name, isAgentOrderable);
     }

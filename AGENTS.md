@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 docker compose up -d                  # start local Postgres 16 (db: zelotest, port 5432)
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
-export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64, 32+ bytes), startup fails without it
+export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64-encoded; decodes to at least 32 bytes), startup fails without it
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)

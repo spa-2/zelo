@@ -10,11 +10,11 @@ export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENA
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
-./gradlew test --tests 'com.server.zelotest.ZelotestApplicationTests'            # single class
-./gradlew test --tests 'com.server.zelotest.SomeTest.someMethod'                 # single method
+./gradlew test --tests 'com.server.zelo.ZeloApplicationTests'            # single class
+./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZelotestApplicationTests` loads the full Spring context, so it needs a reachable Postgres and `OPENAI_API_KEY`.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres and `OPENAI_API_KEY`.
 
 ## Configuration notes
 

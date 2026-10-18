@@ -64,4 +64,6 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: postgres1234
           # ${OPENAI_API_KEY} 가 비어 있으면 애플리케이션이 뜨지 않으므로 값을 넣어줌
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'dummy-key-for-ci' }}
+          # application.yaml의 ${jwt_secret}에 매핑됨 (Base64, 32바이트 이상)
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: ./gradlew build sonar --info

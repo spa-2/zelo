@@ -1,6 +1,8 @@
 package com.server.zelo.product.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -65,6 +67,12 @@ public class Product extends BaseTimeEntity {
 
     private Product(String productCode, Ingredient ingredient, String name,
                     String description, Integer price, Integer contentAmount) {
+        if (price == null || price < 0) {
+            throw new BusinessException(ErrorCode.INVALID_PRICE);
+        }
+        if (contentAmount == null || contentAmount <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 내용량은 0보다 커야 합니다.");
+        }
         this.productCode = productCode;
         // ERD 규칙: 상품 카테고리는 재료 카테고리와 같아야 하므로 입력받지 않고 재료에서 가져온다
         this.category = ingredient.getCategory();

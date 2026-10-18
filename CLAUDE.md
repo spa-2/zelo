@@ -7,14 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 docker compose up -d                  # start local Postgres 16 (db: zelotest, port 5432)
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
+가export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64, 32+ bytes), startup fails without it
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
-./gradlew test --tests 'com.server.zelotest.ZelotestApplicationTests'            # single class
-./gradlew test --tests 'com.server.zelotest.SomeTest.someMethod'                 # single method
+./gradlew test --tests 'com.server.zelo.ZeloApplicationTests'            # single class
+./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZelotestApplicationTests` loads the full Spring context, so it needs a reachable Postgres and `OPENAI_API_KEY`.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need neither.
 
 ## Configuration notes
 

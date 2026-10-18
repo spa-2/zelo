@@ -82,11 +82,15 @@ public class JwtUtil {
         if (token == null || token.isEmpty()) {
             return false;
         }
+        // 헤더는 있는데 안에 내용이 비어있거나 없음
+        if (!StringUtils.hasText(token)) {
+            return false;
+        }
 
         try {
             extractClaims(token);
             return true;
-        }catch (JwtException e) {
+        }catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }

@@ -22,9 +22,9 @@ public class UserFacade {
                 () -> userCommandService.createUserWithAddress(request));
     }
 
-    // 같은 이메일로 동시에 로그인해도 리프레시 토큰 저장 순서가 꼬이지 않게 이메일 단위로 락을 잡음
+    // 이메일 단위 락을 걸면 남의 이메일로 로그인 요청을 계속 보내 정상 사용자를 막을 수 있어서 락을 걸지 않음
+    // 동시에 로그인해도 리프레시 토큰은 마지막 저장값이 남을 뿐 문제가 없음
     public LoginResult login(LoginRequest request) {
-        return lockDistributeService.execute(LockKey.login(request.email()),
-                () -> userCommandService.login(request));
+        return userCommandService.login(request);
     }
 }

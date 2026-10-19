@@ -28,6 +28,7 @@ public class UserController {
     @Value("${jwt.refresh-expiration}")
     private long refreshTokenExpiration;
     private static final String REFRESH_TOKEN_COOKIE = "refreshToken";
+    private static final String REFRESH_TOKEN_COOKIE_PATH = "/api/users";
 
 
     @PostMapping("/api/users")
@@ -39,11 +40,12 @@ public class UserController {
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         LoginResult result = userFacade.login(request);
 
-        // Todo Secure, SameSite는 프론트 확정 후 추가
-        // 프론트가 정해지기 전이라 JS에서 못 읽게 HttpOnly만 적용함
+        // Todo SameSite는 프론트 확정 후 추가
+        // 로그인에서만 내려주는 게 아니라 재발급, 로그아웃에서도 읽어야 해서 path를 로그인 경로로 좁히지 않고 /api/users로 둠
         ResponseCookie refreshTokenCookie = ResponseCookie.from(REFRESH_TOKEN_COOKIE, result.refreshToken())
                 .httpOnly(true)
-                .path("/")
+                .secure(true)
+                .path(REFRESH_TOKEN_COOKIE_PATH)
                 .maxAge(Duration.ofMillis(refreshTokenExpiration))
                 .build();
 

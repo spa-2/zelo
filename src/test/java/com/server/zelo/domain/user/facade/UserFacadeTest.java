@@ -58,14 +58,11 @@ class UserFacadeTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void 이메일_단위_락_안에서_로그인을_실행한다() {
+    void 로그인은_락_없이_실행한다() {
         // given
         LoginRequest request = new LoginRequest("Jieun@example.com", "DemoPass!2026");
         LoginResult response = LoginResult.of("accessToken", "refreshToken");
         given(userCommandService.login(request)).willReturn(response);
-        given(lockDistributeService.execute(eq(LockKey.login("jieun@example.com")), any(Supplier.class)))
-                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
 
         // when
         LoginResult result = userFacade.login(request);
@@ -73,5 +70,6 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().login(request);
+        then(lockDistributeService).shouldHaveNoInteractions();
     }
 }

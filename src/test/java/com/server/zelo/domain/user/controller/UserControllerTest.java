@@ -83,7 +83,7 @@ class UserControllerTest {
         // then
         // 옵션이 추가돼도 깨지지 않도록 지키려는 속성만 확인함
         assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE))
-                .contains("refreshToken=refreshToken", "HttpOnly", "Max-Age=1209600");
+                .contains("refreshToken=refreshToken", "HttpOnly", "Secure", "Path=/api/users", "Max-Age=1209600");
     }
 
     @Test

@@ -24,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 // 실제 JWT 필터 → 컨트롤러 → 전송 흐름 → DB까지 검증한다. LLM은 test 프로필의 FakeLlmGateway가 대신한다
@@ -95,21 +96,29 @@ class ChatMessageApiIntegrationTest {
     }
 
     @Test
-    void LLM이_실패하면_503과_AI_001을_반환하지만_사용자_메시지는_남아_있다() throws Exception {
+    // 클래스의 테스트 트랜잭션 안에서는 커밋되지 않은 데이터도 보이므로, 이 테스트만 트랜잭션 없이 실행해 실제 커밋을 검증한다
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void LLM이_실패하면_503과_AI_001을_반환하지만_사용자_메시지는_커밋되어_남아_있다() throws Exception {
         // given
         Long roomId = createRoom(OWNER_ID);
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
-        // when
-        send(OWNER_ID, roomId, "안녕")
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("AI_001"));
+        try {
+            // when
+            send(OWNER_ID, roomId, "안녕")
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.success").value(false))
+                    .andExpect(jsonPath("$.code").value("AI_001"));
 
-        // then
-        List<ChatMessage> messages = messagesOf(roomId);
-        assertThat(messages).extracting(ChatMessage::getSender).containsExactly(ChatSender.USER);
-        assertThat(messages.get(0).getContent()).isEqualTo("안녕");
+            // then: 바깥 트랜잭션이 없으므로 여기서 조회되는 것은 커밋된 데이터뿐이다
+            List<ChatMessage> messages = messagesOf(roomId);
+            assertThat(messages).extracting(ChatMessage::getSender).containsExactly(ChatSender.USER);
+            assertThat(messages.get(0).getContent()).isEqualTo("안녕");
+        } finally {
+            // 롤백되지 않으므로 테스트가 실패해도 만든 데이터를 직접 지운다
+            chatMessageRepository.deleteAll(messagesOf(roomId));
+            chatRoomRepository.deleteById(roomId);
+        }
     }
 
     @Test

@@ -24,7 +24,22 @@ spring:
         jdbc:
           time_zone: Asia/Seoul
 
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      # 재시도·타임아웃은 LlmGateway 쪽에서 직접 제어하므로 클라이언트 기본값(60초, 3회)을 끈다
+      timeout: 5s
+      max-retries: 0
+      chat:
+        model: gpt-5-mini
+
+zelo:
+  llm:
+    mode: real
+
 logging:
   level:
+    # SimpleLoggerAdvisor가 LLM 요청·응답을 DEBUG로 남기므로 이 클래스만 연다
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: debug
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace

@@ -2,7 +2,6 @@ package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.common.entity.BaseCreatedEntity;
 import com.server.zelo.domain.order.StockState;
-import com.server.zelo.domain.product.entity.Product;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -38,9 +37,8 @@ public class OrderItem extends BaseCreatedEntity {
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
+    @Column(name = "product_id", nullable = false)
+    private Long productId;
 
     @Column(name = "product_name", nullable = false)
     private String productName;
@@ -64,11 +62,11 @@ public class OrderItem extends BaseCreatedEntity {
     @Column(name = "stock_state_changed_at", nullable = false)
     private LocalDateTime stockStateChangedAt;
 
-    private OrderItem(Order order, Product product, String productName,
+    private OrderItem(Order order, Long productId, String productName,
                       String productUnit, Long unitPrice, Integer quantity,
                       Long lineAmount) {
         this.order = order;
-        this.product = product;
+        this.productId = productId;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
         this.lineAmount = lineAmount;
@@ -78,11 +76,11 @@ public class OrderItem extends BaseCreatedEntity {
         this.stockStateChangedAt = LocalDateTime.now();
     }
 
-    public static OrderItem of(Order order, Product product, String productName,
+    public static OrderItem of(Order order, Long productId, String productName,
                                String productUnit, Long unitPrice, Integer quantity,
                                Long lineAmount) {
 
-        OrderItem orderItem = new OrderItem(order, product, productName, productUnit, unitPrice, quantity, lineAmount);
+        OrderItem orderItem = new OrderItem(order, productId, productName, productUnit, unitPrice, quantity, lineAmount);
 
         order.addOrderItem(orderItem);
         return orderItem;

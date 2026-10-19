@@ -1,22 +1,17 @@
 package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
-import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.order.ActorType;
 import com.server.zelo.domain.order.OrderStatus;
-import com.server.zelo.domain.user.entity.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -39,9 +34,8 @@ public class Order extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     // 견적 ID가 코드형식이니
     @Column(name = "quote_id", length = 100, nullable = false, unique = true)
@@ -55,9 +49,8 @@ public class Order extends BaseTimeEntity {
     @Column(name = "requester_type", nullable = false)
     private ActorType requesterType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "chat_room_id")
-    private ChatRoom chatRoom;
+    @Column(name = "chat_room_id", nullable = true)
+    private Long chatRoomId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -69,11 +62,11 @@ public class Order extends BaseTimeEntity {
     @OneToMany(mappedBy = "order", cascade = CascadeType.PERSIST)
     private List<OrderItem> orderItems = new ArrayList<>();
 
-    private Order(User user, String quoteId, String orderName,
-                  ActorType requesterType, ChatRoom chatRoom, Long totalAmount) {
-        this.user = user;
+    private Order(Long userId, String quoteId, String orderName,
+                  ActorType requesterType, Long chatRoomId, Long totalAmount) {
+        this.userId = userId;
         this.quoteId = quoteId;
-        this.chatRoom = chatRoom;
+        this.chatRoomId = chatRoomId;
         this.orderName = orderName;
         this.totalAmount = totalAmount;
         this.requesterType = requesterType;
@@ -81,11 +74,14 @@ public class Order extends BaseTimeEntity {
     }
 
     public void addOrderItem(OrderItem orderItem) {
+        if (orderItem.getOrder() != this) {
+            throw new IllegalArgumentException("주문 항목은 해당 주문에 속해야 합니다.");
+        }
         this.orderItems.add(orderItem);
     }
 
-    public static Order of(User user, String quoteId, String orderName,
-                           ActorType requesterType, ChatRoom chatRoom, Long totalAmount) {
-        return new Order(user, quoteId, orderName, requesterType, chatRoom, totalAmount);
+    public static Order of(Long userId, String quoteId, String orderName,
+                           ActorType requesterType, Long chatRoomId, Long totalAmount) {
+        return new Order(userId, quoteId, orderName, requesterType, chatRoomId, totalAmount);
     }
 }

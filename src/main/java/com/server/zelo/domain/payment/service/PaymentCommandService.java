@@ -5,13 +5,11 @@ import com.server.zelo.domain.payment.client.PortOneClient;
 import com.server.zelo.domain.payment.client.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
 @Service
 @RequiredArgsConstructor
-@Profile({"local", "dev"})
 public class PaymentCommandService {
 
     private static final String AMOUNT_MISMATCH_REASON = "결제 금액 불일치";

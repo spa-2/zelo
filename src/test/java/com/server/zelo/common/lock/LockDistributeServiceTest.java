@@ -39,7 +39,6 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
-        given(lock.isHeldByCurrentThread()).willReturn(true);
 
         // when
         String result = lockDistributeService.execute(KEY, () -> "result");
@@ -54,7 +53,6 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
-        given(lock.isHeldByCurrentThread()).willReturn(true);
         AtomicBoolean executed = new AtomicBoolean(false);
 
         // when
@@ -87,7 +85,6 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
-        given(lock.isHeldByCurrentThread()).willReturn(true);
         Supplier<String> failing = () -> {
             throw new IllegalStateException("fail");
         };

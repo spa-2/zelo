@@ -1,7 +1,6 @@
 package com.server.zelo.domain.user.dto.request;
 
-import com.server.zelo.common.exception.BusinessException;
-import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.entity.User;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -14,8 +13,9 @@ public record CreateUserRequest(
         String email,
 
         @NotBlank
-        @Size(min = 8, max = 255)
-        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z\\d]).+$")
+        @Size(min = 8, max = 72)
+        // BCrypt는 72바이트를 넘으면 예외가 나서, 한 글자가 1바이트인 ASCII 문자만 허용해 72자 = 72바이트로 맞춤
+        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z\\d])[\\x21-\\x7E]+$")
         String password,
 
         @NotBlank
@@ -45,11 +45,8 @@ public record CreateUserRequest(
 ) {
         // 전화번호 변경로직을 위해 record의 생성자 대신 일반 생성자를 활용
         public CreateUserRequest(String email, String password, String passwordConfirm, String name, String phoneNumber, String place, String addresses, String zipCode) {
-                if (!password.equals(passwordConfirm)) {
-                        throw new BusinessException(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH);
-                }
-
-                this.email = email;
+                // 락 키도 이 값으로 만들어지므로 요청 시점에 정규화함
+                this.email = User.normalizeEmail(email);
                 this.password = password;
                 this.passwordConfirm = passwordConfirm;
                 this.name = name;
@@ -58,7 +55,8 @@ public record CreateUserRequest(
                 this.zipCode = zipCode;
 
                 // 하이픈 제거 후 정규식으로 재조립하여 필드에 대입(사용자는 - 을 넣어도 넣지않아도 - 가 붙어서 저장됨)
-                String cleanNumber = phoneNumber.replace("-", "");
-                this.phoneNumber = cleanNumber.replaceFirst("(^02|[0-9]{3})([0-9]{3,4})([0-9]{4})$", "$1-$2-$3");
+                this.phoneNumber = phoneNumber == null
+                        ? null
+                        :phoneNumber.replace("-", "").replaceFirst("(^02|[0-9]{3})([0-9]{3,4})([0-9]{4})$", "$1-$2-$3");
         }
 }

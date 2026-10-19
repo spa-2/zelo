@@ -6,6 +6,7 @@ import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.facade.UserFacade;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,6 +20,6 @@ public class UserController {
 
     @PostMapping("/api/users")
     public ResponseEntity<ApiResponse<CreateUserResponse>> createUserWithAddress(@Valid @RequestBody CreateUserRequest request) {
-        return ResponseEntity.ok(ApiResponse.ok(userFacade.createUserWithAddress(request)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(userFacade.createUserWithAddress(request)));
     }
 }

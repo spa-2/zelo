@@ -59,4 +59,31 @@ class UserServiceTest {
         assertThat(user.getName()).isEqualTo("홍길동");
         assertThat(user.getPhoneNumber()).isEqualTo("010-1234-5678");
     }
+
+    @Test
+    void 대소문자만_다른_이메일도_중복으로_판단한다() {
+        // given
+        given(userRepository.existsByEmail("test@example.com")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> userService.createUser("TEST@Example.com", "Password1!", "홍길동", "010-1234-5678"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+        then(userRepository).should(never()).save(any(User.class));
+    }
+
+    @Test
+    void 대문자가_섞인_이메일은_소문자로_저장한다() {
+        // given
+        given(userRepository.existsByEmail("test@example.com")).willReturn(false);
+        given(passwordEncoder.encode("Password1!")).willReturn("encodedPassword");
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        User user = userService.createUser("TEST@Example.com", "Password1!", "홍길동", "010-1234-5678");
+
+        // then
+        assertThat(user.getEmail()).isEqualTo("test@example.com");
+    }
 }

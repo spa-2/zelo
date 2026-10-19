@@ -6,6 +6,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.Locale;
+
 @Getter
 @Entity
 @Table(name = "users")
@@ -29,7 +31,7 @@ public class User extends BaseTimeEntity {
     private String phoneNumber;
 
     private User(String email, String password, String name, String phoneNumber) {
-        this.email = email;
+        this.email = normalizeEmail(email);
         this.password = password;
         this.name = name;
         this.phoneNumber = phoneNumber;
@@ -37,5 +39,10 @@ public class User extends BaseTimeEntity {
 
     public static User of(String email, String password, String name, String phoneNumber) {
         return new User(email, password, name, phoneNumber);
+    }
+
+    // 이메일 소문자로 변환
+    public static String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 }

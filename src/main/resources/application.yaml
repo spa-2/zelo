@@ -43,3 +43,8 @@ logging:
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: debug
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace
+
+jwt:
+  access-expiration: 600000 # 10분
+  refresh-expiration: 1209600000 # 2주
+  secret: ${jwt_secret}

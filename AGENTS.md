@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 docker compose up -d                  # start local Postgres 16 (db: zelotest, port 5432)
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
+export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64-encoded; decodes to at least 32 bytes), startup fails without it
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
@@ -14,7 +15,7 @@ export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENA
 ./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres and `OPENAI_API_KEY`.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need neither.
 
 ## Configuration notes
 
@@ -87,5 +88,4 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 ### 미정 (임의로 만들지 말고 먼저 물어볼 것)
 - Command 클래스의 네이밍 규칙
 - 공통 락 클래스의 이름과 인터페이스
-- 공통 예외 처리 방식(ErrorCode 구조)
 

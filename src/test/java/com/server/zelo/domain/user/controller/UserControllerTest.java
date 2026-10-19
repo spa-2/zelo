@@ -15,7 +15,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,24 +70,52 @@ class UserControllerTest {
     }
 
     @Test
-    void 리프레시_토큰은_본문이_아닌_HttpOnly_쿠키로_내려간다() throws Exception {
-        // given
+    void 리프레시_토큰은_본문이_아닌_쿠키로_내려간다() throws Exception {
+        // when
+        var result = performLogin();
+
+        // then
+        result.andExpect(jsonPath("$.data.refreshToken").doesNotExist());
+        assertThat(refreshTokenCookieAttributes(result)).contains("refreshToken=refreshToken");
+    }
+
+    // 쿠키 속성은 옵션이 추가돼도 서로 영향이 없도록 속성마다 테스트를 나눔
+    @Test
+    void 리프레시_토큰_쿠키는_HttpOnly다() throws Exception {
+        assertThat(refreshTokenCookieAttributes(performLogin())).contains("HttpOnly");
+    }
+
+    @Test
+    void 리프레시_토큰_쿠키는_Secure다() throws Exception {
+        assertThat(refreshTokenCookieAttributes(performLogin())).contains("Secure");
+    }
+
+    @Test
+    void 리프레시_토큰_쿠키의_Path는_users다() throws Exception {
+        assertThat(refreshTokenCookieAttributes(performLogin())).contains("Path=/api/users");
+    }
+
+    @Test
+    void 리프레시_토큰_쿠키는_리프레시_토큰_만료_시간만큼_유지된다() throws Exception {
+        assertThat(refreshTokenCookieAttributes(performLogin())).contains("Max-Age=1209600");
+    }
+
+    private ResultActions performLogin() throws Exception {
         given(userFacade.login(any(LoginRequest.class)))
                 .willReturn(LoginResult.of("accessToken", "refreshToken"));
 
-        // when
-        var result = mockMvc.perform(post("/api/users/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email": "jieun@example.com", "password": "DemoPass!2026"}
-                                """))
-                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
-                .andReturn();
+        return mockMvc.perform(post("/api/users/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email": "jieun@example.com", "password": "DemoPass!2026"}
+                        """));
+    }
 
-        // then
-        // 옵션이 추가돼도 깨지지 않도록 지키려는 속성만 확인함
-        assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE))
-                .contains("refreshToken=refreshToken", "HttpOnly", "Secure", "Path=/api/users", "Max-Age=1209600");
+    // 문자열 일부가 우연히 겹쳐 통과하지 않도록 ; 단위로 쪼개서 속성 하나씩 비교함
+    private List<String> refreshTokenCookieAttributes(ResultActions result) {
+        String setCookie = result.andReturn().getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertThat(setCookie).isNotNull();
+        return Arrays.stream(setCookie.split(";")).map(String::trim).toList();
     }
 
     @Test

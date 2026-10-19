@@ -12,7 +12,7 @@ class PaymentTest {
     @Test
     @DisplayName("결제를 생성하면 READY 상태이고 승인 정보는 비어 있다")
     void create() {
-        Payment payment = new Payment(1L, "payment-uuid-1", 10_000L);
+        Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
 
         assertThat(payment.getOrderId()).isEqualTo(1L);
         assertThat(payment.getPortoneId()).isEqualTo("payment-uuid-1");
@@ -21,4 +21,5 @@ class PaymentTest {
         assertThat(payment.getPgAmount()).isNull();
         assertThat(payment.getPaidAt()).isNull();
     }
+
 }

@@ -45,10 +45,14 @@ public class Payment extends BaseTimeEntity {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    public Payment(Long orderId, String portoneId, Long amount) {
+    private Payment(Long orderId, String portoneId, Long amount) {
         this.orderId = orderId;
         this.portoneId = portoneId;
         this.amount = amount;
         this.status = PaymentStatus.READY;
+    }
+
+    public static Payment of(Long orderId, String portoneId, Long amount) {
+        return new Payment(orderId, portoneId, amount);   // 생성 시 status = READY
     }
 }

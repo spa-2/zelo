@@ -27,15 +27,18 @@ spring:
   ai:
     openai:
       api-key: ${OPENAI_API_KEY}
-      # 재시도·타임아웃은 LlmGateway 쪽에서 직접 제어하므로 클라이언트 기본값(60초, 3회)을 끈다
-      timeout: 5s
+      # 재시도는 LlmGateway 쪽에서 직접 제어하므로 클라이언트 기본값(3회)을 끈다
       max-retries: 0
+      # 실제 요청 타임아웃은 SpringAiLlmGateway가 zelo.llm.timeout으로 요청마다 넣는다. 클라이언트 기본값도 같은 값으로 맞춘다
+      timeout: ${zelo.llm.timeout}
       chat:
         model: gpt-5-mini
 
 zelo:
   llm:
     mode: real
+    # LLM 요청 하나를 기다리는 최대 시간. 실제 gpt-5-mini 응답이 약 10초 걸려 여유를 두었다 (팀 합의 후 조정)
+    timeout: 15s
 
 logging:
   level:

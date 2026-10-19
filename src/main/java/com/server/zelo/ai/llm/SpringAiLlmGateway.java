@@ -1,9 +1,12 @@
 package com.server.zelo.ai.llm;
 
+import java.time.Duration;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -13,16 +16,19 @@ public class SpringAiLlmGateway implements LlmGateway {
 
     private final ChatClient chatClient;
 
-    public SpringAiLlmGateway(ChatClient.Builder chatClientBuilder) {
-        // 모든 호출의 요청(system·user 메시지)과 응답을 DEBUG 로그로 남긴다
+    public SpringAiLlmGateway(ChatClient.Builder chatClientBuilder, @Value("${zelo.llm.timeout}") Duration timeout) {
         this.chatClient = chatClientBuilder
+                // Spring AI 2.0.1은 요청마다 프롬프트 옵션의 timeout(기본 60초)으로 요청 타임아웃을 덮어써서
+                // spring.ai.openai.timeout만으로는 적용되지 않는다. 그래서 모든 요청의 옵션에 직접 넣는다
+                .defaultOptions(OpenAiChatOptions.builder().timeout(timeout))
+                // 모든 호출의 요청(system·user 메시지)과 응답을 DEBUG 로그로 남긴다
                 .defaultAdvisors(new SimpleLoggerAdvisor())
                 .build();
     }
 
     @Override
     public LlmReply explain(String systemPrompt, String userText) {
-        // content()는 문장만 주므로, 토큰 사용량까지 받기 위해 chatResponse()를 쓴다
+        // content()는 문장만 주므로, 토큰 사용량까지 받기 위해 chatResponse()를 사용
         ChatResponse response = chatClient.prompt()
                 .system(systemPrompt)
                 .user(userText)

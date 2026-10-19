@@ -1,4 +1,4 @@
-package com.server.zelo.quote.model;
+package com.server.zelo.domain.quote.model;
 
 import java.time.LocalDateTime;
 import java.util.List;

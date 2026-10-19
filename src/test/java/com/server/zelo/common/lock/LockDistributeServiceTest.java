@@ -39,6 +39,7 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.isHeldByCurrentThread()).willReturn(true);
 
         // when
         String result = lockDistributeService.execute(KEY, () -> "result");
@@ -53,6 +54,7 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.isHeldByCurrentThread()).willReturn(true);
         AtomicBoolean executed = new AtomicBoolean(false);
 
         // when
@@ -85,6 +87,7 @@ class LockDistributeServiceTest {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
         given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.isHeldByCurrentThread()).willReturn(true);
         Supplier<String> failing = () -> {
             throw new IllegalStateException("fail");
         };
@@ -93,6 +96,21 @@ class LockDistributeServiceTest {
         assertThatThrownBy(() -> lockDistributeService.execute(KEY, failing))
                 .isInstanceOf(IllegalStateException.class);
         then(lock).should().unlock();
+    }
+
+    @Test
+    void 현재_스레드가_락을_보유하지_않으면_해제하지_않는다() throws InterruptedException {
+        // given
+        given(redissonClient.getLock(KEY)).willReturn(lock);
+        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.isHeldByCurrentThread()).willReturn(false);
+
+        // when
+        String result = lockDistributeService.execute(KEY, () -> "result");
+
+        // then
+        assertThat(result).isEqualTo("result");
+        then(lock).should(never()).unlock();
     }
 
     @Test

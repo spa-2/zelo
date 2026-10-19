@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,14 +13,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
+import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.service.ChatMessageOrchestrator;
+import com.server.zelo.domain.chat.service.ChatMessageService;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -33,6 +40,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 // 스프링 컨텍스트 없이 컨트롤러·@Auth 리졸버·요청 검증·예외 처리만 묶어서 요청과 응답 형식을 검증한다
 @ExtendWith(MockitoExtension.class)
 class ChatMessageControllerTest {
+
+    @Mock
+    private ChatMessageService chatMessageService;
 
     @Mock
     private ChatMessageOrchestrator chatMessageOrchestrator;
@@ -142,6 +152,77 @@ class ChatMessageControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
         then(chatMessageOrchestrator).should(never()).sendMessage(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 메시지_목록을_요청하면_200과_메시지_목록과_다음_커서를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        LocalDateTime now = LocalDateTime.now();
+        given(chatMessageService.getMessages(10L, 1L, new SearchChatMessageCondition(50L, 2)))
+                .willReturn(GetChatMessagesResponse.of(List.of(
+                        new ChatMessageResponse(42L, ChatSender.ASSISTANT, "답변", null, now),
+                        new ChatMessageResponse(41L, ChatSender.USER, "질문", null, now)), 41L, true));
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/10/messages").param("before", "50").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.messages.length()").value(2))
+                .andExpect(jsonPath("$.data.messages[0].messageId").value(42))
+                .andExpect(jsonPath("$.data.messages[0].sender").value("ASSISTANT"))
+                .andExpect(jsonPath("$.data.messages[1].sender").value("USER"))
+                .andExpect(jsonPath("$.data.nextCursor").value(41))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+    }
+
+    @Test
+    void 조회_조건을_생략하면_빈_조건으로_조회한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageService.getMessages(10L, 1L, new SearchChatMessageCondition(null, null)))
+                .willReturn(GetChatMessagesResponse.of(List.of(), null, false));
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/10/messages"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messages").isEmpty())
+                .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"size, 0", "size, 101", "before, 0", "before, -1"})
+    void 조회_조건이_범위를_벗어나면_400과_INVALID_INPUT을_반환한다(String name, String value) throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/10/messages").param(name, value))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageService).should(never()).getMessages(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 조회_조건이_숫자가_아니면_400과_INVALID_INPUT을_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/10/messages").param("before", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageService).should(never()).getMessages(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 인증_정보_없이_목록을_요청하면_401과_AUTH_001을_반환한다() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/10/messages"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_001"));
+        then(chatMessageService).should(never()).getMessages(anyLong(), anyLong(), any());
     }
 
     private void authenticate(Long userId) {

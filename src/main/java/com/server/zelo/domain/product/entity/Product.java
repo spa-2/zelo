@@ -1,4 +1,4 @@
-package com.server.zelo.product.entity;
+package com.server.zelo.domain.product.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
 import com.server.zelo.common.exception.BusinessException;

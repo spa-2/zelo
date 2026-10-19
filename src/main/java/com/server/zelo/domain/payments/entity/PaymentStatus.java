@@ -1,4 +1,4 @@
-package com.server.zelo.payments.entity;
+package com.server.zelo.domain.payments.entity;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

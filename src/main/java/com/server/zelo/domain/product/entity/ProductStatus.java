@@ -1,4 +1,4 @@
-package com.server.zelo.product.entity;
+package com.server.zelo.domain.product.entity;
 
 public enum ProductStatus {
     ON_SALE,

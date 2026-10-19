@@ -1,7 +1,7 @@
 package com.server.zelo.paymentTest.entity;
 
-import com.server.zelo.payments.entity.Payment;
-import com.server.zelo.payments.entity.PaymentStatus;
+import com.server.zelo.domain.payments.entity.Payment;
+import com.server.zelo.domain.payments.entity.PaymentStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

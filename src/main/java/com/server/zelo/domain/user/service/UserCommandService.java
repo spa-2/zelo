@@ -1,9 +1,12 @@
 package com.server.zelo.domain.user.service;
 
+import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import lombok.RequiredArgsConstructor;
@@ -14,8 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserCommandService {
 
+    private final JwtUtil jwtUtil;
     private final UserService userService;
     private final UserAddressService userAddressService;
+    private final RefreshTokenService refreshTokenService;
 
     // 유저와 배송지가 같이 저장되거나 같이 롤백되어야 해서 여기서 트랜잭션을 묶음
     @Transactional
@@ -34,5 +39,17 @@ public class UserCommandService {
 
         return CreateUserResponse.of(user.getId(), user.getEmail(), user.getName(), userAddress.getPlace(),
                 userAddress.getAddress(), userAddress.getZipCode(), user.getCreatedAt());
+    }
+
+    // 리프레시 토큰은 Redis에 저장되므로 DB 변경은 없고 조회만 하는 트랜잭션으로 둠
+    @Transactional(readOnly = true)
+    public LoginResult login(LoginRequest request) {
+        User user = userService.getUserByEmailAndPassword(request.email(), request.password());
+
+        String accessToken = jwtUtil.createAccessToken(user.getId());
+        String refreshToken = jwtUtil.createRefreshToken(user.getId());
+        refreshTokenService.saveRefreshToken(user.getId(), refreshToken);
+
+        return LoginResult.of(accessToken, refreshToken);
     }
 }

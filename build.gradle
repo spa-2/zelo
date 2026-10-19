@@ -36,6 +36,8 @@ repositories {
 }
 
 dependencies {
+    implementation platform('org.springframework.ai:spring-ai-bom:2.0.1')
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
     // redis, redission
@@ -54,7 +56,16 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // security
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // Encryption & Token
     implementation 'at.favre.lib:bcrypt:0.10.2'
+    compileOnly "io.jsonwebtoken:jjwt-api:0.12.6"
+    runtimeOnly "io.jsonwebtoken:jjwt-impl:0.12.6"
+    runtimeOnly "io.jsonwebtoken:jjwt-jackson:0.12.6"
+    testImplementation "io.jsonwebtoken:jjwt-api:0.12.6"
 }
 
 tasks.named('test') {

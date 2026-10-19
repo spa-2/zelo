@@ -19,13 +19,24 @@ public class LockDistributeService {
     public <T> T execute(String key, Supplier<T> supplier) {
         RLock lock = redissonClient.getLock(key);
 
-        acquire(lock);
+        boolean acquired;
+        try {
+            acquired = lock.tryLock(3, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
+        }
 
-        // 락을 얻은 뒤에만 try에 들어오므로 finally에서는 해제하는 락은 무조건 내거임
+        if (!acquired) {
+            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
+        }
+
         try {
             return supplier.get();
         } finally {
-            lock.unlock();
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 
@@ -36,16 +47,4 @@ public class LockDistributeService {
         });
     }
 
-    private void acquire(RLock lock) {
-        try {
-            // 3초 안에 lock을 얻으면 true, 못 얻으면 예외
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
-                throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
-            }
-        } catch (InterruptedException e) {
-            // 락 대기 중 스레드가 중단됨
-            Thread.currentThread().interrupt();
-            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
-        }
-    }
 }

@@ -57,6 +57,7 @@ public record CreateUserRequest(
                 // 하이픈 제거 후 정규식으로 재조립하여 필드에 대입(사용자는 - 을 넣어도 넣지않아도 - 가 붙어서 저장됨)
                 this.phoneNumber = phoneNumber == null
                         ? null
-                        :phoneNumber.replace("-", "").replaceFirst("(^02|[0-9]{3})([0-9]{3,4})([0-9]{4})$", "$1-$2-$3");
+                        : phoneNumber.replace("-", "").replaceFirst("^(02|[0-9]{3})([0-9]{3,4})([0-9]{4})$", "$1-$2-$3");
+
         }
 }

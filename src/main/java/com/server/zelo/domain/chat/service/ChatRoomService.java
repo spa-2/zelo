@@ -2,8 +2,8 @@ package com.server.zelo.domain.chat.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.chat.dto.CreateChatRoomResponse;
-import com.server.zelo.domain.chat.dto.GetChatRoomResponse;
+import com.server.zelo.domain.chat.dto.response.CreateChatRoomResponse;
+import com.server.zelo.domain.chat.dto.response.GetChatRoomResponse;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
 import java.util.List;

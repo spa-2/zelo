@@ -12,8 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
-import com.server.zelo.domain.chat.dto.CreateChatRoomResponse;
-import com.server.zelo.domain.chat.dto.GetChatRoomResponse;
+import com.server.zelo.domain.chat.dto.response.CreateChatRoomResponse;
+import com.server.zelo.domain.chat.dto.response.GetChatRoomResponse;
 import com.server.zelo.domain.chat.service.ChatRoomService;
 import java.time.LocalDateTime;
 import java.util.List;

@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 // 실제 OpenAI를 호출해 요금이 나가므로, 키가 있는 로컬에서만 직접 실행한다 (CI의 dummy 키로는 돌지 않게 sk- 접두사로 판별)
 @SpringBootTest(properties = "zelo.llm.mode=real")
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = "sk-.+")
-class SpringAiLlmGatewayManualTest {
+class SpringAiLlmGatewayTest {
 
     @Autowired
     private LlmGateway llmGateway;

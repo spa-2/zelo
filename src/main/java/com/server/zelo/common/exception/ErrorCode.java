@@ -53,6 +53,9 @@ public enum ErrorCode {
     CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_001", "채팅방을 찾을 수 없습니다."),
     CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_002", "해당 채팅방에 접근할 권한이 없습니다."),
 
+    // AI
+    AI_RESPONSE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AI_001", "AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "인증이 필요합니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_002", "유효하지 않은 토큰입니다."),

@@ -5,16 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-docker compose up -d                  # start local Postgres 16 (db: zelotest, port 5432)
+docker compose up -d --wait           # start local Postgres 16 (db: zelotest, port 5432) and Redis 7 (port 6379), waits until both are healthy
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
+export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64, 32+ bytes), startup fails without it
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
-./gradlew test --tests 'com.server.zelotest.ZelotestApplicationTests'            # single class
-./gradlew test --tests 'com.server.zelotest.SomeTest.someMethod'                 # single method
+./gradlew test --tests 'com.server.zelo.ZeloApplicationTests'            # single class
+./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZelotestApplicationTests` loads the full Spring context, so it needs a reachable Postgres and `OPENAI_API_KEY`.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, Redis (Redisson connects at startup), `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need none of them.
 
 ## Configuration notes
 
@@ -51,6 +52,13 @@ No lint/format plugin is configured. Note that `ZelotestApplicationTests` loads 
 - **Facade**: 공통 락 클래스로 락만 건다. `@Transactional`을 붙이지 않는다. (락은 트랜잭션 커밋 후에 풀려야 하기 때문)
 - **Command**: 여러 도메인 Service의 호출 순서를 정하고, 전체 작업의 트랜잭션 경계를 담당한다.
 - **Service**: 자기 도메인 Repository만 주입받는다. 다른 도메인 Service를 주입하지 않는다. 그런 조율이 필요하면 Command를 만든다.
+### 락
+- 분산락은 `common.lock.LockDistributeService`(Redisson)로만 건다. `RedissonClient`를 직접 쓰지 않는다.
+- 사용법: `lockDistributeService.execute(LockKey.xxx(...), () -> command.xxx(...))`. 반환값이 있으면 `Supplier`, 없으면 `Runnable`을 넘긴다.
+- 락 키는 `common.lock.LockKey`에 정적 메서드로 모아서 관리한다. Facade에서 키 문자열을 직접 만들지 않는다.
+- 3초 안에 락을 얻지 못하면 `ErrorCode.TIMEOUT_EXCEPTION`(409)을 던진다. 락 대기 중 인터럽트도 같은 예외다.
+- 락은 Facade에서 Command 호출 전체를 감싸서 건다. 그래야 Command의 트랜잭션이 커밋된 뒤에 락이 풀린다.
+- Redisson이 Redis에 접속하므로 로컬과 CI에 Redis(기본 localhost:6379)가 필요하다.
 ### Repository
 - 인터페이스에 `@Repository`를 명시한다.
 - 조회 방식은 다음 순서로 고른다: JPA 기본 메서드 → 연관관계 조회가 필요하면 `@EntityGraph` → JPQL → 조건이 복잡하면 QueryDSL.
@@ -86,6 +94,4 @@ No lint/format plugin is configured. Note that `ZelotestApplicationTests` loads 
 - 단위 테스트는 `@ExtendWith(MockitoExtension.class)`를 쓰고, 스텁은 BDDMockito `given(...).willReturn(...)`, 검증은 AssertJ `assertThat(...)`으로 한다. 본문은 `// given // when // then` 주석으로 구분한다.
 ### 미정 (임의로 만들지 말고 먼저 물어볼 것)
 - Command 클래스의 네이밍 규칙
-- 공통 락 클래스의 이름과 인터페이스
-- 공통 예외 처리 방식(ErrorCode 구조)
 

@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 @Getter
 @Entity
@@ -23,6 +24,9 @@ import lombok.NoArgsConstructor;
         indexes = @Index(name = "idx_chat_rooms_user_id_last_message_at", columnList = "user_id, last_message_at")
 )
 public class ChatRoom extends BaseCreatedEntity {
+
+    private static final int TITLE_MAX_LENGTH = 30;
+    private static final String TITLE_ELLIPSIS = "…";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -60,5 +64,27 @@ public class ChatRoom extends BaseCreatedEntity {
         if (!isOwnedBy(userId)) {
             throw new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
         }
+    }
+
+    // 첫 사용자 메시지로만 제목을 정하고, 한 번 정해진 제목은 이후 메시지로 바뀌지 않는다
+    public void updateTitleIfAbsent(String firstMessage) {
+        if (this.title != null || !StringUtils.hasText(firstMessage)) {
+            return;
+        }
+        // 줄바꿈·연속 공백을 한 칸으로 줄여 목록에서 한 줄로 보이게 한다
+        String normalized = firstMessage.strip().replaceAll("\\s+", " ");
+        // 이모지가 반으로 잘리지 않도록 글자(code point) 단위로 자른다
+        if (normalized.codePointCount(0, normalized.length()) <= TITLE_MAX_LENGTH) {
+            this.title = normalized;
+            return;
+        }
+        this.title = normalized.substring(0, normalized.offsetByCodePoints(0, TITLE_MAX_LENGTH)) + TITLE_ELLIPSIS;
+    }
+
+    public void updateLastMessageAt(LocalDateTime messageAt) {
+        if (messageAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        this.lastMessageAt = messageAt;
     }
 }

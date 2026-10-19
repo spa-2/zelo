@@ -1,17 +1,17 @@
-package com.server.zelo.domain.chat.dto;
+package com.server.zelo.domain.chat.dto.response;
 
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import java.time.LocalDateTime;
 
-public record CreateChatRoomResponse(
+public record GetChatRoomResponse(
         Long roomId,
         String title,
         LocalDateTime lastMessageAt,
         LocalDateTime createdAt
 ) {
 
-    public static CreateChatRoomResponse from(ChatRoom chatRoom) {
-        return new CreateChatRoomResponse(
+    public static GetChatRoomResponse from(ChatRoom chatRoom) {
+        return new GetChatRoomResponse(
                 chatRoom.getId(),
                 chatRoom.getTitle(),
                 chatRoom.getLastMessageAt(),

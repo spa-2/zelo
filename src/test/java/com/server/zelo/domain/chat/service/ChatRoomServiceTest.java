@@ -10,8 +10,10 @@ import static org.mockito.Mockito.times;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.CreateChatRoomResponse;
+import com.server.zelo.domain.chat.dto.GetChatRoomResponse;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ChatRoomServiceTest {
@@ -57,6 +60,35 @@ class ChatRoomServiceTest {
 
         // then
         then(chatRoomRepository).should(times(2)).save(any(ChatRoom.class));
+    }
+
+    @Test
+    void 채팅방_목록을_조회하면_저장소가_돌려준_순서대로_응답으로_바꾼다() {
+        // given
+        ChatRoom recent = ChatRoom.of(1L);
+        ChatRoom old = ChatRoom.of(1L);
+        ReflectionTestUtils.setField(recent, "id", 20L);
+        ReflectionTestUtils.setField(old, "id", 10L);
+        given(chatRoomRepository.findAllByUserIdOrderByLastMessageAtDescIdDesc(1L)).willReturn(List.of(recent, old));
+
+        // when
+        List<GetChatRoomResponse> result = chatRoomService.getChatRooms(1L);
+
+        // then
+        assertThat(result).extracting(GetChatRoomResponse::roomId).containsExactly(20L, 10L);
+        assertThat(result).extracting(GetChatRoomResponse::title).containsOnlyNulls();
+    }
+
+    @Test
+    void 채팅방이_없으면_빈_목록을_반환한다() {
+        // given
+        given(chatRoomRepository.findAllByUserIdOrderByLastMessageAtDescIdDesc(1L)).willReturn(List.of());
+
+        // when
+        List<GetChatRoomResponse> result = chatRoomService.getChatRooms(1L);
+
+        // then
+        assertThat(result).isEmpty();
     }
 
     @Test

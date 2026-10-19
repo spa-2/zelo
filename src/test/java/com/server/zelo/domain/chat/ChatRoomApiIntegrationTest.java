@@ -1,6 +1,7 @@
 package com.server.zelo.domain.chat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -71,10 +72,55 @@ class ChatRoomApiIntegrationTest {
     }
 
     @Test
+    void 목록은_내_방만_나중에_대화한_순서로_반환한다() throws Exception {
+        // given: 로컬 DB에 쌓인 데이터와 섞이지 않도록 실제로 쓰이지 않을 사용자 ID를 쓴다
+        String myToken = jwtUtil.createAccessToken(9_000_011L);
+        String otherToken = jwtUtil.createAccessToken(9_000_012L);
+        Long firstRoomId = createRoom(myToken);
+        createRoom(otherToken);
+        Long secondRoomId = createRoom(myToken);
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms").header("Authorization", "Bearer " + myToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].roomId").value(secondRoomId))
+                .andExpect(jsonPath("$.data[1].roomId").value(firstRoomId))
+                .andExpect(jsonPath("$.data[0].title").doesNotExist())
+                .andExpect(jsonPath("$.data[0].lastMessageAt").exists());
+    }
+
+    @Test
+    void 방이_없는_사용자가_목록을_조회하면_빈_배열을_반환한다() throws Exception {
+        // given
+        String token = jwtUtil.createAccessToken(9_000_013L);
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void 토큰_없이_목록을_요청하면_401과_AUTH_001을_반환한다() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_001"));
+    }
+
+    @Test
     void 토큰_없이_요청하면_401과_AUTH_001을_반환한다() throws Exception {
         // when & then
         mockMvc.perform(post("/api/chat/rooms"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
+    }
+
+    private Long createRoom(String token) throws Exception {
+        String body = mockMvc.perform(post("/api/chat/rooms").header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.data.roomId")).longValue();
     }
 }

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,8 +20,8 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
 
 // OpenAI와 통신하는 ChatModel만 mock으로 바꾸고, ChatClient는 실제 객체로 거쳐 간다
 @ExtendWith(MockitoExtension.class)
@@ -31,11 +32,13 @@ class SpringAiLlmGatewayMockTest {
 
     private SpringAiLlmGateway springAiLlmGateway;
 
+    private static final Duration TIMEOUT = Duration.ofSeconds(7);
+
     @BeforeEach
     void setUp() {
-        // ChatClient가 요청을 만들 때 모델의 기본 옵션을 복사하므로 null 대신 빈 옵션을 준다
-        given(chatModel.getOptions()).willReturn(ChatOptions.builder().build());
-        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel));
+        // ChatClient가 요청을 만들 때 모델의 기본 옵션을 복사하므로, 실제 OpenAiChatModel처럼 OpenAI 옵션을 준다
+        given(chatModel.getOptions()).willReturn(OpenAiChatOptions.builder().build());
+        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel), TIMEOUT);
     }
 
     @Test
@@ -69,6 +72,23 @@ class SpringAiLlmGatewayMockTest {
         Prompt prompt = promptCaptor.getValue();
         assertThat(prompt.getSystemMessage().getText()).isEqualTo("너는 장보기 도우미야");
         assertThat(prompt.getUserMessage().getText()).isEqualTo("김치볶음밥 재료");
+    }
+
+    @Test
+    void 설정한_타임아웃을_모든_요청의_옵션에_넣는다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("답변", "gpt-test", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+
+        // when
+        springAiLlmGateway.explain("system", "질문");
+
+        // then: OpenAiChatModel은 이 값으로 요청 타임아웃을 정한다
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getOptions())
+                .isInstanceOfSatisfying(OpenAiChatOptions.class,
+                        options -> assertThat(options.getTimeout()).isEqualTo(TIMEOUT));
     }
 
     private ChatResponse chatResponse(String text, String model, int promptTokens, int completionTokens) {

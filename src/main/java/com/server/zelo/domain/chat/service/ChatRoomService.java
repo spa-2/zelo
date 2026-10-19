@@ -3,8 +3,10 @@ package com.server.zelo.domain.chat.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.CreateChatRoomResponse;
+import com.server.zelo.domain.chat.dto.GetChatRoomResponse;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,13 @@ public class ChatRoomService {
     public CreateChatRoomResponse createChatRoom(Long userId) {
         ChatRoom chatRoom = chatRoomRepository.save(ChatRoom.of(userId));
         return CreateChatRoomResponse.from(chatRoom);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GetChatRoomResponse> getChatRooms(Long userId) {
+        return chatRoomRepository.findAllByUserIdOrderByLastMessageAtDescIdDesc(userId).stream()
+                .map(GetChatRoomResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)

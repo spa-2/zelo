@@ -3,8 +3,11 @@ package com.server.zelo.domain.user.facade;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.UserCommandService;
+import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -52,5 +55,23 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserWithAddress(request);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 이메일_단위_락_안에서_로그인을_실행한다() {
+        // given
+        LoginRequest request = new LoginRequest("Jieun@example.com", "DemoPass!2026");
+        LoginResult response = LoginResult.of("accessToken", "refreshToken");
+        given(userCommandService.login(request)).willReturn(response);
+        given(lockDistributeService.execute(eq(LockKey.login("jieun@example.com")), any(Supplier.class)))
+                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
+
+        // when
+        LoginResult result = userFacade.login(request);
+
+        // then
+        assertThat(result).isEqualTo(response);
+        then(userCommandService).should().login(request);
     }
 }

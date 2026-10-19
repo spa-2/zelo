@@ -8,7 +8,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor

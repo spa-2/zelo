@@ -16,7 +16,7 @@ public enum PaymentStatus {
     CONFIRM_PENDING("결제 확인 대기") {
         @Override
         public boolean canTransitTo(PaymentStatus target) {
-            return target == PAID || target == FAILED;
+            return target == PAID || target == FAILED || target == CANCELED;
         }
     },
     PAID("결제 완료") {

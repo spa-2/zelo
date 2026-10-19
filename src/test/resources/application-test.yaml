@@ -3,6 +3,11 @@ spring:
     model:
       # 테스트에서는 OpenAI 클라이언트를 만들지 않는다 (API 키 없이 컨텍스트 로딩, 호출 비용 0)
       chat: none
+      embedding: none
+      image: none
+      audio: none
+      speech: none
+      transcription: none
 
 zelo:
   llm:

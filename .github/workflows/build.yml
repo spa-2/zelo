@@ -11,7 +11,7 @@ jobs:
     name: Build and analyze
     runs-on: ubuntu-latest
 
-    # 테스트 전에 PostgreSQL 컨테이너를 같이 띄움
+    # 테스트 전에 PostgreSQL, Redis 컨테이너를 같이 띄움 (둘 다 healthy 가 되어야 steps 가 시작됨)
     services:
       postgres:
         image: postgres:16            # 로컬에서 쓰는 버전과 맞추기
@@ -23,6 +23,16 @@ jobs:
           - 5432:5432                 # runner의 localhost:5432 로 접근 가능
         options: >-
           --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7                # 로컬 docker-compose 와 버전 맞추기
+        ports:
+          - 6379:6379                 # runner의 localhost:6379 로 접근 가능 (Redisson 기본 주소)
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

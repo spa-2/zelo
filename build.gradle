@@ -44,6 +44,7 @@ dependencies {
     implementation 'org.redisson:redisson-spring-boot-starter:4.7.0'
 
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     compileOnly 'org.projectlombok:lombok'

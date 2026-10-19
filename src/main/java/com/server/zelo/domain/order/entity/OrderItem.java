@@ -1,6 +1,6 @@
 package com.server.zelo.domain.order.entity;
 
-import com.server.zelo.common.entity.BaseCreatedEntity;
+import com.server.zelo.common.entity.BaseTimeEntity;
 import com.server.zelo.domain.order.StockState;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
         name = "order_items",
         indexes = @Index(name = "idx_order_items_order_id", columnList = "order_id")
 )
-public class OrderItem extends BaseCreatedEntity {
+public class OrderItem extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

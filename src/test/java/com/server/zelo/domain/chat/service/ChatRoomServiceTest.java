@@ -125,4 +125,18 @@ class ChatRoomServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
     }
+
+    @Test
+    void 방을_만들어_저장된_엔티티를_그대로_돌려준다() {
+        // given
+        given(chatRoomRepository.save(any(ChatRoom.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+
+        // when
+        ChatRoom result = chatRoomService.createAndGetChatRoom(1L);
+
+        // then
+        assertThat(result.getUserId()).isEqualTo(1L);
+        assertThat(result.getTitle()).isNull();
+        then(chatRoomRepository).should().save(result);
+    }
 }

@@ -19,8 +19,13 @@ public class ChatRoomService {
 
     @Transactional
     public CreateChatRoomResponse createChatRoom(Long userId) {
-        ChatRoom chatRoom = chatRoomRepository.save(ChatRoom.of(userId));
-        return CreateChatRoomResponse.from(chatRoom);
+        return CreateChatRoomResponse.from(createAndGetChatRoom(userId));
+    }
+
+    // 새 대화 시작처럼 같은 트랜잭션 안에서 방을 만들고 바로 이어서 쓰는 곳을 위해 엔티티를 돌려준다
+    @Transactional
+    public ChatRoom createAndGetChatRoom(Long userId) {
+        return chatRoomRepository.save(ChatRoom.of(userId));
     }
 
     @Transactional(readOnly = true)

@@ -176,6 +176,38 @@ class ChatMessageServiceTest {
         then(chatMessageRepository).should(never()).findByRoomIdOrderByIdDesc(any(), any());
     }
 
+    @Test
+    void 새_대화는_방을_만들고_그_방에_첫_사용자_메시지를_저장하며_제목을_정한다() {
+        // given
+        ChatRoom chatRoom = ChatRoom.of(1L);
+        ReflectionTestUtils.setField(chatRoom, "id", 77L);
+        given(chatRoomService.createAndGetChatRoom(1L)).willReturn(chatRoom);
+        given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+
+        // when
+        ChatMessage result = chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료");
+
+        // then
+        assertThat(result.getRoomId()).isEqualTo(77L);
+        assertThat(result.getSender()).isEqualTo(ChatSender.USER);
+        assertThat(result.getContent()).isEqualTo("불고기 재료");
+        assertThat(chatRoom.getTitle()).isEqualTo("불고기 재료");
+    }
+
+    @Test
+    void 새_대화의_첫_메시지가_비어_있으면_예외가_발생하고_메시지를_저장하지_않는다() {
+        // given
+        ChatRoom chatRoom = ChatRoom.of(1L);
+        ReflectionTestUtils.setField(chatRoom, "id", 77L);
+        given(chatRoomService.createAndGetChatRoom(1L)).willReturn(chatRoom);
+
+        // when & then: 실제로는 이 예외로 트랜잭션이 롤백되어 방도 남지 않는다 (통합 테스트에서 확인)
+        assertThatThrownBy(() -> chatMessageService.createRoomWithFirstMessage(1L, "  "))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        then(chatMessageRepository).should(never()).save(any());
+    }
+
     private List<ChatMessage> messagesWithIds(Long... ids) {
         List<ChatMessage> messages = new ArrayList<>();
         for (Long id : ids) {

@@ -16,6 +16,7 @@ import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
+import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.service.ChatMessageOrchestrator;
 import com.server.zelo.domain.chat.service.ChatMessageService;
@@ -223,6 +224,65 @@ class ChatMessageControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
         then(chatMessageService).should(never()).getMessages(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 새_대화를_시작하면_201과_새_방_ID와_AI_메시지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageOrchestrator.startChat(1L, "불고기 재료"))
+                .willReturn(StartChatResponse.of(77L,
+                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요.", null, LocalDateTime.now())));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"불고기 재료\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.roomId").value(77))
+                .andExpect(jsonPath("$.data.message.messageId").value(102))
+                .andExpect(jsonPath("$.data.message.sender").value("ASSISTANT"))
+                .andExpect(jsonPath("$.data.message.content").value("소고기와 간장이 필요해요."));
+    }
+
+    @Test
+    void 새_대화의_첫_메시지가_비어_있으면_400이고_시작하지_않는다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(post("/api/chat/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"  \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+    }
+
+    @Test
+    void 새_대화의_첫_메시지가_1000자를_넘으면_400이다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(post("/api/chat/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"" + "가".repeat(1001) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+    }
+
+    @Test
+    void 인증_정보_없이_새_대화를_시작하면_401이다() throws Exception {
+        // when & then
+        mockMvc.perform(post("/api/chat/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_001"));
+        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
     }
 
     private void authenticate(Long userId) {

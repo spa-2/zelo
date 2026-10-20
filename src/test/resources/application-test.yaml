@@ -13,3 +13,5 @@ spring:
 zelo:
   llm:
     mode: fake
+  portone:
+    mode: fake

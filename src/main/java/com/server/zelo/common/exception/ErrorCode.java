@@ -45,7 +45,8 @@ public enum ErrorCode {
     INVALID_PAYMENT_STATUS(HttpStatus.BAD_REQUEST, "PAYMENT_003", "유효하지 않은 결제 상태 변경입니다."),
     PAYMENT_NOT_PAID(HttpStatus.BAD_REQUEST, "PAYMENT_004", "PG사 결제가 완료되지 않았습니다."),
     ALREADY_PROCESSED_PAYMENT(HttpStatus.CONFLICT, "PAYMENT_005", "이미 처리된 결제입니다."),
-
+    PG_REQUEST_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_006", "결제사 요청에 실패했습니다."),
+    PG_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PAYMENT_007", "결제사 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."),
 
     // Webhook
     INVALID_WEBHOOK_SIGNATURE(HttpStatus.UNAUTHORIZED, "WEBHOOK_001", "웹훅 서명이 유효하지 않습니다."),

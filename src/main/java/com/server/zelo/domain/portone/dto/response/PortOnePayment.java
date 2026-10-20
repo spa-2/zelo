@@ -1,8 +1,9 @@
-package com.server.zelo.domain.payment.client.dto.response;
+package com.server.zelo.domain.portone.dto.response;
 
-import com.server.zelo.domain.payment.client.PortOnePaymentStatus;
+import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 public record PortOnePayment(
         String portoneId,
@@ -13,6 +14,14 @@ public record PortOnePayment(
 
     public static PortOnePayment of(String portoneId, PortOnePaymentStatus status, Long amount, LocalDateTime paidAt) {
         return new PortOnePayment(portoneId, status, amount, paidAt);
+    }
+
+    public static PortOnePayment from(PortOnePaymentResponse response, ZoneId zoneId) {
+        Long amount = response.amount() == null ? null : response.amount().total();
+        LocalDateTime paidAt = response.paidAt() == null
+                ? null
+                : response.paidAt().atZoneSameInstant(zoneId).toLocalDateTime();
+        return of(response.id(), PortOnePaymentStatus.from(response.status()), amount, paidAt);
     }
 
     public boolean isPaid() {

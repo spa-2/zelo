@@ -39,6 +39,15 @@ zelo:
     mode: real
     # LLM 요청 하나를 기다리는 최대 시간. 실제 gpt-5-mini 응답이 약 10초 걸려 여유를 두었다 (팀 합의 후 조정)
     timeout: 15s
+  portone:
+    # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
+    mode: real
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET}
+    store-id: ${PORTONE_STORE_ID}
+    connect-timeout: 3s
+    read-timeout: 5s
+    time-zone: Asia/Seoul
 
 logging:
   level:

@@ -1,8 +1,8 @@
 package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.domain.order.mock.service.MockOrderService;
-import com.server.zelo.domain.payment.client.PortOneClient;
-import com.server.zelo.domain.payment.client.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

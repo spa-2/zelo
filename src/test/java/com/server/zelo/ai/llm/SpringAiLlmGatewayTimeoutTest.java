@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,7 +36,9 @@ class SpringAiLlmGatewayTimeoutTest {
     private static volatile String lastTimeoutHeader;
     private static final AtomicInteger requestCount = new AtomicInteger();
 
+    // 재시도·서킷 브레이커로 감싸기 전의 실제 구현만 검증한다
     @Autowired
+    @Qualifier(ResilientLlmGateway.DELEGATE)
     private LlmGateway llmGateway;
 
     @DynamicPropertySource

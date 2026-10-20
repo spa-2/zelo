@@ -1,8 +1,6 @@
 package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.domain.chat.entity.ChatRoom;
-import com.server.zelo.domain.order.ActorType;
-import com.server.zelo.domain.order.OrderStatus;
 import com.server.zelo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

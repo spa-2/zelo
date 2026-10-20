@@ -1,7 +1,6 @@
 package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
-import com.server.zelo.domain.order.StockState;
 import com.server.zelo.domain.product.entity.Product;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

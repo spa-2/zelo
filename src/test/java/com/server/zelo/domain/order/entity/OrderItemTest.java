@@ -1,7 +1,5 @@
 package com.server.zelo.domain.order.entity;
 
-import com.server.zelo.domain.order.ActorType;
-import com.server.zelo.domain.order.StockState;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;

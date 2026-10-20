@@ -2,6 +2,7 @@ package com.server.zelo.domain.payment.client;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.payment.client.dto.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;

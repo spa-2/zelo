@@ -1,4 +1,6 @@
-package com.server.zelo.domain.payment.client;
+package com.server.zelo.domain.payment.client.dto;
+
+import com.server.zelo.domain.payment.client.PortOnePaymentStatus;
 
 import java.time.LocalDateTime;
 

@@ -62,7 +62,7 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 - **Service**: 자기 도메인 Repository만 주입받는다. 다른 도메인 Service를 주입하지 않는다. 그런 조율이 필요하면 Command를 만든다.
 ### 트랜잭션
 - Command가 있으면 Command가 트랜잭션 경계를 잡고, 그 안의 Service는 같은 트랜잭션에 참여한다. (안쪽 Service의 `readOnly`는 무시된다.)
-- Command 없이 Service를 바로 호출하는 경우, JPA를 쓰는 Service 클래스에 `@Transactional`을 붙이고 조회 메서드에만 `@Transactional(readOnly = true)`를 붙인다. (`readOnly`를 빠뜨려도 동작은 정상이지만, 반대로 쓰기 메서드에 빠뜨리면 변경이 저장되지 않기 때문)
+- Command 없이 Service를 바로 호출하는 경우, JPA를 쓰는 Service 클래스에 `@Transactional`을 붙이고 조회 메서드에만 `@Transactional(readOnly = true)`를 붙인다. (조회 메서드에 `readOnly`를 빠뜨려도 동작은 정상이지만, 반대로 쓰기 메서드에 `readOnly`를 붙이면 변경이 저장되지 않기 때문)
 - Redis처럼 JPA를 쓰지 않는 Service에는 붙이지 않는다.
 - `open-in-view`가 꺼져 있으므로 지연 로딩이 필요한 조회는 트랜잭션 안에서 처리한다.
 ### 락

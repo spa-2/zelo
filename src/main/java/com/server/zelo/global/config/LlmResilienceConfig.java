@@ -60,6 +60,7 @@ public class LlmResilienceConfig {
                 .failureRateThreshold(failureRateThreshold) // 그중 50% 이상 실패하면 차단
                 .waitDurationInOpenState(waitDurationInOpenState) // 30초 동안 차단 유지
                 .permittedNumberOfCallsInHalfOpenState(permittedCalls) // 30초 뒤 시험 삼아 3번 보냄
+                .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable)) // 4xx 요청 거절은 장부에 적지 않음
                 .build());
         circuitBreaker.getEventPublisher().onStateTransition(event ->
                 log.warn("LLM 서킷 상태 변경: {}", event.getStateTransition()));

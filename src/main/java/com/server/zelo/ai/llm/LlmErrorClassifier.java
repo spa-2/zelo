@@ -30,6 +30,12 @@ public final class LlmErrorClassifier {
         return RETRYABLE.contains(classify(throwable));
     }
 
+    // 요청 자체가 잘못된 4xx는 OpenAI 장애가 아니므로 서킷 실패로 세지 않는다.
+    // 세면 한 사용자의 잘못된 요청이 반복될 때 서킷이 열려 다른 사용자의 정상 요청까지 막힌다
+    public static boolean isCircuitFailure(Throwable throwable) {
+        return classify(throwable) != ErrorCode.AI_REQUEST_REJECTED;
+    }
+
     // LLM이 보낸 예외를 우리 ErrorCode로 바꿈
     public static ErrorCode classify(Throwable throwable) {
         return switch (throwable) {

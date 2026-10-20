@@ -61,6 +61,7 @@ class ResilientLlmGatewayTest {
                 .failureRateThreshold(50)
                 .waitDurationInOpenState(OPEN_DURATION)
                 .permittedNumberOfCallsInHalfOpenState(1)
+                .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable))
                 .build());
         executorService = Executors.newVirtualThreadPerTaskExecutor();
         resilientLlmGateway = new ResilientLlmGateway(retry, delegate, timeLimiter, circuitBreaker, executorService);
@@ -162,6 +163,27 @@ class ResilientLlmGatewayTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_REQUEST_REJECTED));
         then(delegate).should(times(1)).explain(anyString(), anyString());
+    }
+
+    @Test
+    void 요청_오류_4xx가_반복돼도_서킷은_열리지_않아_다음_정상_요청은_성공한다() {
+        // given: 최소 시도 수(4)를 넘게 4xx를 받는다
+        given(delegate.explain(anyString(), anyString())).willThrow(OpenAiErrors.badRequest());
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_REQUEST_REJECTED));
+        }
+        willReturn(REPLY).given(delegate).explain(anyString(), anyString());
+
+        // when
+        LlmReply reply = resilientLlmGateway.explain("system", "질문");
+
+        // then: 4xx는 장부에 적히지 않아 성공 1번만 남는다
+        assertThat(reply).isEqualTo(REPLY);
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isZero();
+        assertThat(circuitBreaker.getMetrics().getNumberOfBufferedCalls()).isEqualTo(1);
     }
 
     @Test

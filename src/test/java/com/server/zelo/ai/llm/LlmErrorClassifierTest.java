@@ -53,6 +53,19 @@ class LlmErrorClassifierTest {
     }
 
     @Test
+    void 요청_거절_4xx만_서킷_실패로_세지_않고_나머지_장애는_센다() {
+        // when & then: 요청 자체의 문제는 OpenAI 장애가 아니다
+        assertThat(LlmErrorClassifier.isCircuitFailure(OpenAiErrors.badRequest())).isFalse();
+        assertThat(LlmErrorClassifier.isCircuitFailure(OpenAiErrors.unauthorized())).isFalse();
+        // 429는 4xx지만 OpenAI가 바쁘다는 뜻이라 센다
+        assertThat(LlmErrorClassifier.isCircuitFailure(OpenAiErrors.rateLimit())).isTrue();
+        assertThat(LlmErrorClassifier.isCircuitFailure(OpenAiErrors.serverError(500))).isTrue();
+        assertThat(LlmErrorClassifier.isCircuitFailure(new TimeoutException())).isTrue();
+        assertThat(LlmErrorClassifier.isCircuitFailure(OpenAiErrors.connectionFailed())).isTrue();
+        assertThat(LlmErrorClassifier.isCircuitFailure(new BusinessException(ErrorCode.AI_EMPTY_RESPONSE))).isTrue();
+    }
+
+    @Test
     void 서킷이_열려_막힌_호출과_빈_응답은_재시도하지_않는다() {
         // given
         CircuitBreaker circuitBreaker = CircuitBreaker.ofDefaults("test");

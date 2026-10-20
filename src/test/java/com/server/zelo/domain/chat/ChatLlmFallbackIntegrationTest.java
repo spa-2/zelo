@@ -123,9 +123,30 @@ class ChatLlmFallbackIntegrationTest {
                 .andExpect(jsonPath("$.code").value("AI_006"))
                 .andExpect(jsonPath("$.data.payload.type").value("FALLBACK"));
 
-        // then: 서킷 브레이커가 센 시도 수로 재시도 여부를 확인한다
+        // then: 서버 오류는 재시도까지 2번 실패로 세고, 요청 거절은 재시도하지 않으며 서킷 실패로도 세지 않는다
         assertThat(failedAfterServerError).isEqualTo(2);
-        assertThat(llmCircuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(3);
+        assertThat(llmCircuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void 요청_거절이_반복돼도_서킷이_열리지_않아_다른_요청은_정상으로_답한다() throws Exception {
+        // given: 최소 시도 수(5)를 넘게 요청 거절(4xx)을 받는다
+        Long roomId = createRoom();
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.REJECT);
+        for (int i = 1; i <= 6; i++) {
+            send(roomId, "거절될 질문" + i)
+                    .andExpect(status().isBadGateway())
+                    .andExpect(jsonPath("$.code").value("AI_006"));
+        }
+
+        // when
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
+
+        // then
+        send(roomId, "정상 질문")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("[FAKE] 정상 질문에 대한 답변입니다."));
+        assertThat(llmCircuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
     }
 
     @Test

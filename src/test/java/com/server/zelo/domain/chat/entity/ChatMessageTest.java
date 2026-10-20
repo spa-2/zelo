@@ -25,6 +25,16 @@ class ChatMessageTest {
     }
 
     @Test
+    void payload를_함께_주면_화면에_그릴_데이터를_함께_갖는다() {
+        // when
+        ChatMessage chatMessage = ChatMessage.of(10L, ChatSender.ASSISTANT, "답변", "{\"type\":\"FALLBACK\"}");
+
+        // then
+        assertThat(chatMessage.getSender()).isEqualTo(ChatSender.ASSISTANT);
+        assertThat(chatMessage.getPayload()).isEqualTo("{\"type\":\"FALLBACK\"}");
+    }
+
+    @Test
     void 방_ID가_없으면_예외가_발생한다() {
         // when & then
         assertThatThrownBy(() -> ChatMessage.of(null, ChatSender.USER, "안녕"))

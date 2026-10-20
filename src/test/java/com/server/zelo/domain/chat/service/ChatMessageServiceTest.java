@@ -90,6 +90,40 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 고정_문구_메시지는_AI_메시지로_저장하고_payload에_답변_실패와_그_실패_코드를_표시한다() {
+        // given
+        ChatRoom chatRoom = ChatRoom.of(1L);
+        chatRoom.updateTitleIfAbsent("첫 메시지");
+        LocalDateTime before = chatRoom.getLastMessageAt();
+        given(chatRoomService.getOwnedChatRoom(10L, 1L)).willReturn(chatRoom);
+        given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+
+        // when
+        ChatMessage result = chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT);
+
+        // then
+        assertThat(result.getSender()).isEqualTo(ChatSender.ASSISTANT);
+        assertThat(result.getRoomId()).isEqualTo(10L);
+        assertThat(result.getContent()).isNotBlank();
+        assertThat(result.getPayload()).isEqualTo("{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}");
+        assertThat(chatRoom.getTitle()).isEqualTo("첫 메시지");
+        assertThat(chatRoom.getLastMessageAt()).isAfterOrEqualTo(before);
+    }
+
+    @Test
+    void 고정_문구_저장_직전에_방_접근_권한이_없으면_저장하지_않는다() {
+        // given
+        given(chatRoomService.getOwnedChatRoom(10L, 1L))
+                .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+        then(chatMessageRepository).should(never()).save(any());
+    }
+
+    @Test
     void AI_메시지_저장_직전에_방_접근_권한이_없으면_저장하지_않는다() {
         // given
         given(chatRoomService.getOwnedChatRoom(10L, 1L))

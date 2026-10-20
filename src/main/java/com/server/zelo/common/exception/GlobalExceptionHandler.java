@@ -17,15 +17,16 @@ public class GlobalExceptionHandler {
 
     /**
      * 비즈니스 예외를 해당 오류 코드의 HTTP 상태와 예외 메시지를 담은 응답으로 변환한다.
+     * 예외에 data가 있으면 함께 담고, 없으면 data는 null이다.
      *
      * @param e 처리할 비즈니스 예외
-     * @return 오류 코드의 HTTP 상태, 응답 코드와 예외 메시지를 담은 오류 응답
+     * @return 오류 코드의 HTTP 상태, 응답 코드와 예외 메시지(와 data)를 담은 오류 응답
      */
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
+    public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException e) {
         ErrorCode code = e.getErrorCode();
         return ResponseEntity.status(code.getStatus())
-                .body(ApiResponse.error(code, e.getMessage()));
+                .body(ApiResponse.error(code, e.getMessage(), e.getData()));
     }
 
     /**

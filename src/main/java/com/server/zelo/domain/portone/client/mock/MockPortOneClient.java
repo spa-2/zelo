@@ -9,6 +9,7 @@ import com.server.zelo.domain.payment.repository.PaymentRepository;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "fake")
 public class MockPortOneClient implements PortOneClient {
 
     private final PaymentRepository paymentRepository;

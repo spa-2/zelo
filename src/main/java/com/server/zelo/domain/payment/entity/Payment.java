@@ -1,4 +1,4 @@
-package com.server.zelo.domain.payments.entity;
+package com.server.zelo.domain.payment.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
 import jakarta.persistence.*;

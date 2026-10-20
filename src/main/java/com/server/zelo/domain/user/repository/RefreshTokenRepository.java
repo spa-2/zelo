@@ -29,6 +29,10 @@ public class RefreshTokenRepository {
         stringRedisTemplate.opsForValue().set(key(userId), hash(refreshToken), refreshTokenTtl);
     }
 
+    public void delete(Long userId) {
+        stringRedisTemplate.delete(key(userId));
+    }
+
     private String key(Long userId) {
         return KEY_PREFIX + userId;
     }

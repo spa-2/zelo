@@ -25,10 +25,14 @@ public class ChatMessageService {
     @Transactional
     public ChatMessage createUserMessage(Long roomId, Long userId, String content) {
         ChatRoom chatRoom = chatRoomService.getOwnedChatRoom(roomId, userId);
-        ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.USER, content));
-        chatRoom.updateTitleIfAbsent(content);
-        chatRoom.updateLastMessageAt(LocalDateTime.now());
-        return chatMessage;
+        return saveUserMessage(chatRoom, roomId, content);
+    }
+
+    // 방 생성과 첫 메시지 저장을 한 트랜잭션으로 묶어, 메시지 저장이 실패하면 방도 남지 않게 한다(빈 방 방지)
+    @Transactional
+    public ChatMessage createRoomWithFirstMessage(Long userId, String content) {
+        ChatRoom chatRoom = chatRoomService.createAndGetChatRoom(userId);
+        return saveUserMessage(chatRoom, chatRoom.getId(), content);
     }
 
     // LLM 응답을 기다리는 사이 방 상태가 바뀌었을 수 있어 저장 직전에 소유자를 다시 확인
@@ -59,5 +63,12 @@ public class ChatMessageService {
                 .map(ChatMessageResponse::from)
                 .toList();
         return GetChatMessagesResponse.of(messages, nextCursor, hasNext);
+    }
+
+    private ChatMessage saveUserMessage(ChatRoom chatRoom, Long roomId, String content) {
+        ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.USER, content));
+        chatRoom.updateTitleIfAbsent(content);
+        chatRoom.updateLastMessageAt(LocalDateTime.now());
+        return chatMessage;
     }
 }

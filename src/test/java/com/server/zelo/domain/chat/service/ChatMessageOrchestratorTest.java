@@ -16,6 +16,7 @@ import com.server.zelo.ai.llm.LlmReply;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
+import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import org.junit.jupiter.api.Test;
@@ -103,6 +104,56 @@ class ChatMessageOrchestratorTest {
         assertThatThrownBy(() -> chatMessageOrchestrator.sendMessage(10L, 2L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+        then(llmGateway).should(never()).explain(any(), any());
+    }
+
+    @Test
+    void 새_대화는_방과_첫_메시지_저장_LLM_호출_AI_메시지_저장_순서로_처리하고_새_방_ID를_반환한다() {
+        // given
+        given(chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료"))
+                .willReturn(ChatMessage.of(77L, ChatSender.USER, "불고기 재료"));
+        given(llmGateway.explain(anyString(), eq("불고기 재료")))
+                .willReturn(LlmReply.of("소고기와 간장이 필요해요.", "gpt-test", 10, 5));
+        given(chatMessageService.createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요."))
+                .willReturn(ChatMessage.of(77L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요."));
+
+        // when
+        StartChatResponse response = chatMessageOrchestrator.startChat(1L, "불고기 재료");
+
+        // then
+        InOrder order = inOrder(chatMessageService, llmGateway);
+        order.verify(chatMessageService).createRoomWithFirstMessage(1L, "불고기 재료");
+        order.verify(llmGateway).explain(anyString(), eq("불고기 재료"));
+        order.verify(chatMessageService).createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요.");
+        assertThat(response.roomId()).isEqualTo(77L);
+        assertThat(response.message().sender()).isEqualTo(ChatSender.ASSISTANT);
+        assertThat(response.message().content()).isEqualTo("소고기와 간장이 필요해요.");
+    }
+
+    @Test
+    void 새_대화에서_LLM이_실패하면_AI_RESPONSE_FAILED이고_방과_첫_메시지만_남긴다() {
+        // given
+        given(chatMessageService.createRoomWithFirstMessage(1L, "안녕"))
+                .willReturn(ChatMessage.of(77L, ChatSender.USER, "안녕"));
+        given(llmGateway.explain(anyString(), anyString())).willThrow(new RuntimeException("openai timeout"));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageOrchestrator.startChat(1L, "안녕"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_RESPONSE_FAILED));
+        then(chatMessageService).should().createRoomWithFirstMessage(1L, "안녕");
+        then(chatMessageService).should(never()).createAssistantMessage(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void 새_대화의_첫_메시지_저장이_실패하면_LLM을_호출하지_않는다() {
+        // given
+        given(chatMessageService.createRoomWithFirstMessage(1L, " "))
+                .willThrow(new BusinessException(ErrorCode.INVALID_INPUT));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageOrchestrator.startChat(1L, " "))
+                .isInstanceOf(BusinessException.class);
         then(llmGateway).should(never()).explain(any(), any());
     }
 }

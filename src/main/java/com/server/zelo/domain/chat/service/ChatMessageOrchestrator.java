@@ -5,6 +5,7 @@ import com.server.zelo.ai.llm.LlmReply;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
+import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,9 +28,18 @@ public class ChatMessageOrchestrator {
     public ChatMessageResponse sendMessage(Long roomId, Long userId, String text) {
         // LLM이 실패해도 사용자가 보낸 말은 남아 있어야 하므로 먼저 저장(커밋)
         chatMessageService.createUserMessage(roomId, userId, text);
+        return replyTo(roomId, userId, text);
+    }
 
+    public StartChatResponse startChat(Long userId, String text) {
+        // 방과 첫 메시지를 먼저 커밋해 두어, LLM이 실패해도 사용자는 이 방에서 다시 보낼 수 있다
+        ChatMessage userMessage = chatMessageService.createRoomWithFirstMessage(userId, text);
+        Long roomId = userMessage.getRoomId();
+        return StartChatResponse.of(roomId, replyTo(roomId, userId, text));
+    }
+
+    private ChatMessageResponse replyTo(Long roomId, Long userId, String text) {
         LlmReply reply = askLlm(text);
-
         ChatMessage assistantMessage = chatMessageService.createAssistantMessage(roomId, userId, reply.text());
         return ChatMessageResponse.from(assistantMessage);
     }

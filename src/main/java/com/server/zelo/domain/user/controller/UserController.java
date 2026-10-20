@@ -3,6 +3,7 @@ package com.server.zelo.domain.user.controller;
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
+장import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
@@ -11,6 +12,7 @@ import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,13 +32,15 @@ import java.time.Duration;
 public class UserController {
 
     private final UserFacade userFacade;
-    private final UserCommandService userCommandService;
-    private final RefreshTokenService refreshTokenService;
+
     @Value("${jwt.refresh-expiration}")
     private long refreshTokenExpiration;
-    private static final String REFRESH_TOKEN_COOKIE = "refreshToken";
-    private static final String REFRESH_TOKEN_COOKIE_PATH = "/api/users";
 
+    private final UserCommandService userCommandService;
+    private final RefreshTokenService refreshTokenService;
+
+    private static final String REFRESH_TOKEN_COOKIE = "refreshToken";
+    private static final String REFRESH_TOKEN_COOKIE_PATH = "/api/auth/reissue";
 
     @PostMapping("/api/users")
     public ResponseEntity<ApiResponse<CreateUserResponse>> createUserWithAddress(@Valid @RequestBody CreateUserRequest request) {
@@ -67,6 +72,31 @@ public class UserController {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, expiredCookie.toString())
                 .build();
+    }
+
+    @PostMapping("/api/auth/reissue")
+    public ResponseEntity<ApiResponse<LoginResponse>> reissue(
+            @CookieValue(name = REFRESH_TOKEN_COOKIE, required = false) String refreshToken,
+            HttpServletResponse response
+    ) {
+        LoginResult result;
+        try {
+            result = userFacade.reissue(refreshToken);
+        } catch (BusinessException e) {
+            // 락 대기같은 예외가 아닌 비즈니스 에외가 발생했다면 만료된 토큰, 옛날 토큰, 탈취 토큰 중 하나라서 인증에 실패한 쿠키를 브라우저에서 지우게 응답
+            if (e.getErrorCode().getStatus() == HttpStatus.UNAUTHORIZED) {
+                response.addHeader(HttpHeaders.SET_COOKIE, createRefreshTokenCookie("", Duration.ZERO).toString());
+            }
+            throw e;
+        }
+
+        // 로그인과 마찬가지로 리프레스 토큰으로 새로운 토큰을 받을 때 엑세스와 리프레스 모두 갱신 후 전달
+        ResponseCookie refreshTokenCookie = createRefreshTokenCookie(result.refreshToken(),
+                Duration.ofMillis(refreshTokenExpiration));
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(ApiResponse.ok(LoginResponse.from(result)));
     }
 
     // Todo SameSite는 프론트 확정 후 추가

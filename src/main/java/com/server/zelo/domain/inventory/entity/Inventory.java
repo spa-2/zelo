@@ -64,4 +64,74 @@ public class Inventory extends BaseTimeEntity {
     public static Inventory of(Product product, Integer stockQuantity) {
         return new Inventory(product, stockQuantity);
     }
+
+    /** 선점 작업 */
+    public void reserve(Integer requestedQuantity) {
+
+        validateQuantity(requestedQuantity);
+
+        // 가용 재고가 부족하면 예외
+        if (requestedQuantity > this.availableQuantity) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+        }
+
+        this.reservedQuantity += requestedQuantity; // 선점 +q
+        this.availableQuantity -= requestedQuantity; // 가용 −q
+    }
+
+    /** 차감 확정 */
+    public void deduct(Integer requestedQuantity) {
+
+        validateQuantity(requestedQuantity);
+
+        // 선점 수량보다 많이 차감·해제되면 예외
+        if (requestedQuantity > this.reservedQuantity) {
+            throw new BusinessException(ErrorCode.INVALID_STOCK);
+        }
+
+        this.stockQuantity -= requestedQuantity; // 실재고 −q
+        this.reservedQuantity -= requestedQuantity; // 선점 −q
+    }
+
+    /** 선점 해제 */
+    public void release(Integer requestedQuantity) {
+
+        validateQuantity(requestedQuantity);
+
+        // 선점 수량보다 많이 차감·해제되면 예외
+        if (requestedQuantity > this.reservedQuantity) {
+            throw new BusinessException(ErrorCode.INVALID_STOCK);
+        }
+
+        this.reservedQuantity -= requestedQuantity; // 선점 −q
+        this.availableQuantity += requestedQuantity; // 가용 +q
+    }
+
+    /** 재고 복원 */
+    public void restore(Integer requestedQuantity) {
+
+        validateQuantity(requestedQuantity);
+
+        // 덧셈 과정에서 Integer 범위를 넘지 않도록 long으로 계산한다.
+        long nextStockQuantity = (long) this.stockQuantity + requestedQuantity; // 실재고 +q
+        long nextAvailableQuantity = (long) this.availableQuantity + requestedQuantity; // 가용 +q
+
+        if (nextStockQuantity > Integer.MAX_VALUE
+                || nextAvailableQuantity > Integer.MAX_VALUE) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_STOCK,
+                    "재고 수량이 허용 범위를 초과했습니다."
+            );
+        }
+
+        this.stockQuantity = (int) nextStockQuantity;
+        this.availableQuantity = (int) nextAvailableQuantity;
+    }
+
+    // 수량 1 이상인지 검증
+    private void validateQuantity(Integer requestedQuantity) {
+        if (requestedQuantity == null || requestedQuantity < 1) {
+            throw new BusinessException(ErrorCode.INVALID_QUANTITY);
+        }
+    }
 }

@@ -3,7 +3,7 @@ package com.server.zelo.domain.user.controller;
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
-장import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;

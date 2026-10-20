@@ -3,6 +3,9 @@ package com.server.zelo.common.exception;
 
 import com.server.zelo.common.api.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.client.RedisConnectionException;
+import org.redisson.client.RedisTimeoutException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -57,6 +60,20 @@ public class GlobalExceptionHandler {
         log.info("body값 누락");
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
+    }
+
+    /**
+     * Redis에 연결하지 못하거나 응답이 늦어진 경우를 일시적 장애로 보고 재시도를 안내하는 응답으로 변환한다.
+     * 명령 오류까지 장애로 오인하지 않도록 접속과 타임아웃 예외만 지정한다.
+     *
+     * @param e Redis 접속 실패 또는 타임아웃 예외
+     * @return HTTP 503 상태와 {@link ErrorCode#SERVICE_UNAVAILABLE}의 기본 메시지를 담은 오류 응답
+     */
+    @ExceptionHandler({RedisConnectionFailureException.class, RedisConnectionException.class, RedisTimeoutException.class})
+    public ResponseEntity<ApiResponse<Void>> handleRedisUnavailable(Exception e) {
+        log.error("Redis 장애 발생", e);
+        return ResponseEntity.status(ErrorCode.SERVICE_UNAVAILABLE.getStatus())
+                .body(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE));
     }
 
     /**

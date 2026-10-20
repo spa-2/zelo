@@ -12,6 +12,8 @@ public enum ErrorCode {
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON_001", "입력값이 올바르지 않습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_002", "서버 내부 오류가 발생했습니다."),
     TIMEOUT_EXCEPTION(HttpStatus.CONFLICT, "COMMON_003", "요청이 처리 중입니다. 잠시 후 다시 시도해 주세요."),
+    // 기능별 전용 코드(AI_001, AUTH_004)가 없는 곳에서 Redis 같은 인프라가 일시적으로 안 될 때 쓰는 공통 코드
+    SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "COMMON_004", "일시적으로 요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
     // Member
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_001", "회원을 찾을 수 없습니다."),
@@ -46,7 +48,6 @@ public enum ErrorCode {
     PAYMENT_NOT_PAID(HttpStatus.BAD_REQUEST, "PAYMENT_004", "PG사 결제가 완료되지 않았습니다."),
     ALREADY_PROCESSED_PAYMENT(HttpStatus.CONFLICT, "PAYMENT_005", "이미 처리된 결제입니다."),
 
-
     // Webhook
     INVALID_WEBHOOK_SIGNATURE(HttpStatus.UNAUTHORIZED, "WEBHOOK_001", "웹훅 서명이 유효하지 않습니다."),
     WEBHOOK_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "WEBHOOK_002", "웹훅 이벤트를 찾을 수 없습니다."),
@@ -69,7 +70,10 @@ public enum ErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "인증이 필요합니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_002", "유효하지 않은 토큰입니다."),
     NO_AUTHORITY(HttpStatus.FORBIDDEN, "AUTH_003", "권한이 없는 요청입니다."),
-    TOKEN_REVOKE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_004", "로그아웃 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    TOKEN_REVOKE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_004", "로그아웃 처리에 실패했습니다. 잠시 후 다시 시도해 주세요."),
+    LOGGED_IN_ELSEWHERE(HttpStatus.UNAUTHORIZED, "AUTH_005", "다른 기기에서 로그인이 감지되었습니다. 다시 로그인하세요."),
+    // 탈취인지 본인 실수인지 알 수 없어서 문구에는 탈취라고 쓰지 않음
+    TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "AUTH_006", "세션이 만료되었습니다. 다시 로그인하세요.");
 
     private final HttpStatus status;
     private final String code;

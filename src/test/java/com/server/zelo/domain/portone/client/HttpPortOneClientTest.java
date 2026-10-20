@@ -11,14 +11,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -28,6 +29,8 @@ class HttpPortOneClientTest {
     private static final String BASE_URL = "https://api.portone.io";
     private static final String PORTONE_ID = "payment-1";
     private static final String PAYMENT_URL = BASE_URL + "/payments/" + PORTONE_ID + "?storeId=store-1";
+    private static final String CANCEL_URL = BASE_URL + "/payments/" + PORTONE_ID + "/cancel";
+    private static final String CANCEL_REASON = "결제 금액 불일치";
     private MockRestServiceServer server;
     private HttpPortOneClient portOneClient;
 
@@ -114,5 +117,109 @@ class HttpPortOneClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_TIMEOUT);
+    }
+
+    @Test
+    void 결제_취소를_요청하면_결제_ID로_만든_멱등성_키와_storeId_사유를_포트원에_보낸다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Idempotency-Key", "cancel-" + PORTONE_ID))
+                .andExpect(jsonPath("$.storeId").value("store-1"))
+                .andExpect(jsonPath("$.reason").value(CANCEL_REASON))
+                .andExpect(jsonPath("$.amount").doesNotExist())
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        // when // then
+        assertThatCode(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void 이미_취소된_결제면_예외_없이_성공으로_처리한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"PAYMENT_ALREADY_CANCELLED","message":"이미 취소된 결제입니다."}
+                                """));
+
+        // when // then
+        assertThatCode(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 취소할_결제가_없으면_PAYMENT_NOT_FOUND_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
+    }
+
+    @Test
+    void 취소가_거절되면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"INVALID_REQUEST","message":"잘못된 요청입니다."}
+                                """));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 포트원_서버_오류면_재시도_없이_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+        server.verify();
+    }
+
+    @Test
+    void 취소_응답이_없으면_PG_TIMEOUT_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+    }
+
+    @Test
+    void 포트원에_연결하지_못하면_취소도_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(request -> {
+                    throw new ConnectException("Connection refused");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
     }
 }

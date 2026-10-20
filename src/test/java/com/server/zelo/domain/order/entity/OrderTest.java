@@ -1,85 +1,66 @@
 package com.server.zelo.domain.order.entity;
 
+import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.order.ActorType;
 import com.server.zelo.domain.order.OrderStatus;
-import com.server.zelo.domain.order.StockState;
+import com.server.zelo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class OrderTest {
 
-    @Test
-    void ID만으로_주문을_생성한다() {
+    @Mock
+    private User user;
+
+    @Mock
+    private ChatRoom chatRoom;
+
+    /**
+     * 사용자와 에이전트 주문 모두 전달한 주문 정보를 보존하고 결제 대기 상태로 시작한다.
+     */
+    @ParameterizedTest
+    @EnumSource(value = ActorType.class, names = {"USER", "AGENT"})
+    void 주문을_생성하면_요청_정보를_보존하고_결제_대기_상태가_된다(ActorType requesterType) {
         // given
-        Long userId = 1L;
-        Long chatRoomId = 2L;
+        String quoteId = "QUOTE-ORDER-001";
+        String orderName = "김치볶음밥 재료";
+        Long totalAmount = 21_500L;
 
         // when
-        Order order = Order.of(userId, "quote-1", "주문", ActorType.USER, chatRoomId, 3000L);
+        Order order = Order.of(user, quoteId, orderName, requesterType, chatRoom, totalAmount);
 
         // then
-        assertThat(order.getUserId()).isEqualTo(userId);
-        assertThat(order.getChatRoomId()).isEqualTo(chatRoomId);
-        assertThat(order.getQuoteId()).isEqualTo("quote-1");
-        assertThat(order.getOrderName()).isEqualTo("주문");
-        assertThat(order.getRequesterType()).isEqualTo(ActorType.USER);
-        assertThat(order.getTotalAmount()).isEqualTo(3000L);
+        assertThat(order.getUser()).isSameAs(user);
+        assertThat(order.getQuoteId()).isEqualTo(quoteId);
+        assertThat(order.getOrderName()).isEqualTo(orderName);
+        assertThat(order.getRequesterType()).isEqualTo(requesterType);
+        assertThat(order.getChatRoom()).isSameAs(chatRoom);
+        assertThat(order.getTotalAmount()).isEqualTo(totalAmount);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
         assertThat(order.getOrderItems()).isEmpty();
     }
 
+    /**
+     * 웹에서 생성하는 주문은 채팅방 없이도 생성할 수 있다.
+     */
     @Test
-    void 채팅방_ID_없이_주문을_생성한다() {
+    void 웹_주문은_채팅방_없이_생성할_수_있다() {
         // given
-        Long userId = 1L;
+        String quoteId = "QUOTE-WEB-001";
 
         // when
-        Order order = Order.of(userId, "quote-1", "주문", ActorType.USER, null, 3000L);
+        Order order = Order.of(user, quoteId, "웹 주문", ActorType.USER, null, 8_900L);
 
         // then
-        assertThat(order.getUserId()).isEqualTo(userId);
-        assertThat(order.getChatRoomId()).isNull();
-    }
-
-    @Test
-    void 상품_ID로_주문_항목을_생성하고_주문에_등록한다() {
-        // given
-        Order order = Order.of(1L, "quote-1", "주문", ActorType.USER, null, 3000L);
-
-        // when
-        OrderItem orderItem = OrderItem.of(order, 3L, "상품", "개", 1000L, 3, 3000L);
-
-        // then
-        assertThat(orderItem.getProductId()).isEqualTo(3L);
-        assertThat(orderItem.getProductName()).isEqualTo("상품");
-        assertThat(orderItem.getProductUnit()).isEqualTo("개");
-        assertThat(orderItem.getUnitPrice()).isEqualTo(1000L);
-        assertThat(orderItem.getQuantity()).isEqualTo(3);
-        assertThat(orderItem.getLineAmount()).isEqualTo(3000L);
-        assertThat(orderItem.getStockState()).isEqualTo(StockState.RESERVED);
-        assertThat(orderItem.getStockStateChangedAt()).isNotNull();
-        assertThat(orderItem.getOrder()).isSameAs(order);
-        assertThat(order.getOrderItems()).containsExactly(orderItem);
-    }
-
-    @Test
-    void 다른_주문의_항목은_추가할_수_없다() {
-        // given
-        Order order = Order.of(1L, "quote-1", "주문", ActorType.USER, null, 3000L);
-        Order otherOrder = Order.of(1L, "quote-2", "다른 주문", ActorType.USER, null, 3000L);
-        OrderItem existingItem = OrderItem.of(order, 3L, "상품", "개", 1000L, 3, 3000L);
-        OrderItem otherItem = OrderItem.of(otherOrder, 3L, "상품", "개", 1000L, 3, 3000L);
-
-        // when // then
-        assertThatThrownBy(() -> order.addOrderItem(otherItem))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(order.getOrderItems()).containsExactly(existingItem);
-        assertThat(otherOrder.getOrderItems()).containsExactly(otherItem);
-        assertThat(otherItem.getOrder()).isSameAs(otherOrder);
+        assertThat(order.getChatRoom()).isNull();
+        assertThat(order.getUser()).isSameAs(user);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
     }
 }

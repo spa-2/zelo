@@ -26,4 +26,16 @@ public class UserService {
         // 비밀번호는 평문으로 저장하지 않고 암호화해서 저장
         return userRepository.save(User.of(normalizedEmail, passwordEncoder.encode(password), name, phoneNumber));
     }
+
+    // 이메일과 패스워드가 일치하는지 확인
+    public User getUserByEmailAndPassword(String email, String password) {
+        User user = userRepository.findByEmail(User.normalizeEmail(email))
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        }
+
+        return user;
+    }
 }

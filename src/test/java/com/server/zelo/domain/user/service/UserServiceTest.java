@@ -11,6 +11,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -85,5 +87,45 @@ class UserServiceTest {
 
         // then
         assertThat(user.getEmail()).isEqualTo("test@example.com");
+    }
+
+    @Test
+    void 가입되지_않은_이메일로_로그인하면_예외가_발생한다() {
+        // given
+        given(userRepository.findByEmail("none@example.com")).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> userService.getUserByEmailAndPassword("none@example.com", "Password1!"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    @Test
+    void 비밀번호가_틀리면_예외가_발생한다() {
+        // given
+        User user = User.of("test@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+        given(userRepository.findByEmail("test@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("Wrong1!", "encodedPassword")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> userService.getUserByEmailAndPassword("test@example.com", "Wrong1!"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    @Test
+    void 이메일과_비밀번호가_맞으면_유저를_반환한다() {
+        // given
+        User user = User.of("test@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+        given(userRepository.findByEmail("test@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("Password1!", "encodedPassword")).willReturn(true);
+
+        // when
+        User result = userService.getUserByEmailAndPassword("TEST@example.com", "Password1!");
+
+        // then
+        assertThat(result).isSameAs(user);
     }
 }

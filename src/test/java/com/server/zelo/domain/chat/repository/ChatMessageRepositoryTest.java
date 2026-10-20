@@ -6,8 +6,11 @@ import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.global.config.AuditingConfig;
 import jakarta.persistence.EntityManager;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Limit;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
@@ -20,6 +23,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 @Import(AuditingConfig.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ChatMessageRepositoryTest {
+
+    // 로컬 DB에 쌓인 데이터와 섞이지 않도록 실제로 쓰이지 않을 방 ID를 쓴다
+    private static final Long ROOM_ID = 9_000_111L;
+    private static final Long OTHER_ROOM_ID = 9_000_112L;
 
     @Autowired
     private EntityManager entityManager;
@@ -71,5 +78,63 @@ class ChatMessageRepositoryTest {
 
         // then
         assertThat(found.getContent()).hasSize(1000);
+    }
+
+    @Test
+    void 커서_없이_조회하면_가장_최근_메시지부터_개수만큼_가져온다() {
+        // given
+        List<Long> ids = saveMessages(ROOM_ID, 5);
+
+        // when
+        List<ChatMessage> result = chatMessageRepository.findByRoomIdOrderByIdDesc(ROOM_ID, Limit.of(3));
+
+        // then
+        assertThat(result).extracting(ChatMessage::getId)
+                .containsExactly(ids.get(4), ids.get(3), ids.get(2));
+    }
+
+    @Test
+    void 커서를_주면_그_메시지는_빼고_더_오래된_메시지만_가져온다() {
+        // given
+        List<Long> ids = saveMessages(ROOM_ID, 5);
+
+        // when
+        List<ChatMessage> result = chatMessageRepository
+                .findByRoomIdAndIdLessThanOrderByIdDesc(ROOM_ID, ids.get(2), Limit.of(10));
+
+        // then
+        assertThat(result).extracting(ChatMessage::getId).containsExactly(ids.get(1), ids.get(0));
+    }
+
+    @Test
+    void 다른_방의_메시지는_가져오지_않는다() {
+        // given
+        List<Long> mine = saveMessages(ROOM_ID, 2);
+        saveMessages(OTHER_ROOM_ID, 2);
+
+        // when
+        List<ChatMessage> result = chatMessageRepository.findByRoomIdOrderByIdDesc(ROOM_ID, Limit.of(10));
+
+        // then
+        assertThat(result).extracting(ChatMessage::getId).containsExactly(mine.get(1), mine.get(0));
+    }
+
+    @Test
+    void 메시지가_없는_방은_빈_목록을_가져온다() {
+        // when
+        List<ChatMessage> result = chatMessageRepository.findByRoomIdOrderByIdDesc(ROOM_ID, Limit.of(10));
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
+    // 저장 순서대로 ID 목록을 돌려준다 (먼저 저장한 것이 앞)
+    private List<Long> saveMessages(Long roomId, int count) {
+        List<Long> ids = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            ids.add(chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.USER, "메시지 " + i)).getId());
+        }
+        chatMessageRepository.flush();
+        return ids;
     }
 }

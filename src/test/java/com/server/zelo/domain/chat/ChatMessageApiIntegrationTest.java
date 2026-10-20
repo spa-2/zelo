@@ -1,6 +1,7 @@
 package com.server.zelo.domain.chat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,7 +15,9 @@ import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -154,6 +158,100 @@ class ChatMessageApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
     }
 
+    @Test
+    void 목록은_최신순으로_나눠_받고_다음_커서로_이어_받으면_중복_없이_전부_받는다() throws Exception {
+        // given: 메시지 3번 전송 → 사용자·AI 메시지 6개
+        Long roomId = createRoom(OWNER_ID);
+        for (int i = 1; i <= 3; i++) {
+            send(OWNER_ID, roomId, "질문" + i).andExpect(status().isCreated());
+        }
+        List<Long> savedIdsNewestFirst = messagesOf(roomId).stream().map(ChatMessage::getId).toList().reversed();
+
+        // when: 첫 페이지 4개
+        String first = list(OWNER_ID, roomId, null, 4)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messages.length()").value(4))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andReturn().getResponse().getContentAsString();
+        Number nextCursor = JsonPath.read(first, "$.data.nextCursor");
+
+        // when: 다음 페이지
+        String second = list(OWNER_ID, roomId, nextCursor.longValue(), 4)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messages.length()").value(2))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        // then: 두 페이지를 이으면 저장된 메시지 전부가 최신순으로 한 번씩
+        List<Long> received = new ArrayList<>();
+        List<Number> firstIds = JsonPath.read(first, "$.data.messages[*].messageId");
+        List<Number> secondIds = JsonPath.read(second, "$.data.messages[*].messageId");
+        firstIds.forEach(id -> received.add(id.longValue()));
+        secondIds.forEach(id -> received.add(id.longValue()));
+        assertThat(received).containsExactlyElementsOf(savedIdsNewestFirst);
+    }
+
+    @Test
+    void 전송_응답과_목록의_메시지는_같은_모양이다() throws Exception {
+        // given
+        Long roomId = createRoom(OWNER_ID);
+        String sent = send(OWNER_ID, roomId, "김치볶음밥 재료")
+                .andReturn().getResponse().getContentAsString();
+
+        // when
+        String listed = list(OWNER_ID, roomId, null, null)
+                .andReturn().getResponse().getContentAsString();
+
+        // then: 전송 응답(AI 메시지)과 목록의 맨 앞(가장 최근 = 같은 AI 메시지)의 필드와 값이 모두 같다
+        Map<String, Object> sentMessage = JsonPath.read(sent, "$.data");
+        Map<String, Object> newestInList = JsonPath.read(listed, "$.data.messages[0]");
+        assertThat(newestInList).isEqualTo(sentMessage);
+    }
+
+    @Test
+    void 메시지가_없는_방은_빈_목록을_반환한다() throws Exception {
+        // given
+        Long roomId = createRoom(OWNER_ID);
+
+        // when & then
+        list(OWNER_ID, roomId, null, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messages").isEmpty())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 다른_사용자의_방을_조회하면_403과_CHAT_002를_반환한다() throws Exception {
+        // given
+        Long roomId = createRoom(OWNER_ID);
+        send(OWNER_ID, roomId, "내 메시지").andExpect(status().isCreated());
+
+        // when & then
+        list(OTHER_ID, roomId, null, null)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CHAT_002"));
+    }
+
+    @Test
+    void 없는_방을_조회하면_404와_CHAT_001을_반환한다() throws Exception {
+        // when & then
+        list(OWNER_ID, Long.MAX_VALUE, null, null)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CHAT_001"));
+    }
+
+    @Test
+    void 토큰_없이_목록을_조회하면_401과_AUTH_001을_반환한다() throws Exception {
+        // given
+        Long roomId = createRoom(OWNER_ID);
+
+        // when & then
+        mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_001"));
+    }
+
     private Long createRoom(Long userId) {
         return chatRoomRepository.save(ChatRoom.of(userId)).getId();
     }
@@ -163,6 +261,18 @@ class ChatMessageApiIntegrationTest {
                 .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"text\":\"" + text + "\"}"));
+    }
+
+    private ResultActions list(Long userId, Long roomId, Long before, Integer size) throws Exception {
+        MockHttpServletRequestBuilder request = get("/api/chat/rooms/{roomId}/messages", roomId)
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId));
+        if (before != null) {
+            request.param("before", before.toString());
+        }
+        if (size != null) {
+            request.param("size", size.toString());
+        }
+        return mockMvc.perform(request);
     }
 
     private List<ChatMessage> messagesOf(Long roomId) {

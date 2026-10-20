@@ -72,4 +72,61 @@ class UserCommandServiceTest {
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
         then(refreshTokenService).should(never()).saveRefreshToken(anyLong(), anyString());
     }
+
+    @Test
+    void 유효한_리프레시_토큰이면_토큰의_유저_id를_반환한다() {
+        // given
+        given(jwtUtil.validateToken("refreshToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("refreshToken")).willReturn(true);
+        given(jwtUtil.getUserId("refreshToken")).willReturn(1L);
+
+        // when
+        Long userId = userCommandService.verifyTokenAndGetUserId("refreshToken");
+
+        // then
+        assertThat(userId).isEqualTo(1L);
+    }
+
+    @Test
+    void 위조되었거나_만료되었거나_비어있는_토큰이면_INVALID_TOKEN_예외가_발생한다() {
+        // given
+        given(jwtUtil.validateToken("invalidToken")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.verifyTokenAndGetUserId("invalidToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
+        then(jwtUtil).should(never()).getUserId(anyString());
+    }
+
+    @Test
+    void 액세스_토큰으로는_재발급할_수_없다() {
+        // given
+        given(jwtUtil.validateToken("accessToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("accessToken")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.verifyTokenAndGetUserId("accessToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
+        then(jwtUtil).should(never()).getUserId(anyString());
+    }
+
+    @Test
+    void 재발급하면_새_토큰_둘을_발급하고_받은_리프레시_토큰과_함께_교체를_요청한다() {
+        // given
+        given(jwtUtil.createAccessToken(1L)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L)).willReturn("newRefreshToken");
+
+        // when
+        LoginResult result = userCommandService.reissue(1L, "oldRefreshToken");
+
+        // then
+        assertThat(result.accessToken()).isEqualTo("newAccessToken");
+        assertThat(result.refreshToken()).isEqualTo("newRefreshToken");
+        // 새 토큰이 아니라 사용자가 보낸 토큰으로 일치 여부를 확인해야 함
+        then(refreshTokenService).should().rotateToken(1L, "oldRefreshToken", "newRefreshToken");
+    }
 }

@@ -1,9 +1,12 @@
 package com.server.zelo.domain.user.facade;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -53,5 +57,36 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserWithAddress(request);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 토큰을_검증한_뒤_유저_단위_락_안에서_재발급한다() {
+        // given
+        LoginResult response = LoginResult.of("newAccessToken", "newRefreshToken");
+        given(userCommandService.verifyTokenAndGetUserId("refreshToken")).willReturn(1L);
+        given(userCommandService.reissue(1L, "refreshToken")).willReturn(response);
+        given(lockDistributeService.execute(eq(LockKey.tokenRotate(1L)), any(Supplier.class)))
+                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
+
+        // when
+        LoginResult result = userFacade.reissue("refreshToken");
+
+        // then
+        assertThat(result).isEqualTo(response);
+        then(userCommandService).should().reissue(1L, "refreshToken");
+    }
+
+    @Test
+    void 토큰이_유효하지_않으면_락을_잡지_않고_예외가_전달된다() {
+        // given
+        // 위조된 토큰의 userId로 락을 잡으면 남의 락을 점유할 수 있어서 검증이 먼저여야 함
+        given(userCommandService.verifyTokenAndGetUserId("invalidToken"))
+                .willThrow(new BusinessException(ErrorCode.INVALID_TOKEN));
+
+        // when & then
+        assertThatThrownBy(() -> userFacade.reissue("invalidToken"))
+                .isInstanceOf(BusinessException.class);
+        then(lockDistributeService).shouldHaveNoInteractions();
     }
 }

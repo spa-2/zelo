@@ -1,0 +1,11 @@
+package com.server.zelo.domain.payment.client;
+
+import com.server.zelo.domain.payment.client.dto.response.PortOnePayment;
+
+// TODO(portone): 실제 포트원 V2 API(결제 단건 조회, 결제 취소)를 호출하는 구현체를 추가한다
+public interface PortOneClient {
+
+    PortOnePayment getPayment(String portoneId);
+
+    void cancelPayment(String portoneId, String reason);
+}

@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 // TODO(order): 주문 도메인이 머지되면 OrderService(또는 주문 취소 Command)로 교체하고 이 클래스는 삭제한다
 @Slf4j
 @Service
-@Profile({"local", "dev"})
 public class MockOrderService {
 
     // TODO(order): 주문을 PAID로 변경

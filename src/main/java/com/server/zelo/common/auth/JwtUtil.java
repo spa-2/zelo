@@ -14,20 +14,21 @@ import org.springframework.util.StringUtils;
 import javax.crypto.SecretKey;
 import java.util.Base64;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
 
     private SecretKey key;
 
+    @Value("${jwt.secret}")
+    private String secretKey;
+
     @Value("${jwt.access-expiration}")
     private long accessTokenTime;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshTokenTime;
-
-    @Value("${jwt.secret}")
-    private String secretKey;
 
     private static final String TOKEN_TYPE = "type";
     private static final String ACCESS_TYPE = "access";
@@ -54,6 +55,8 @@ public class JwtUtil {
 
         return Jwts.builder()
                 .subject(String.valueOf(id))
+                // jti (jwt Id) 설정을 주어서 동시간대 로그인 요청이 들어와도 다른 값의 토큰이 나옴
+                .id(UUID.randomUUID().toString())
                 // 서명키가 같아서 type이 없으면 리프레시 토큰으로 API를 호출할 수 있음
                 .claim(TOKEN_TYPE, type)
                 .expiration(new Date(date.getTime() + tokenTime))

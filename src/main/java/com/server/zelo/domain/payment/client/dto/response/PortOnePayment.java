@@ -1,4 +1,4 @@
-package com.server.zelo.domain.payment.client.dto;
+package com.server.zelo.domain.payment.client.dto.response;
 
 import com.server.zelo.domain.payment.client.PortOnePaymentStatus;
 

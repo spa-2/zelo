@@ -61,7 +61,8 @@ public enum ErrorCode {
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "인증이 필요합니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_002", "유효하지 않은 토큰입니다."),
-    NO_AUTHORITY(HttpStatus.FORBIDDEN, "AUTH_003", "권한이 없는 요청입니다.");
+    NO_AUTHORITY(HttpStatus.FORBIDDEN, "AUTH_003", "권한이 없는 요청입니다."),
+    TOKEN_REVOKE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_004", "로그아웃 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String code;

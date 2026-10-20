@@ -18,6 +18,7 @@ import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,14 +29,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 // 실제 설정(5초, 30초)과 같은 구조를 짧은 시간으로 만들어, 시간 제한·재시도·서킷 브레이커의 동작을 빠르게 확인한다
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class ResilientLlmGatewayTest {
 
     private static final Duration TIMEOUT = Duration.ofMillis(200);
     private static final Duration OPEN_DURATION = Duration.ofMillis(300);
     private static final LlmReply REPLY = LlmReply.of("답변", "gpt-test", 10, 5);
+    // 실패해서 응답이 없을 때 로그에 남는 설정 모델 이름 (성공 응답의 모델과 구분하려고 다른 이름을 쓴다)
+    private static final String CONFIGURED_MODEL = "gpt-configured";
+    private static final String ATTEMPT_LOG = "LLM 호출 attempt=";
 
     @Mock
     private LlmGateway delegate;
@@ -64,7 +70,7 @@ class ResilientLlmGatewayTest {
                 .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable))
                 .build());
         executorService = Executors.newVirtualThreadPerTaskExecutor();
-        resilientLlmGateway = new ResilientLlmGateway(retry, delegate, timeLimiter, circuitBreaker, executorService);
+        resilientLlmGateway = new ResilientLlmGateway(retry, CONFIGURED_MODEL, delegate, timeLimiter, circuitBreaker, executorService);
     }
 
     @AfterEach
@@ -238,6 +244,105 @@ class ResilientLlmGatewayTest {
         assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
                 .isInstanceOf(BusinessException.class);
         then(delegate).should(never()).explain(anyString(), anyString());
+    }
+
+    @Test
+    void 성공하면_모델_응답_시간_토큰을_담은_성공_로그를_한_줄_남기고_원문은_남기지_않는다(CapturedOutput output) {
+        // given
+        given(delegate.explain("system prompt", "김치볶음밥 재료")).willReturn(REPLY);
+
+        // when
+        resilientLlmGateway.explain("system prompt", "김치볶음밥 재료");
+
+        // then
+        assertThat(attemptLogLines(output)).hasSize(1);
+        assertThat(attemptLogLines(output).getFirst())
+                .contains("LLM 호출 attempt=1 model=gpt-test latencyMs=")
+                .contains("success=true error=- promptTokens=10 completionTokens=5");
+        assertThat(output.getOut()).doesNotContain("김치볶음밥 재료").doesNotContain("system prompt");
+    }
+
+    @Test
+    void 재시도까지_실패하면_시도마다_한_줄씩_설정_모델과_오류_코드를_남긴다(CapturedOutput output) {
+        // given
+        given(delegate.explain(anyString(), anyString())).willThrow(OpenAiErrors.serverError(500));
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(attemptLogLines(output)).satisfiesExactly(
+                line -> assertThat(line).contains("attempt=1 model=gpt-configured")
+                        .contains("success=false error=AI_004 promptTokens=- completionTokens=-"),
+                line -> assertThat(line).contains("attempt=2 model=gpt-configured")
+                        .contains("success=false error=AI_004"));
+    }
+
+    @Test
+    void 첫_시도가_실패하고_재시도가_성공하면_실패_한_줄과_성공_한_줄이_남는다(CapturedOutput output) {
+        // given
+        given(delegate.explain(anyString(), anyString()))
+                .willThrow(OpenAiErrors.rateLimit())
+                .willReturn(REPLY);
+
+        // when
+        resilientLlmGateway.explain("system", "질문");
+
+        // then
+        assertThat(attemptLogLines(output)).satisfiesExactly(
+                line -> assertThat(line).contains("attempt=1").contains("success=false error=AI_003"),
+                line -> assertThat(line).contains("attempt=2").contains("success=true error=-"));
+    }
+
+    @Test
+    void 요청_오류_4xx는_재시도하지_않아_로그도_한_줄만_남는다(CapturedOutput output) {
+        // given
+        given(delegate.explain(anyString(), anyString())).willThrow(OpenAiErrors.badRequest());
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(attemptLogLines(output)).singleElement()
+                .satisfies(line -> assertThat(line).contains("attempt=1").contains("error=AI_006"));
+        assertThat(output.getOut()).doesNotContain("LLM 호출 실패 원인");
+    }
+
+    @Test
+    void 서킷에_막힌_호출도_LLM을_부르지_않은_채로_한_줄_남는다(CapturedOutput output) {
+        // given
+        circuitBreaker.transitionToOpenState();
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(attemptLogLines(output)).singleElement()
+                .satisfies(line -> assertThat(line).contains("attempt=1").contains("success=false error=AI_008"));
+        then(delegate).should(never()).explain(anyString(), anyString());
+    }
+
+    @Test
+    void 알_수_없는_오류만_원인을_찾을_수_있게_스택을_남긴다(CapturedOutput output) {
+        // given
+        given(delegate.explain(anyString(), anyString())).willThrow(new IllegalStateException("unexpected"));
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", "질문"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_RESPONSE_FAILED));
+
+        // then
+        assertThat(attemptLogLines(output)).singleElement()
+                .satisfies(line -> assertThat(line).contains("error=AI_001"));
+        assertThat(output.getOut()).contains("LLM 호출 실패 원인: AI_001").contains("IllegalStateException: unexpected");
+    }
+
+    private List<String> attemptLogLines(CapturedOutput output) {
+        return output.getOut().lines().filter(line -> line.contains(ATTEMPT_LOG)).toList();
     }
 
     private void failTwice() {

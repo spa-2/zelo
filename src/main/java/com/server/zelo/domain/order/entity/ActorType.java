@@ -1,4 +1,4 @@
-package com.server.zelo.domain.order;
+package com.server.zelo.domain.order.entity;
 
 public enum ActorType {
     USER, // 사용자 본인 (웹 또는 채팅의 버튼 클릭)

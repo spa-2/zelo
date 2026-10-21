@@ -1,9 +1,7 @@
-package com.server.zelo.paymentTest.entity;
+package com.server.zelo.domain.payment.entity;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.payment.entity.Payment;
-import com.server.zelo.domain.payment.entity.PaymentStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

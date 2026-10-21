@@ -1,11 +1,10 @@
-package com.server.zelo.paymentTest.service;
+package com.server.zelo.domain.payment.service;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
-import com.server.zelo.domain.payment.service.PaymentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

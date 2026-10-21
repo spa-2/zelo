@@ -76,4 +76,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'dummy-key-for-ci' }}
           # application.yaml의 ${jwt_secret}에 매핑됨 (Base64, 32바이트 이상)
           JWT_SECRET: ${{ secrets.JWT_SECRET || 'Y2ktZHVtbXktand0LXNlY3JldC1rZXktMzJieXRlcy1sb25nISE=' }}
+          # 추후에 추가할 예정
+          PORTONE_API_SECRET: ${{ secrets.PORTONE_API_SECRET || 'dummy-portone-secret-for-ci' }}
+          PORTONE_STORE_ID: ${{ secrets.PORTONE_STORE_ID || 'store-dummy-for-ci' }}
         run: ./gradlew build sonar --info

@@ -1,12 +1,15 @@
-package com.server.zelo.domain.payment.client;
+package com.server.zelo.domain.portone.client.mock;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.payment.client.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
+import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -14,11 +17,10 @@ import java.time.LocalDateTime;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "fake")
 public class MockPortOneClient implements PortOneClient {
 
     private final PaymentRepository paymentRepository;
-
-
 
     @Override
     public PortOnePayment getPayment(String portoneId) {

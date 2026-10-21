@@ -77,7 +77,12 @@ public enum ErrorCode {
     // 탈취인지 본인 실수인지 알 수 없어서 문구에는 탈취라고 쓰지 않음
     TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "AUTH_006", "세션이 만료되었습니다. 다시 로그인하세요."),
     // 같은 토큰의 재발급 요청이 동시에 오거나 응답이 유실되어 재시도된 경우로, 이 토큰으로 다시 시도하라는 뜻이 아님
-    TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요.");
+    TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요."),
+
+    // Delivery
+    // Delivery
+    INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다.");
+
 
     private final HttpStatus status;
     private final String code;

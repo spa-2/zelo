@@ -7,9 +7,12 @@ import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -25,6 +28,7 @@ public class ResilientLlmGateway implements LlmGateway {
     public static final String DELEGATE = "llmDelegate";
 
     private final Retry retry;
+    private final String model;
     private final LlmGateway llmGateway;
     private final TimeLimiter timeLimiter;
     private final CircuitBreaker circuitBreaker;
@@ -32,11 +36,14 @@ public class ResilientLlmGateway implements LlmGateway {
 
     public ResilientLlmGateway(
             Retry retry,
+            // 실패해서 응답이 없으면 어떤 모델에 보냈는지 알 수 없어, 로그에는 설정한 모델 이름을 남긴다
+            @Value("${spring.ai.openai.chat.model}") String model,
             @Qualifier(DELEGATE) LlmGateway llmGateway,
             TimeLimiter timeLimiter,
             CircuitBreaker circuitBreaker,
             ExecutorService executorService) {
         this.retry = retry;
+        this.model = model;
         this.llmGateway = llmGateway;
         this.timeLimiter = timeLimiter;
         this.circuitBreaker = circuitBreaker;
@@ -58,23 +65,41 @@ public class ResilientLlmGateway implements LlmGateway {
 
         // (나) 그 시도를 서킷 브레이커로 감싼다.
         Callable<LlmReply> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);
+
+        // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
+        AtomicInteger attemptNumber = new AtomicInteger();
+        Callable<LlmReply> logged = () -> logAttempt(attemptNumber.incrementAndGet(), guarded);
         try {
             // (다) 그걸 다시 재시도로 감싸서 실행한다.
-            return Retry.decorateCallable(retry, guarded).call();
+            return Retry.decorateCallable(retry, logged).call();
         } catch (Exception e) {
             // (라) 끝내 실패하면 우리 프로젝트 예외로 바꿔 던진다.
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            // BusinessException에는 원인 예외를 담을 수 없어 원인은 여기서 로그로 남긴다.
-            // 종류를 알아본 오류는 한 줄로, 알 수 없는 오류만 원인을 찾을 수 있게 스택까지 남긴다
+            // 시도마다 한 줄 로그는 이미 남겼다. BusinessException에는 원인 예외를 담을 수 없어,
+            // 알 수 없는 오류만 원인을 찾을 수 있게 여기서 스택을 남긴다
             ErrorCode errorCode = LlmErrorClassifier.classify(e);
             if (errorCode == ErrorCode.AI_RESPONSE_FAILED) {
-                log.warn("LLM 호출 실패: {}", errorCode.getCode(), e);
-            } else {
-                log.warn("LLM 호출 실패: {} ({})", errorCode.getCode(), e.toString());
+                log.warn("LLM 호출 실패 원인: {}", errorCode.getCode(), e);
             }
             throw new BusinessException(errorCode);
+        }
+    }
+
+    // 프롬프트·사용자 메시지 원문은 남기지 않는다
+    private LlmReply logAttempt(int attemptNumber, Callable<LlmReply> guarded) throws Exception {
+        long start = System.nanoTime();
+        try {
+            LlmReply reply = guarded.call();
+            log.info("LLM 호출 attempt={} model={} latencyMs={} success=true error=- promptTokens={} completionTokens={}",
+                    attemptNumber, orDash(reply.model()), elapsedMillis(start),
+                    orDash(reply.promptTokens()), orDash(reply.completionTokens()));
+            return reply;
+        } catch (Exception e) {
+            log.warn("LLM 호출 attempt={} model={} latencyMs={} success=false error={} promptTokens=- completionTokens=-",
+                    attemptNumber, model, elapsedMillis(start), LlmErrorClassifier.classify(e).getCode());
+            throw e;
         }
     }
 
@@ -84,5 +109,13 @@ public class ResilientLlmGateway implements LlmGateway {
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
         }
         return reply;
+    }
+
+    private static long elapsedMillis(long startNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    }
+
+    private static Object orDash(Object value) {
+        return value == null ? "-" : value;
     }
 }

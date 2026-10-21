@@ -12,6 +12,7 @@ import com.server.zelo.domain.quote.model.QuoteItem;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,7 +50,7 @@ class QuoteRepositoryTest {
         quoteRepository.save(quote);
 
         // then
-        then(valueOperations).should().set(eq("quote:5"), json.capture(), eq(QuoteRepository.QUOTE_TTL));
+            then(valueOperations).should().set(eq("quote:5"), json.capture(), eq(Duration.ofMinutes(10)));
         assertThat(json.getValue()).contains("\"quoteId\":\"q-1\"", "\"menuName\":\"김치볶음밥\"");
     }
 

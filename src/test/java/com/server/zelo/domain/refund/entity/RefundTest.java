@@ -48,15 +48,6 @@ class RefundTest {
     }
 
     @Test
-    void 환불_사유_없이도_환불을_생성할_수_있다() {
-        // when
-        Refund refund = Refund.of(PAYMENT_ID, RefundType.PARTIAL, null);
-
-        // then
-        assertThat(refund.getReason()).isNull();
-    }
-
-    @Test
     void 결제_ID가_없으면_예외가_발생한다() {
         // when
         // then

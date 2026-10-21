@@ -373,6 +373,27 @@ class ResilientLlmGatewayTest {
     }
 
     @Test
+    void 메뉴_계획_검증_실패가_반복돼도_서킷은_열리지_않아_다음_정상_요청은_성공한다() {
+        // given: 메시지 하나가 재시도까지 2번 실패하므로, 3개면 최소 시도 수(4)를 넘는다
+        given(delegate.planMenu(anyString(), anyString())).willReturn(planResult(planWithoutIngredients()));
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        }
+        willReturn(REPLY).given(delegate).explain(anyString(), anyString());
+
+        // when: 다른 사용자의 채팅
+        LlmReply reply = resilientLlmGateway.explain("system", "질문");
+
+        // then: 검증 실패는 장부에 적히지 않아 성공 1번만 남는다
+        assertThat(reply).isEqualTo(REPLY);
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isZero();
+        assertThat(circuitBreaker.getMetrics().getNumberOfBufferedCalls()).isEqualTo(1);
+    }
+
+    @Test
     void 메뉴_계획이_처음에_검증에_실패해도_다시_물어서_맞게_답하면_돌려준다() {
         // given
         given(delegate.planMenu(anyString(), anyString()))

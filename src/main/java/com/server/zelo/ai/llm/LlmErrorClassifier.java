@@ -25,6 +25,11 @@ public final class LlmErrorClassifier {
             // 답이 형식·검증에 맞지 않음: 같은 질문을 다시 하면 맞게 답할 수 있어 한 번 더 물어본다
             ErrorCode.AI_INVALID_RESPONSE);
 
+    private static final Set<ErrorCode> NOT_CIRCUIT_FAILURES = Set.of(
+            ErrorCode.AI_REQUEST_REJECTED,
+            // 엄격 모드라 형식 오류는 거의 없고, 대부분 "30명"처럼 사용자 말 때문에 검증 범위를 벗어난 경우다
+            ErrorCode.AI_INVALID_RESPONSE);
+
     private LlmErrorClassifier() {
     }
 
@@ -36,7 +41,7 @@ public final class LlmErrorClassifier {
     // 요청 자체가 잘못된 4xx는 OpenAI 장애가 아니므로 서킷 실패로 세지 않는다.
     // 세면 한 사용자의 잘못된 요청이 반복될 때 서킷이 열려 다른 사용자의 정상 요청까지 막힌다
     public static boolean isCircuitFailure(Throwable throwable) {
-        return classify(throwable) != ErrorCode.AI_REQUEST_REJECTED;
+        return !NOT_CIRCUIT_FAILURES.contains(classify(throwable));
     }
 
     // LLM이 보낸 예외를 우리 ErrorCode로 바꿈

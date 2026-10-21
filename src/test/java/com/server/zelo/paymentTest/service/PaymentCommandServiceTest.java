@@ -1,9 +1,9 @@
 package com.server.zelo.paymentTest.service;
 
 import com.server.zelo.domain.order.mock.service.MockOrderService;
-import com.server.zelo.domain.payment.client.PortOneClient;
-import com.server.zelo.domain.payment.client.dto.response.PortOnePayment;
-import com.server.zelo.domain.payment.client.PortOnePaymentStatus;
+import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.service.PaymentCommandService;
 import com.server.zelo.domain.payment.service.PaymentService;

@@ -4,8 +4,6 @@ import com.server.zelo.common.entity.BaseTimeEntity;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
-import com.server.zelo.domain.order.ActorType;
-import com.server.zelo.domain.order.OrderStatus;
 import com.server.zelo.domain.user.entity.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;

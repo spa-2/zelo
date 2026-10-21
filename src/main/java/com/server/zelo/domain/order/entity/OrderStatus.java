@@ -1,4 +1,4 @@
-package com.server.zelo.domain.order;
+package com.server.zelo.domain.order.entity;
 
 public enum OrderStatus {
     PAYMENT_PENDING, // 주문 생성 완료, 결제 대기 또는 진행 중

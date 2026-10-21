@@ -41,6 +41,21 @@ public class RefreshTokenRepository {
             return 0
             """, Long.class);
 
+    // KEYS[1]: 현재 토큰 키
+    // ARGV[1]: 새 토큰 해시, ARGV[2]: 토큰 TTL(ms), ARGV[3]: superseded 키 접두사
+    // 이전 토큰 값으로 superseded 키를 스크립트 안에서 만들어서 클러스터에서는 키 슬롯 설계가 따로 필요함 (지금은 단일 Redis)
+    private static final RedisScript<Long> SAVE_SCRIPT = new DefaultRedisScript<>("""
+            -- 덮어쓰기 전의 현재 토큰 해시를 읽어 둠 (없으면 false)
+            local previous = redis.call('GET', KEYS[1])
+            -- 교체한다: 현재 토큰을 새 토큰 해시로 덮어씀
+            redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+            -- 이전 토큰이 있고 새 토큰과 다를 때만 superseded로 기록한다 (다른 기기 로그인으로 밀려난 토큰)
+            -- 같은 값이면 현재 토큰이 superseded로 기록되어 나중에 탈취가 다른 기기 로그인으로 오판되므로 제외함
+            if previous and previous ~= ARGV[1] then
+                redis.call('SET', ARGV[3] .. previous, previous, 'PX', ARGV[2])
+            end
+            return 1
+            """, Long.class);
 
     // TTL을 토큰 만료 시간과 맞춰야 만료된 토큰이 Redis에 남지 않음
     public RefreshTokenRepository(StringRedisTemplate stringRedisTemplate,
@@ -51,18 +66,15 @@ public class RefreshTokenRepository {
 
     // 유저당 하나만 두어서 다시 로그인하면 이전 리프레시 토큰은 덮어써짐
     public void save(Long userId, String refreshToken) {
-        String redisKey = key(userId);
-        String redisHash = hash(refreshToken);
-
-        // 기존 토큰 조회, 새 토큰 저장, 만료 시간 설정을 명령 하나로 처리하여 동시 로그인 시 값이 꼬이거나 만료 시간 없는 키가 남는걸 방지
-        // (getAndSet 후 expire를 따로 부르면 그 사이에 장애가 나면 만료 시간 없는 키가 남음)
-        String previousToken = stringRedisTemplate.opsForValue().setGet(redisKey, redisHash, refreshTokenTtl);
-
-        // 기존에 리프레시 토큰이 있을 경우에는 superseded를 붙여 별도로 관리한다. (새 기기로 로그인 시 기존 기기 로그인 만료를 위해)
-        // 같은 값이면 현재 토큰이 superseded로 기록되어 나중에 탈취가 아닌 다른 기기 로그인으로 오판되므로 제외함
-        if (previousToken != null && !previousToken.equals(redisHash)) {
-            stringRedisTemplate.opsForValue().set(supersededKey(previousToken), previousToken, refreshTokenTtl);
-        }
+        // 현재 토큰 교체와 superseded 기록을 스크립트(SAVE_SCRIPT) 하나로 처리함
+        // 두 명령으로 나누면 그 사이에 끼어든 재발급이 표식 없이 새 토큰만 보고 탈취로 판단해 방금 로그인한 세션을 삭제할 수 있음
+        // 만료 시간도 같은 명령 안에서 걸어서 장애가 나도 만료 시간 없는 키가 남지 않음
+        stringRedisTemplate.execute(
+                SAVE_SCRIPT,
+                List.of(key(userId)),
+                hash(refreshToken),
+                String.valueOf(refreshTokenTtl.toMillis()),
+                SUPERSEDED_KEY_PREFIX);
     }
 
     public void delete(Long userId) {

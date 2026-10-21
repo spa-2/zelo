@@ -46,66 +46,32 @@ class RefreshTokenRepositoryTest {
         refreshTokenRepository = new RefreshTokenRepository(stringRedisTemplate, REFRESH_EXPIRATION);
     }
 
+    // superseded 기록 같은 저장 동작 자체는 Lua 스크립트라 mock으로 확인할 수 없어서 RefreshTokenRepositoryRedisTest에서 실제 Redis로 검증함
     @Test
-    void 토큰_원문_대신_해시를_만료시간과_함께_저장한다() {
-        // given
-        String refreshToken = "refreshToken";
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-
-        // when
-        refreshTokenRepository.save(1L, refreshToken);
-
-        // then
-        then(valueOperations).should().setGet(
-                eq("refresh:1"),
-                // 원문이 그대로 저장되지 않고 SHA-256 hex(64자)로 저장되는지 확인
-                argThat(saved -> !saved.equals(refreshToken) && saved.matches("^[0-9a-f]{64}$")),
-                eq(Duration.ofMillis(REFRESH_EXPIRATION)));
-    }
-
-    @Test
-    void 기존_토큰이_없으면_superseded를_저장하지_않는다() {
-        // given
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.setGet(eq("refresh:1"), anyString(), any(Duration.class))).willReturn(null);
-
+    @SuppressWarnings("unchecked")
+    void 저장은_스크립트로_현재_키_해시_TTL_superseded_접두사를_넘겨_실행한다() {
         // when
         refreshTokenRepository.save(1L, "refreshToken");
 
         // then
-        then(valueOperations).should(never()).set(anyString(), anyString(), any(Duration.class));
+        ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
+        then(stringRedisTemplate).should().execute(any(RedisScript.class), keys.capture(),
+                eq(sha256("refreshToken")), eq(String.valueOf(REFRESH_EXPIRATION)), eq("refresh:superseded:"));
+        assertThat(keys.getValue()).containsExactly("refresh:1");
     }
 
     @Test
-    void 기존_토큰이_있으면_해시_기준_superseded로_리프레시_토큰_수명만큼_저장한다() {
-        // given
-        String previousHash = "a".repeat(64);
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.setGet(eq("refresh:1"), anyString(), any(Duration.class))).willReturn(previousHash);
-
+    @SuppressWarnings("unchecked")
+    void 저장할_때_토큰_원문은_Redis로_보내지_않는다() {
         // when
-        refreshTokenRepository.save(1L, "newRefreshToken");
+        refreshTokenRepository.save(1L, "refreshToken");
 
         // then
-        // userId가 아니라 기존 토큰의 해시로 키를 만들어야 여러 번 덮어써도 이전 기기의 기록이 남음
-        then(valueOperations).should().set(
-                "refresh:superseded:" + previousHash, previousHash, Duration.ofMillis(REFRESH_EXPIRATION));
-    }
-
-    @Test
-    void 기존_토큰과_같은_토큰이면_superseded로_저장하지_않는다() {
-        // given
-        String refreshToken = "refreshToken";
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        // 같은 토큰으로 두 번 저장하면 기존 값이 새 값의 해시와 같음
-        given(valueOperations.setGet(eq("refresh:1"), anyString(), any(Duration.class)))
-                .willAnswer(invocation -> invocation.getArgument(1));
-
-        // when
-        refreshTokenRepository.save(1L, refreshToken);
-
-        // then
-        then(valueOperations).should(never()).set(anyString(), anyString(), any(Duration.class));
+        // 원문이 인자로 넘어가면 Redis가 유출될 때 토큰이 그대로 노출됨
+        ArgumentCaptor<Object> args = ArgumentCaptor.forClass(Object.class);
+        then(stringRedisTemplate).should().execute(any(RedisScript.class), anyList(),
+                args.capture(), args.capture(), args.capture());
+        assertThat(args.getAllValues()).doesNotContain("refreshToken");
     }
 
     @Test

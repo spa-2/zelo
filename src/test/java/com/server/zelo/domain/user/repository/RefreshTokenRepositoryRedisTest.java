@@ -212,6 +212,54 @@ class RefreshTokenRepositoryRedisTest {
         assertThat(refreshTokenRepository.isRotated("A1")).isTrue();
     }
 
+    // 현재 토큰과 superseded 표식이 따로 쓰이면, 새 토큰이 보이는데 표식은 아직 없는 순간이 생겨서 재발급이 탈취로 오판함
+    // 경쟁을 확률적으로만 잡는 테스트라서 반복해서 확인함 (현재 토큰이 새 값으로 보이면 표식도 반드시 보여야 함)
+    @Test
+    void 새_토큰이_현재_토큰으로_보이면_이전_토큰의_superseded_표식도_반드시_보인다() throws Exception {
+        // given
+        int iterations = 300;
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        List<Long> violatedUserIds = new ArrayList<>();
+
+        for (int i = 0; i < iterations; i++) {
+            long id = ThreadLocalRandom.current().nextLong(1_000_000_000_000L, Long.MAX_VALUE);
+            String currentKey = "refresh:" + id;
+            String supersededKey = "refresh:superseded:" + sha256("A1");
+            createdKeys.add(currentKey);
+            createdKeys.add(supersededKey);
+            refreshTokenRepository.save(id, "A1");
+            redisTemplate.delete(supersededKey);
+
+            CountDownLatch start = new CountDownLatch(1);
+            // when
+            Future<?> login = executor.submit(() -> {
+                start.await();
+                refreshTokenRepository.save(id, "B1");
+                return null;
+            });
+            Future<Boolean> observer = executor.submit(() -> {
+                start.await();
+                // 새 토큰이 보이기 전까지는 확인할 것이 없음. 보인 뒤에는 표식이 있어야 함
+                while (!sha256("B1").equals(redisTemplate.opsForValue().get(currentKey))) {
+                    Thread.onSpinWait();
+                }
+                return Boolean.TRUE.equals(redisTemplate.hasKey(supersededKey));
+            });
+            start.countDown();
+            login.get(10, TimeUnit.SECONDS);
+
+            // then
+            if (!observer.get(10, TimeUnit.SECONDS)) {
+                violatedUserIds.add(id);
+            }
+            redisTemplate.delete(currentKey);
+            redisTemplate.delete(supersededKey);
+        }
+        executor.shutdown();
+
+        assertThat(violatedUserIds).isEmpty();
+    }
+
     @Test
     void 처음_저장하면_superseded를_기록하지_않고_만료_시간이_걸린다() {
         // given

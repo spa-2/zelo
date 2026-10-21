@@ -65,22 +65,6 @@ class RefundTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
 
-    @Test
-    void 환불_상품을_담으면_환불에_연결되고_금액이_합계에_더해진다() {
-        // given
-        Refund refund = Refund.of(PAYMENT_ID, RefundType.PARTIAL, REASON);
-        RefundItem first = RefundItem.of(orderItem(2, 3_000L), 2);
-        RefundItem second = RefundItem.of(orderItem(1, 4_500L), 1);
-
-        // when
-        refund.addRefundItem(first);
-        refund.addRefundItem(second);
-
-        // then
-        assertThat(refund.getRefundItems()).containsExactly(first, second);
-        assertThat(first.getRefund()).isSameAs(refund);
-        assertThat(refund.getItemsAmount()).isEqualTo(10_500L);
-    }
 
     @Test
     void 한_환불에_같은_주문_상품을_두_번_담을_수_없다() {

@@ -23,7 +23,7 @@ class ProductTest {
         String unitLabel = "단".repeat(length);
 
         // when
-        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel);
+        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel);
 
         // then
         assertThat(product.getUnitLabel()).isEqualTo(unitLabel);
@@ -38,7 +38,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
@@ -51,7 +51,7 @@ class ProductTest {
      */
     @ParameterizedTest
     @CsvSource({"0, 1", "1000, 10", "2147483647, 2147483647"})
-    void 유효한_가격과_내용량으로_상품을_생성한다(Integer price, Integer contentAmount) {
+    void 유효한_가격과_내용량으로_상품을_생성한다(Long price, Integer contentAmount) {
         // given
         Category category = Category.of("과일", true);
         Ingredient ingredient = Ingredient.of(category, "사과", BaseUnit.EA);
@@ -75,8 +75,8 @@ class ProductTest {
      */
     @ParameterizedTest
     @NullSource
-    @ValueSource(ints = {-1, Integer.MIN_VALUE})
-    void 가격이_없거나_음수이면_예외가_발생한다(Integer price) {
+    @ValueSource(longs = {-1, Long.MIN_VALUE})
+    void 가격이_없거나_음수이면_예외가_발생한다(Long price) {
         // given
         Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
 
@@ -101,7 +101,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, contentAmount, "1box"))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, contentAmount, "1box"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
@@ -120,7 +120,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }

@@ -27,7 +27,7 @@ spring:
   ai:
     openai:
       api-key: ${OPENAI_API_KEY}
-      # 재시도는 LlmGateway 쪽에서 직접 제어하므로 클라이언트 기본값(3회)을 끈다
+      # 재시도는 ResilientLlmGateway가 직접 제어하므로 클라이언트 기본값(3회)을 끈다
       max-retries: 0
       # 실제 요청 타임아웃은 SpringAiLlmGateway가 zelo.llm.timeout으로 요청마다 넣는다. 클라이언트 기본값도 같은 값으로 맞춘다
       timeout: ${zelo.llm.timeout}
@@ -38,9 +38,23 @@ zelo:
   llm:
     mode: real
     # LLM 요청 하나를 기다리는 최대 시간. 실제 gpt-5-mini 응답이 약 10초 걸려 여유를 두었다 (팀 합의 후 조정)
-    timeout: 15s
+    timeout: 5s
+    retry:
+     # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
+    max-attempts: 2
+    wait-duration: 500ms
+    circuit-breaker:
+      # 트래픽이 적어도 판단할 수 있도록 시간이 아닌 최근 시도 횟수로 실패율을 본다
+    sliding-window-size: 10
+    # 시도가 이만큼 쌓이기 전에는 열지 않는다. 메시지 하나가 재시도까지 실패하면 2번으로 세므로 약 3개 연속 실패에 열린다
+    minimum-number-of-calls: 5
+    failure-rate-threshold: 50
+    wait-duration-in-open-state: 30s
+    # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
+    permitted-number-of-calls-in-half-open-state: 3
   portone:
     # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
+    timeout: 15s
     mode: real
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET;}
@@ -48,6 +62,7 @@ zelo:
     connect-timeout: 3s
     read-timeout: 5s
     time-zone: Asia/Seoul
+   
 
 logging:
   level:

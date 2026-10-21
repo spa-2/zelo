@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat.service;
 
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
@@ -19,6 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ChatMessageService {
 
+    // LLM 답을 받지 못했을 때 남기는 AI 메시지. 방을 다시 열어도 그때 받은 문구가 보이도록 저장하고,
+    // 프론트와 이후 대화 처리는 payload.type(FALLBACK)으로 일반 답변과 구분한다
+    private static final String FALLBACK_CONTENT = "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.";
+    private static final String FALLBACK_PAYLOAD_FORMAT = "{\"type\":\"FALLBACK\",\"code\":\"%s\"}";
+
     private final ChatRoomService chatRoomService;
     private final ChatMessageRepository chatMessageRepository;
 
@@ -35,13 +41,15 @@ public class ChatMessageService {
         return saveUserMessage(chatRoom, chatRoom.getId(), content);
     }
 
-    // LLM 응답을 기다리는 사이 방 상태가 바뀌었을 수 있어 저장 직전에 소유자를 다시 확인
     @Transactional
     public ChatMessage createAssistantMessage(Long roomId, Long userId, String content) {
-        ChatRoom chatRoom = chatRoomService.getOwnedChatRoom(roomId, userId);
-        ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.ASSISTANT, content));
-        chatRoom.updateLastMessageAt(LocalDateTime.now());
-        return chatMessage;
+        return saveAssistantMessage(roomId, userId, content, null);
+    }
+
+    @Transactional
+    public ChatMessage createFallbackMessage(Long roomId, Long userId, ErrorCode errorCode) {
+        String payload = FALLBACK_PAYLOAD_FORMAT.formatted(errorCode.getCode());
+        return saveAssistantMessage(roomId, userId, FALLBACK_CONTENT, payload);
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +71,14 @@ public class ChatMessageService {
                 .map(ChatMessageResponse::from)
                 .toList();
         return GetChatMessagesResponse.of(messages, nextCursor, hasNext);
+    }
+
+    // LLM 응답을 기다리는 사이 방 상태가 바뀌었을 수 있어 저장 직전에 소유자를 다시 확인
+    private ChatMessage saveAssistantMessage(Long roomId, Long userId, String content, String payload) {
+        ChatRoom chatRoom = chatRoomService.getOwnedChatRoom(roomId, userId);
+        ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.ASSISTANT, content, payload));
+        chatRoom.updateLastMessageAt(LocalDateTime.now());
+        return chatMessage;
     }
 
     private ChatMessage saveUserMessage(ChatRoom chatRoom, Long roomId, String content) {

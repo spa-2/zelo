@@ -80,7 +80,6 @@ public enum ErrorCode {
     TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요."),
 
     // Delivery
-    // Delivery
     INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다.");
 
 

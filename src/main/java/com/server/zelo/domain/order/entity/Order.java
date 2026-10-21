@@ -102,4 +102,25 @@ public class Order extends BaseTimeEntity {
                            ActorType requesterType, ChatRoom chatRoom, Long totalAmount) {
         return new Order(user, quoteId, orderName, requesterType, chatRoom, totalAmount);
     }
+
+    public void pay() {
+        changeStatus(OrderStatus.PAID);
+    }
+
+    public void failPayment() {
+        changeStatus(OrderStatus.PAYMENT_FAILED);
+    }
+
+    public void cancel() {
+        changeStatus(OrderStatus.CANCELED);
+    }
+
+    // 허용하지 않은 상태 변경을 막아 주문 처리 순서를 지킨다.
+    private void changeStatus(OrderStatus nextStatus) {
+        if (!this.status.isTransitionAllowed(nextStatus)) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+
+        this.status = nextStatus;
+    }
 }

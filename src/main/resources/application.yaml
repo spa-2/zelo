@@ -63,16 +63,6 @@ zelo:
     time-zone: Asia/Seoul
    
 
-  portone:
-    # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
-    mode: ${ZELO_PORTONE_MODE:fake}
-    base-url: https://api.portone.io
-    api-secret: ${PORTONE_API_SECRET:}
-    store-id: ${PORTONE_STORE_ID:}
-    connect-timeout: 3s
-    read-timeout: 5s
-    time-zone: Asia/Seoul
-    # LLM 시도 한 번을 기다리는 최대 시간. 실측 gpt-5-mini 응답이 약 10초라 모델·추론 강도 실측 후 조정한다
 
 logging:
   level:

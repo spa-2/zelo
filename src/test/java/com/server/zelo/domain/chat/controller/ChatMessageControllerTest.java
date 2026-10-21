@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
@@ -283,6 +285,63 @@ class ChatMessageControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
         then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+    }
+
+    @Test
+    void LLM이_실패하면_그_실패의_5xx_상태와_코드를_주고_data에_고정_문구_메시지를_담는다() throws Exception {
+        // given
+        authenticate(1L);
+        ChatMessageResponse fallback = new ChatMessageResponse(
+                102L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}", LocalDateTime.now());
+        given(chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+                .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT, ErrorCode.AI_TIMEOUT.getMessage(), fallback));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/{roomId}/messages", 10L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isGatewayTimeout())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("AI_002"))
+                .andExpect(jsonPath("$.message").value(ErrorCode.AI_TIMEOUT.getMessage()))
+                .andExpect(jsonPath("$.data.messageId").value(102))
+                .andExpect(jsonPath("$.data.payload.type").value("FALLBACK"));
+    }
+
+    @Test
+    void 새_대화에서_LLM이_실패해도_오류_응답의_data에_새_방_ID와_고정_문구_메시지를_담는다() throws Exception {
+        // given
+        authenticate(1L);
+        ChatMessageResponse fallback = new ChatMessageResponse(
+                103L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_008\"}", LocalDateTime.now());
+        given(chatMessageOrchestrator.startChat(1L, "안녕"))
+                .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN, ErrorCode.AI_CIRCUIT_OPEN.getMessage(),
+                        StartChatResponse.of(77L, fallback)));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AI_008"))
+                .andExpect(jsonPath("$.data.roomId").value(77))
+                .andExpect(jsonPath("$.data.message.payload.type").value("FALLBACK"));
+    }
+
+    @Test
+    void data가_없는_비즈니스_예외는_기존처럼_data가_null이다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+                .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/{roomId}/messages", 10L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CHAT_002"))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     private void authenticate(Long userId) {

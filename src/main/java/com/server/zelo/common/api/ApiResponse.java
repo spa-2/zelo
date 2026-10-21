@@ -29,4 +29,9 @@ public record ApiResponse<T>(
     public static ApiResponse<Void> error(ErrorCode errorCode, String message) {
         return new ApiResponse<>(false, errorCode.getCode(), message, null);
     }
+
+    // 실패했지만 화면에 보여 줄 data가 있는 오류 응답
+    public static <T> ApiResponse<T> error(ErrorCode errorCode, String message, T data) {
+        return new ApiResponse<>(false, errorCode.getCode(), message, data);
+    }
 }

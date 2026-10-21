@@ -14,6 +14,7 @@ import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,10 +58,14 @@ class ChatMessageApiIntegrationTest {
     @Autowired
     private ChatMessageRepository chatMessageRepository;
 
-    // 스프링 컨텍스트는 테스트 클래스끼리 공유되므로, 바꾼 Fake 모드를 반드시 되돌린다
+    @Autowired
+    private CircuitBreaker llmCircuitBreaker;
+
+    // 스프링 컨텍스트는 테스트 클래스끼리 공유되므로, 바꾼 Fake 모드와 쌓인 서킷 브레이커 기록을 반드시 되돌린다
     @AfterEach
     void tearDown() {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
+        llmCircuitBreaker.reset();
     }
 
     @Test
@@ -102,22 +107,26 @@ class ChatMessageApiIntegrationTest {
     @Test
     // 클래스의 테스트 트랜잭션 안에서는 커밋되지 않은 데이터도 보이므로, 이 테스트만 트랜잭션 없이 실행해 실제 커밋을 검증한다
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void LLM이_실패하면_503과_AI_001을_반환하지만_사용자_메시지는_커밋되어_남아_있다() throws Exception {
+    void LLM_서버가_실패하면_502와_AI_004에_고정_문구_메시지를_담고_사용자_메시지와_함께_커밋되어_남아_있다() throws Exception {
         // given
         Long roomId = createRoom(OWNER_ID);
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         try {
-            // when
+            // when: 실패 코드는 상태·code로, 화면에 보여 줄 고정 문구 메시지는 data로 받는다
             send(OWNER_ID, roomId, "안녕")
-                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(status().isBadGateway())
                     .andExpect(jsonPath("$.success").value(false))
-                    .andExpect(jsonPath("$.code").value("AI_001"));
+                    .andExpect(jsonPath("$.code").value("AI_004"))
+                    .andExpect(jsonPath("$.data.sender").value("ASSISTANT"))
+                    .andExpect(jsonPath("$.data.payload.type").value("FALLBACK"))
+                    .andExpect(jsonPath("$.data.payload.code").value("AI_004"));
 
             // then: 바깥 트랜잭션이 없으므로 여기서 조회되는 것은 커밋된 데이터뿐이다
             List<ChatMessage> messages = messagesOf(roomId);
-            assertThat(messages).extracting(ChatMessage::getSender).containsExactly(ChatSender.USER);
+            assertThat(messages).extracting(ChatMessage::getSender).containsExactly(ChatSender.USER, ChatSender.ASSISTANT);
             assertThat(messages.get(0).getContent()).isEqualTo("안녕");
+            assertThat(messages.get(1).getPayload()).contains("FALLBACK");
         } finally {
             // 롤백되지 않으므로 테스트가 실패해도 만든 데이터를 직접 지운다
             chatMessageRepository.deleteAll(messagesOf(roomId));

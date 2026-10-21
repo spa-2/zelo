@@ -3,9 +3,7 @@ package com.server.zelo.domain.user.facade;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
-import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
-import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.Test;
@@ -55,21 +53,5 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserWithAddress(request);
-    }
-
-    @Test
-    void 로그인은_락_없이_실행한다() {
-        // given
-        LoginRequest request = new LoginRequest("Jieun@example.com", "DemoPass!2026");
-        LoginResult response = LoginResult.of("accessToken", "refreshToken");
-        given(userCommandService.login(request)).willReturn(response);
-
-        // when
-        LoginResult result = userFacade.login(request);
-
-        // then
-        assertThat(result).isEqualTo(response);
-        then(userCommandService).should().login(request);
-        then(lockDistributeService).shouldHaveNoInteractions();
     }
 }

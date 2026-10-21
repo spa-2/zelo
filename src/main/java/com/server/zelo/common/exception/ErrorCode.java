@@ -58,11 +58,19 @@ public enum ErrorCode {
 
     // AI
     AI_RESPONSE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AI_001", "AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "AI_002", "AI 응답 시간이 초과되었습니다."),
+    AI_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "AI_003", "AI 요청이 많아 잠시 처리할 수 없습니다."),
+    AI_SERVER_ERROR(HttpStatus.BAD_GATEWAY, "AI_004", "AI 서비스에 일시적인 오류가 발생했습니다."),
+    AI_NETWORK_ERROR(HttpStatus.BAD_GATEWAY, "AI_005", "AI 서비스에 연결하지 못했습니다."),
+    AI_REQUEST_REJECTED(HttpStatus.BAD_GATEWAY, "AI_006", "AI 서비스가 요청을 처리하지 못했습니다."),
+    AI_EMPTY_RESPONSE(HttpStatus.BAD_GATEWAY, "AI_007", "AI가 빈 응답을 보냈습니다."),
+    AI_CIRCUIT_OPEN(HttpStatus.SERVICE_UNAVAILABLE, "AI_008", "AI 서비스를 잠시 사용할 수 없습니다."),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "인증이 필요합니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_002", "유효하지 않은 토큰입니다."),
-    NO_AUTHORITY(HttpStatus.FORBIDDEN, "AUTH_003", "권한이 없는 요청입니다.");
+    NO_AUTHORITY(HttpStatus.FORBIDDEN, "AUTH_003", "권한이 없는 요청입니다."),
+    TOKEN_REVOKE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_004", "로그아웃 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String code;

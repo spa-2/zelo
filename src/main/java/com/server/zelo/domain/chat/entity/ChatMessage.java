@@ -43,21 +43,26 @@ public class ChatMessage extends BaseCreatedEntity {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
-    // 견적 카드·버튼처럼 화면에 그릴 구조화 데이터(JSON). 그때 보여 준 화면을 그대로 복원하기 위한 스냅샷이다
+    // 견적 카드·버튼처럼 화면에 그릴 구조화 데이터(JSON). 그때 보여 준 화면을 그대로 복원하기 위한 스냅샷
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload", nullable = true, columnDefinition = "jsonb")
     private String payload;
 
-    private ChatMessage(Long roomId, ChatSender sender, String content) {
+    private ChatMessage(Long roomId, ChatSender sender, String content, String payload) {
         this.roomId = roomId;
         this.sender = sender;
         this.content = content;
+        this.payload = payload;
     }
 
     public static ChatMessage of(Long roomId, ChatSender sender, String content) {
+        return of(roomId, sender, content, null);
+    }
+
+    public static ChatMessage of(Long roomId, ChatSender sender, String content, String payload) {
         if (roomId == null || sender == null || !StringUtils.hasText(content)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
-        return new ChatMessage(roomId, sender, content);
+        return new ChatMessage(roomId, sender, content, payload);
     }
 }

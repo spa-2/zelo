@@ -1,18 +1,29 @@
 package com.server.zelo.ai.llm;
 
+import com.openai.core.http.Headers;
+import com.openai.errors.BadRequestException;
+import com.openai.errors.InternalServerException;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@Qualifier(ResilientLlmGateway.DELEGATE)
 @ConditionalOnProperty(name = "zelo.llm.mode", havingValue = "fake")
 public class FakeLlmGateway implements LlmGateway {
 
     public static final String MODEL = "fake";
 
-    public enum Mode { NORMAL, DELAY, FAIL }
+    // 실제 OpenAI SDK와 같은 예외를 던져, 재시도 대상 구분까지 실제와 똑같이 확인할 수 있게 한다
+    public enum Mode {
+        NORMAL,
+        DELAY, // 설정한 시간만큼 늦게 답한다 (타임아웃 확인)
+        FAIL, // 서버 오류(5xx): 다시 보내면 나을 수 있어 재시도 대상
+        REJECT // 요청 거절(4xx): 다시 보내도 똑같이 실패해 재시도하지 않음
+    }
 
     // 테스트 스레드에서 바꾼 모드를 요청 스레드가 바로 보도록 volatile
     private volatile Mode mode = Mode.NORMAL;
@@ -22,7 +33,13 @@ public class FakeLlmGateway implements LlmGateway {
     public LlmReply explain(String systemPrompt, String userText) {
         switch (mode) {
             case DELAY -> sleep(delay);
-            case FAIL -> throw new IllegalStateException("fake llm failure");
+            case FAIL -> throw InternalServerException.builder()
+                    .statusCode(500)
+                    .headers(Headers.builder().build())
+                    .build();
+            case REJECT -> throw BadRequestException.builder()
+                    .headers(Headers.builder().build())
+                    .build();
             case NORMAL -> { }
         }
         return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);

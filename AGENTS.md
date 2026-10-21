@@ -49,9 +49,22 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 - 어노테이션은 **짧은 것 → 긴 것** 순서로 쓴다. (`@Slf4j` → `@Service` → `@RequiredArgsConstructor`)
 - 필드명은 타입명과 맞추고, 선언도 **짧은 것 → 긴 것** 순서로 쓴다.
 ### 계층 책임 (호출 흐름: Controller → Facade → Command → Service → Repository)
-- **Facade**: 공통 락 클래스로 락만 건다. `@Transactional`을 붙이지 않는다. (락은 트랜잭션 커밋 후에 풀려야 하기 때문)
-- **Command**: 여러 도메인 Service의 호출 순서를 정하고, 전체 작업의 트랜잭션 경계를 담당한다.
+- Facade와 Command는 필요한 경우에만 둔다. 필요 없는 계층은 건너뛰고 바로 다음 계층을 호출한다. 아래 순서로 판단한다.
+    1. 락이 필요한가? → **Facade**를 둔다.
+    2. 자기 도메인의 Service 하나(그 Service의 Repository)로 끝나는가? → Controller가 **Service**를 바로 호출한다.
+    3. 아래 중 하나라도 해당하는가? → **Command**를 둔다.
+        - 다른 도메인의 Service가 필요하다.
+        - 토큰 발급, 외부 API처럼 도메인 밖의 협력 객체를 순서대로 엮어야 한다.
+        - 여러 Service 호출을 하나의 트랜잭션으로 묶어야 한다.
+    - 예: 락이 필요 없고 조율만 필요하면 Controller → Command, 락만 필요하면 Controller → Facade → Service.
+- **Facade**: 공통 락 클래스로 락만 건다. `@Transactional`을 붙이지 않는다. (락은 트랜잭션 커밋 후에 풀려야 하기 때문) 락이 필요 없으면 만들지 않는다. 호출만 넘기는 메서드를 두지 않는다.
+- **Command**: 위 3번에 해당하는 작업에서 호출 순서를 정하고, 전체 작업의 트랜잭션 경계를 담당한다. 해당하지 않으면 만들지 않는다.
 - **Service**: 자기 도메인 Repository만 주입받는다. 다른 도메인 Service를 주입하지 않는다. 그런 조율이 필요하면 Command를 만든다.
+### 트랜잭션
+- Command가 있으면 Command가 트랜잭션 경계를 잡고, 그 안의 Service는 같은 트랜잭션에 참여한다. (안쪽 Service의 `readOnly`는 무시된다.)
+- Command 없이 Service를 바로 호출하는 경우, JPA를 쓰는 Service 클래스에 `@Transactional`을 붙이고 조회 메서드에만 `@Transactional(readOnly = true)`를 붙인다. (조회 메서드에 `readOnly`를 빠뜨려도 동작은 정상이지만, 반대로 쓰기 메서드에 `readOnly`를 붙이면 변경이 저장되지 않기 때문)
+- Redis처럼 JPA를 쓰지 않는 Service에는 붙이지 않는다.
+- `open-in-view`가 꺼져 있으므로 지연 로딩이 필요한 조회는 트랜잭션 안에서 처리한다.
 ### 락
 - 분산락은 `common.lock.LockDistributeService`(Redisson)로만 건다. `RedissonClient`를 직접 쓰지 않는다.
 - 사용법: `lockDistributeService.execute(LockKey.xxx(...), () -> command.xxx(...))`. 반환값이 있으면 `Supplier`, 없으면 `Runnable`을 넘긴다.

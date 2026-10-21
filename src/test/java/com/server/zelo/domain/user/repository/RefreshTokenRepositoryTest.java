@@ -31,13 +31,13 @@ class RefreshTokenRepositoryTest {
     @BeforeEach
     void setUp() {
         refreshTokenRepository = new RefreshTokenRepository(stringRedisTemplate, REFRESH_EXPIRATION);
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
     }
 
     @Test
     void 토큰_원문_대신_해시를_만료시간과_함께_저장한다() {
         // given
         String refreshToken = "refreshToken";
+        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
 
         // when
         refreshTokenRepository.save(1L, refreshToken);
@@ -48,5 +48,14 @@ class RefreshTokenRepositoryTest {
                 // 원문이 그대로 저장되지 않고 SHA-256 hex(64자)로 저장되는지 확인
                 argThat(saved -> !saved.equals(refreshToken) && saved.matches("^[0-9a-f]{64}$")),
                 eq(Duration.ofMillis(REFRESH_EXPIRATION)));
+    }
+
+    @Test
+    void 유저의_리프레시_토큰_키를_삭제한다() {
+        // when
+        refreshTokenRepository.delete(1L);
+
+        // then
+        then(stringRedisTemplate).should().delete("refresh:1");
     }
 }

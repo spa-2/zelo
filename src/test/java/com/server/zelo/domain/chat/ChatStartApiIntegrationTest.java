@@ -17,6 +17,7 @@ import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
 import com.server.zelo.domain.chat.service.ChatMessageService;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -58,10 +59,14 @@ class ChatStartApiIntegrationTest {
     @Autowired
     private ChatMessageRepository chatMessageRepository;
 
-    // 스프링 컨텍스트는 테스트 클래스끼리 공유되므로, 바꾼 Fake 모드를 반드시 되돌린다
+    @Autowired
+    private CircuitBreaker llmCircuitBreaker;
+
+    // 스프링 컨텍스트는 테스트 클래스끼리 공유되므로, 바꾼 Fake 모드와 쌓인 서킷 브레이커 기록을 반드시 되돌린다
     @AfterEach
     void tearDown() {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
+        llmCircuitBreaker.reset();
     }
 
     @Test
@@ -117,21 +122,26 @@ class ChatStartApiIntegrationTest {
     @Test
     // 테스트 트랜잭션 안에서는 커밋되지 않은 데이터도 보이므로, 트랜잭션 없이 실행해 실제 커밋을 검증한다
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void LLM이_실패하면_503이지만_방과_첫_메시지는_커밋되어_남아_있다() throws Exception {
+    void LLM이_실패하면_502여도_data에_새_방_ID와_고정_문구_메시지를_담고_방과_메시지는_커밋되어_남아_있다() throws Exception {
         // given
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         try {
             // when
-            start(USER_ID, "안녕")
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(jsonPath("$.code").value("AI_001"));
+            String body = start(USER_ID, "안녕")
+                    .andExpect(status().isBadGateway())
+                    .andExpect(jsonPath("$.code").value("AI_004"))
+                    .andExpect(jsonPath("$.data.roomId").isNumber())
+                    .andExpect(jsonPath("$.data.message.sender").value("ASSISTANT"))
+                    .andExpect(jsonPath("$.data.message.payload.type").value("FALLBACK"))
+                    .andReturn().getResponse().getContentAsString();
 
-            // then: 사용자는 이 방에서 다시 보낼 수 있어야 한다
+            // then: 사용자는 돌려받은 방에서 다시 보낼 수 있어야 한다
             List<ChatRoom> rooms = roomsOf(USER_ID);
-            assertThat(rooms).hasSize(1);
+            assertThat(rooms).extracting(ChatRoom::getId)
+                    .containsExactly(((Number) JsonPath.read(body, "$.data.roomId")).longValue());
             assertThat(messagesOf(rooms.getFirst().getId())).extracting(ChatMessage::getSender)
-                    .containsExactly(ChatSender.USER);
+                    .containsExactly(ChatSender.USER, ChatSender.ASSISTANT);
         } finally {
             deleteAllOf(USER_ID);
         }

@@ -3,6 +3,8 @@ package com.server.zelo.ai.llm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.openai.errors.BadRequestException;
+import com.openai.errors.InternalServerException;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -24,13 +26,26 @@ class FakeLlmGatewayTest {
     }
 
     @Test
-    void 실패_모드면_예외가_발생한다() {
+    void 실패_모드면_재시도_대상인_서버_오류를_던진다() {
         // given
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when & then
         assertThatThrownBy(() -> fakeLlmGateway.explain("system", "질문"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOfSatisfying(InternalServerException.class,
+                        exception -> assertThat(exception.statusCode()).isEqualTo(500))
+                .satisfies(exception -> assertThat(LlmErrorClassifier.isRetryable(exception)).isTrue());
+    }
+
+    @Test
+    void 거절_모드면_재시도하지_않는_요청_오류를_던진다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.REJECT);
+
+        // when & then
+        assertThatThrownBy(() -> fakeLlmGateway.explain("system", "질문"))
+                .isInstanceOf(BadRequestException.class)
+                .satisfies(exception -> assertThat(LlmErrorClassifier.isRetryable(exception)).isFalse());
     }
 
     @Test

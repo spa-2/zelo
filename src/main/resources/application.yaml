@@ -39,6 +39,7 @@ zelo:
     mode: real
     # LLM 요청 하나를 기다리는 최대 시간. 실제 gpt-5-mini 응답이 약 10초 걸려 여유를 두었다 (팀 합의 후 조정)
      timeout: 5s
+    # LLM 시도 한 번을 기다리는 최대 시간. 실측 gpt-5-mini 응답이 약 10초라 모델·추론 강도 실측 후 조정한다
     retry:
       # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
       max-attempts: 2

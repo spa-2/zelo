@@ -1,4 +1,4 @@
-package com.server.zelo.domain.order;
+package com.server.zelo.domain.order.entity;
 
 public enum StockState {
     RESERVED, // 주문 생성 시 선점

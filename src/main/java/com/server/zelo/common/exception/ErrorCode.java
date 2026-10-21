@@ -67,6 +67,7 @@ public enum ErrorCode {
     AI_REQUEST_REJECTED(HttpStatus.BAD_GATEWAY, "AI_006", "AI 서비스가 요청을 처리하지 못했습니다."),
     AI_EMPTY_RESPONSE(HttpStatus.BAD_GATEWAY, "AI_007", "AI가 빈 응답을 보냈습니다."),
     AI_CIRCUIT_OPEN(HttpStatus.SERVICE_UNAVAILABLE, "AI_008", "AI 서비스를 잠시 사용할 수 없습니다."),
+    AI_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI_009", "요청을 이해하지 못했어요. 다시 말씀해 주세요."),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "인증이 필요합니다."),

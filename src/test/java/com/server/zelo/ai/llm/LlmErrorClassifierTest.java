@@ -91,6 +91,27 @@ class LlmErrorClassifierTest {
     }
 
     @Test
+    void JSON을_객체로_바꾸지_못하면_AI_INVALID_RESPONSE이고_재시도하며_서킷_실패로_센다() {
+        // given: 구조화 출력에서 Spring AI가 LLM 응답을 MenuPlan으로 바꾸다 실패하는 것과 같은 예외
+        RuntimeException exception = OpenAiErrors.invalidJson();
+
+        // when & then
+        assertThat(LlmErrorClassifier.classify(exception)).isEqualTo(ErrorCode.AI_INVALID_RESPONSE);
+        assertThat(LlmErrorClassifier.isRetryable(exception)).isTrue();
+        assertThat(LlmErrorClassifier.isCircuitFailure(exception)).isTrue();
+    }
+
+    @Test
+    void 메뉴_계획_검증_실패도_재시도한다() {
+        // given
+        BusinessException invalid = new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+
+        // when & then
+        assertThat(LlmErrorClassifier.classify(invalid)).isEqualTo(ErrorCode.AI_INVALID_RESPONSE);
+        assertThat(LlmErrorClassifier.isRetryable(invalid)).isTrue();
+    }
+
+    @Test
     void 알_수_없는_예외는_AI_RESPONSE_FAILED이고_재시도하지_않는다() {
         // given
         IllegalStateException exception = new IllegalStateException("bug");

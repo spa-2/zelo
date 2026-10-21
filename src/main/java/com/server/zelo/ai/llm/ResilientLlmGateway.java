@@ -52,23 +52,28 @@ public class ResilientLlmGateway implements LlmGateway {
 
     @Override
     public LlmReply explain(String systemPrompt, String userText) {
-        return call(() -> llmGateway.explain(systemPrompt, userText));
+        return call(() -> withUsage(requireText(llmGateway.explain(systemPrompt, userText)))).content();
+    }
+
+    @Override
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
+        return call(() -> requireValidPlan(llmGateway.planMenu(systemPrompt, userText)));
     }
 
     // 재시도(바깥) → 서킷 브레이커 → 시도당 시간 제한(안쪽) 순서로 감싼다.
     // 그래서 재시도한 시도도 서킷 브레이커가 한 번씩 세고, 서킷이 열려 막힌 호출은 재시도하지 않는다
-    private LlmReply call(Supplier<LlmReply> request) {
+    private <T> LlmResult<T> call(Supplier<LlmResult<T>> request) {
 
         // (가) 시도 1번 = 다른 스레드에서 실행하고, 5초만 기다린다.
-        Callable<LlmReply> attempt = () -> timeLimiter.executeFutureSupplier(
-                () -> executorService.submit(() -> requireText(request.get())));
+        Callable<LlmResult<T>> attempt = () -> timeLimiter.executeFutureSupplier(
+                () -> executorService.submit(() -> request.get()));
 
         // (나) 그 시도를 서킷 브레이커로 감싼다.
-        Callable<LlmReply> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);
+        Callable<LlmResult<T>> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);
 
         // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
         AtomicInteger attemptNumber = new AtomicInteger();
-        Callable<LlmReply> logged = () -> logAttempt(attemptNumber.incrementAndGet(), guarded);
+        Callable<LlmResult<T>> logged = () -> logAttempt(attemptNumber.incrementAndGet(), guarded);
         try {
             // (다) 그걸 다시 재시도로 감싸서 실행한다.
             return Retry.decorateCallable(retry, logged).call();
@@ -88,14 +93,14 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     // 프롬프트·사용자 메시지 원문은 남기지 않는다
-    private LlmReply logAttempt(int attemptNumber, Callable<LlmReply> guarded) throws Exception {
+    private <T> LlmResult<T> logAttempt(int attemptNumber, Callable<LlmResult<T>> guarded) throws Exception {
         long start = System.nanoTime();
         try {
-            LlmReply reply = guarded.call();
+            LlmResult<T> result = guarded.call();
             log.info("LLM 호출 attempt={} model={} latencyMs={} success=true error=- promptTokens={} completionTokens={}",
-                    attemptNumber, orDash(reply.model()), elapsedMillis(start),
-                    orDash(reply.promptTokens()), orDash(reply.completionTokens()));
-            return reply;
+                    attemptNumber, orDash(result.model()), elapsedMillis(start),
+                    orDash(result.promptTokens()), orDash(result.completionTokens()));
+            return result;
         } catch (Exception e) {
             log.warn("LLM 호출 attempt={} model={} latencyMs={} success=false error={} promptTokens=- completionTokens=-",
                     attemptNumber, model, elapsedMillis(start), LlmErrorClassifier.classify(e).getCode());
@@ -109,6 +114,21 @@ public class ResilientLlmGateway implements LlmGateway {
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
         }
         return reply;
+    }
+
+    // explain도 같은 보호와 기록을 거치도록, 모델·토큰을 LlmResult에 옮겨 담는다
+    private static LlmResult<LlmReply> withUsage(LlmReply reply) {
+        return LlmResult.of(reply, reply.model(), reply.promptTokens(), reply.completionTokens());
+    }
+
+    // LLM이 준 값은 믿지 않는다. 시도 안에서 검증해야 검증 실패도 형식 오류처럼 한 번 더 물어볼 수 있다
+    private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result) {
+        if (result == null || result.content() == null) {
+            // 응답 본문이 비어 객체를 만들지 못한 경우. 문장 응답의 빈 답과 같게 본다
+            throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
+        }
+        result.content().validate(MenuPlanPrompt.INGREDIENT_UNITS);
+        return result;
     }
 
     private static long elapsedMillis(long startNanos) {

@@ -9,8 +9,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 @EnableConfigurationProperties(PortOneProperties.class)
+@ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 public class PortOneConfig {
 
     @Bean

@@ -43,8 +43,8 @@ zelo:
     # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
     mode: real
     base-url: https://api.portone.io
-    api-secret: ${PORTONE_API_SECRET;}
-    store-id: ${PORTONE_STORE_ID;}
+    api-secret: ${PORTONE_API_SECRET}
+    store-id: ${PORTONE_STORE_ID}
     connect-timeout: 3s
     read-timeout: 5s
     time-zone: Asia/Seoul

@@ -67,13 +67,12 @@ public class OrderCommandService {
         for(OrderItem orderItem : getItemsInProductOrder(order)) {
 
             // 품목이 RESERVED면 해제
-            if (orderItem.getStockState() == StockState.RESERVED) {
+            if (orderItem.isReserved()) {
                 orderItem.release(); // StockState: RESERVED -> RELEASED
                 inventoryService.release(orderItem.getProduct().getId(), orderItem.getQuantity());
             }
-
-            // 품목이 DEDUCTED면 복원
-            else if (orderItem.getStockState() == StockState.DEDUCTED) {
+            else {
+                // DEDUCTED가 아니면 restore()의 전이 검증에서 예외 발생
                 orderItem.restore();  // StockState: DEDUCTED → RESTORED
                 inventoryService.restore(orderItem.getProduct().getId(), orderItem.getQuantity());
             }

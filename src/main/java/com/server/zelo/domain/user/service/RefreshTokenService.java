@@ -30,26 +30,30 @@ public class RefreshTokenService {
         }
     }
 
-    // 판단 순서: 현재 토큰과 일치 → 다른 기기 로그인으로 낡아진 토큰 → 저장된 토큰 없음 → 그 외(교체된 토큰의 재사용)
-    public void rotateToken(Long userId, String presentedRefreshToken, String newRefreshToken) {
-        // 현재 redis에 저장된 리프레시 토큰과 사용자가 보낸 토큰이 일치하다면
-        if (refreshTokenRepository.matches(userId, presentedRefreshToken)) {
-            // 엑세스와 리프레스 토큰을 모두 갱신
-            refreshTokenRepository.rotate(userId, newRefreshToken);
+    // 판단 순서: 현재 토큰과 일치(교체) → 다른 기기 로그인으로 낡아진 토큰 → 저장된 토큰 없음 → 방금 교체된 토큰 → 그 외(교체된 토큰의 재사용)
+    public void rotateToken(Long userId, String receivedRefreshToken, String newRefreshToken) {
+        // 확인과 교체를 한 번에 처리해서 그 사이에 로그인이나 로그아웃이 끼어들어도 덮어쓰지 않음
+        if (refreshTokenRepository.rotateIfMatches(userId, receivedRefreshToken, newRefreshToken)) {
             return;
         }
 
-        // 현재 redis에 저장된 리프레시 토큰은 아니지만 superseded 토큰이면 본인이 다른 기기에서 로그인한 것이라서 새 기기의 세션은 지키고 안내만 함
-        if (refreshTokenRepository.isSuperseded(presentedRefreshToken)) {
+        // 본인이 다른 기기에서 로그인한 것이라서 새 기기의 세션은 지키고 안내만 함
+        if (refreshTokenRepository.isSuperseded(receivedRefreshToken)) {
             throw new BusinessException(ErrorCode.LOGGED_IN_ELSEWHERE);
         }
 
-        // 로그아웃했거나 만료된 경우거에는 그냥 넘어감
+        // 로그아웃했거나 재사용 감지로 삭제가 된 토큰으로 재발급 요청을 한 경우
         if (!refreshTokenRepository.exists(userId)) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
 
-        // 이미 교체된 토큰이 다시 들어온 경우로 탈취 가능성이 높기 때문에 현재 로그인한 사용자의 토큰을 삭제함(재 로그인 유도)
+        // 동시 요청이나 응답 유실 후 재시도일 수 있어서 세션은 지키고 새 토큰도 내주지 않음 (내주면 탈취된 토큰으로도 새 토큰을 받게 됨)
+        if (refreshTokenRepository.isRotated(receivedRefreshToken)) {
+            log.warn("방금 교체된 리프레시 토큰으로 재요청 userId={}", userId);
+            throw new BusinessException(ErrorCode.TOKEN_ALREADY_ROTATED);
+        }
+
+        // 로그인으로 말려난 (superseded)도 아니고, 재발급 후 밀려나서 방금 교체된 (rotated)도 아닌 토큰이 들어온 경우로 탈취 가능성이 높기 때문에 현재 로그인한 사용자의 토큰도 삭제함(재 로그인 유도)
         log.warn("리프레시 토큰 재사용 감지 userId={}", userId);
         refreshTokenRepository.delete(userId);
         throw new BusinessException(ErrorCode.TOKEN_REUSED);

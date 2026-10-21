@@ -53,20 +53,23 @@ public class UserCommandService {
         return LoginResult.of(accessToken, refreshToken);
     }
 
-    public Long verifyTokenAndGetUserId(String refreshToken) {
+    // 교체 자체는 Redis 안에서 원자적으로 처리되어서 락 없이 호출함
+    public LoginResult reissue(String refreshToken) {
+        Long userId = verifyTokenAndGetUserId(refreshToken);
+
+        String newAccessToken = jwtUtil.createAccessToken(userId);
+        String newRefreshToken = jwtUtil.createRefreshToken(userId);
+        // 리프레스 토큰이 유효할때만 새로운 토큰으로 응답
+        refreshTokenService.rotateToken(userId, refreshToken, newRefreshToken);
+        return LoginResult.of(newAccessToken, newRefreshToken);
+    }
+
+    private Long verifyTokenAndGetUserId(String refreshToken) {
         // 토큰이 유효하지 않거나 리프레시 토큰이 아니라면 예외
         if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
 
         return jwtUtil.getUserId(refreshToken);
-    }
-
-    public LoginResult reissue(Long userId, String refreshToken) {
-        String newAccessToken = jwtUtil.createAccessToken(userId);
-        String newRefreshToken = jwtUtil.createRefreshToken(userId);
-        // 리프레스 토큰이 유효할때만 새로운 토큰으로 응답
-        refreshTokenService.rotateToken(userId, refreshToken, newRefreshToken);
-        return LoginResult.of(newAccessToken, newRefreshToken);
     }
 }

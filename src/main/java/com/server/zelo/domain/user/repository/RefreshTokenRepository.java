@@ -2,6 +2,8 @@ package com.server.zelo.domain.user.repository;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Repository;
 
 import java.nio.charset.StandardCharsets;
@@ -9,14 +11,36 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.List;
 
 @Repository
 public class RefreshTokenRepository {
 
     private final Duration refreshTokenTtl;
-    private static final String KEY_PREFIX = "refresh:";
     private final StringRedisTemplate stringRedisTemplate;
+
+    private static final String REFRESH_KEY_PREFIX = "refresh:";
+    private static final String ROTATED_KEY_PREFIX = "refresh:rotated:";
     private static final String SUPERSEDED_KEY_PREFIX = "refresh:superseded:";
+
+    // 길면 탈취된 직전 토큰을 탈취로 보지 않는 시간이 길어지고, 너무 짧으면 동시 요청이 세션 삭제로 이어져서 짧게 둠
+    private static final Duration ROTATED_MARKER_TTL = Duration.ofSeconds(10);
+
+    // KEYS[1]: 현재 토큰 키, KEYS[2]: 직전 토큰의 rotated 키
+    // ARGV[1]: 제시한 토큰 해시, ARGV[2]: 새 토큰 해시, ARGV[3]: 토큰 TTL(ms), ARGV[4]: rotated 표식 TTL(ms)
+    private static final RedisScript<Long> ROTATE_SCRIPT = new DefaultRedisScript<>("""
+            -- 저장된 현재 토큰 해시가 제시한 토큰의 해시와 같을 때만 아래를 실행함
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                -- 교체한다: 현재 토큰을 새 토큰 해시로 덮어씀
+                redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+                -- rotated로 기록한다: 방금 교체된 직전 토큰을 짧은 시간만 표시함
+                redis.call('SET', KEYS[2], '1', 'PX', ARGV[4])
+                return 1
+            end
+            -- 다르거나 저장된 값이 없으면 아무것도 바꾸지 않음
+            return 0
+            """, Long.class);
+
 
     // TTL을 토큰 만료 시간과 맞춰야 만료된 토큰이 Redis에 남지 않음
     public RefreshTokenRepository(StringRedisTemplate stringRedisTemplate,
@@ -45,16 +69,23 @@ public class RefreshTokenRepository {
         stringRedisTemplate.delete(key(userId));
     }
 
-    // 토큰 재발급은 로그인과 달리 superseded에 기록하지 않음 (나중에 재사용되면 다른 기기 로그인이 아니라 탈취로 판단해야 하기 때문)
-    public void rotate(Long userId, String newRefreshToken) {
-        stringRedisTemplate.opsForValue().set(key(userId), hash(newRefreshToken), refreshTokenTtl);
-    }
+    // 저장된 해시가 제시한 토큰의 해시와 같을 때만 새 토큰으로 교체하고, 교체된 토큰은 짧은 시간 rotated로 기록함
+    // 확인과 교체 사이에 로그인, 로그아웃, 다른 재발급이 끼어들 수 없도록 Redis 안에서 한 번에 처리함
+    // 로그인과 달리 superseded에는 기록하지 않음 (나중에 재사용되면 다른 기기 로그인이 아니라 탈취로 판단해야 하기 때문)
+    public boolean rotateIfMatches(Long userId, String receivedRefreshToken, String newRefreshToken) {
+        String presentedHash = hash(receivedRefreshToken);
 
-    public boolean matches(Long userId, String refreshToken) {
-        // 현재 저장된 리프레쉬 해쉬값을 가져오고
-        String savedHash = stringRedisTemplate.opsForValue().get(key(userId));
-        // redis에 존재하고 사용자가 보낸 리프레시위 해쉬값과 일치하면 참
-        return savedHash != null && savedHash.equals(hash(refreshToken));
+        // 일치 확인, 교체, rotated 기록은 모두 이 스크립트(ROTATE_SCRIPT) 안에서 한 번에 처리됨
+        // 반환값 1은 교체되고 rotated로 기록된 것이고, 0은 아무것도 바뀌지 않은 것
+        Long result = stringRedisTemplate.execute(
+                ROTATE_SCRIPT,
+                List.of(key(userId), rotatedKey(presentedHash)),
+                presentedHash,
+                hash(newRefreshToken),
+                String.valueOf(refreshTokenTtl.toMillis()),
+                String.valueOf(ROTATED_MARKER_TTL.toMillis()));
+
+        return Long.valueOf(1L).equals(result);
     }
 
     public boolean exists(Long userId) {
@@ -66,8 +97,17 @@ public class RefreshTokenRepository {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(supersededKey(hash(refreshToken))));
     }
 
+    // 방금 재발급으로 교체된 토큰인지 확인 (동시 요청이나 응답 유실 후 재시도로 들어온 경우)
+    public boolean isRotated(String refreshToken) {
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(rotatedKey(hash(refreshToken))));
+    }
+
     private String key(Long userId) {
-        return KEY_PREFIX + userId;
+        return REFRESH_KEY_PREFIX + userId;
+    }
+
+    private String rotatedKey(String hashedRefreshToken) {
+        return ROTATED_KEY_PREFIX + hashedRefreshToken;
     }
 
     // supersededKey는 userId를 기준으로 저장하지 않고 해시를 기준으로 저장하여 탈취에 대한 오탐을 줄임

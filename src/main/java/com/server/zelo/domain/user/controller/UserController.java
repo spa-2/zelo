@@ -81,7 +81,7 @@ public class UserController {
     ) {
         LoginResult result;
         try {
-            result = userFacade.reissue(refreshToken);
+            result = userCommandService.reissue(refreshToken);
         } catch (BusinessException e) {
             // 락 대기같은 예외가 아닌 비즈니스 에외가 발생했다면 만료된 토큰, 옛날 토큰, 탈취 토큰 중 하나라서 인증에 실패한 쿠키를 브라우저에서 지우게 응답
             if (e.getErrorCode().getStatus() == HttpStatus.UNAUTHORIZED) {

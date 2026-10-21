@@ -2,7 +2,6 @@ package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.order.ActorType;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;

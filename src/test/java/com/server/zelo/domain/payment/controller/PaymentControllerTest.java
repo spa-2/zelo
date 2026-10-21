@@ -67,7 +67,7 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.portoneId").value(PORTONE_ID))
                 .andExpect(jsonPath("$.data.status").value("PAID"))
-                .andExpect(jsonPath("$.data.message").value("결제가 완료됐어요."));
+                .andExpect(jsonPath("$.data.message").value("결제가 완료됐습니다."));
     }
 
     @Test
@@ -80,7 +80,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/api/payments/{portoneId}/confirm", PORTONE_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 주문을 다시 진행해 주세요."));
+                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 주문을 다시 진행해 주시길 바랍니다."));
     }
 
     @Test
@@ -93,7 +93,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/api/payments/{portoneId}/confirm", PORTONE_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CONFIRM_PENDING"))
-                .andExpect(jsonPath("$.data.message").value("결제를 확인하고 있어요. 잠시 후 주문 내역에서 확인해 주세요."));
+                .andExpect(jsonPath("$.data.message").value("결제를 확인하고 있어요."));
     }
 
     @Test

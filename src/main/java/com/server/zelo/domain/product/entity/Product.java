@@ -52,7 +52,7 @@ public class Product extends BaseTimeEntity {
     private String description;
 
     @Column(name = "price", nullable = false)
-    private Integer price;
+    private Long price;
 
     // 상품 1개에 들어 있는 양 ex:상품명(사과1box) 갯수(15개) (재료의 base_unit 기준)
     @Column(name = "content_amount", nullable = false)
@@ -75,7 +75,7 @@ public class Product extends BaseTimeEntity {
      * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우 또는 판매 단위가 비어 있거나 20자를 초과하는 경우
      */
     private Product(String productCode, Ingredient ingredient, String name,
-                    String description, Integer price, Integer contentAmount, String unitLabel) {
+                    String description, Long price, Integer contentAmount, String unitLabel) {
         if (price == null || price < 0) {
             throw new BusinessException(ErrorCode.INVALID_PRICE);
         }
@@ -116,7 +116,7 @@ public class Product extends BaseTimeEntity {
      *                          내용량이 없거나 0 이하이거나 판매 단위가 비어 있거나 20자를 초과하면 {@link ErrorCode#INVALID_INPUT}으로 발생
      */
     public static Product of(String productCode, Ingredient ingredient, String name,
-                             String description, Integer price, Integer contentAmount, String unitLabel) {
+                             String description, Long price, Integer contentAmount, String unitLabel) {
         return new Product(productCode, ingredient, name, description, price, contentAmount, unitLabel);
     }
 }

@@ -2,7 +2,9 @@ package com.server.zelo.ai.llm;
 
 import java.time.Duration;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ResponseEntity;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -44,5 +46,23 @@ public class SpringAiLlmGateway implements LlmGateway {
                 response.getMetadata().getModel(),
                 usage.getPromptTokens(),
                 usage.getCompletionTokens());
+    }
+
+    @Override
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
+        // useProviderStructuredOutput: JSON 스키마를 프롬프트 글이 아니라 OpenAI 요청 옵션(엄격 모드)으로 보내,
+        // 정해진 칸과 키워드·단위 목록 밖의 값이 오지 않게 한다. 객체로 바꾸지 못하면 JacksonException이 난다
+        ResponseEntity<ChatResponse, MenuPlan> response = chatClient.prompt()
+                .system(systemPrompt)
+                .user(userText)
+                .call()
+                .responseEntity(MenuPlan.class, ChatClient.EntityParamSpec::useProviderStructuredOutput);
+
+        ChatResponseMetadata metadata = response.response().getMetadata();
+        return LlmResult.of(
+                response.entity(),
+                metadata.getModel(),
+                metadata.getUsage().getPromptTokens(),
+                metadata.getUsage().getCompletionTokens());
     }
 }

@@ -11,6 +11,8 @@ import static org.mockito.Mockito.times;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.product.entity.BaseUnit;
+import com.server.zelo.domain.product.entity.Keyword;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
@@ -339,6 +341,123 @@ class ResilientLlmGatewayTest {
         assertThat(attemptLogLines(output)).singleElement()
                 .satisfies(line -> assertThat(line).contains("error=AI_001"));
         assertThat(output.getOut()).contains("LLM 호출 실패 원인: AI_001").contains("IllegalStateException: unexpected");
+    }
+
+    @Test
+    void 메뉴_계획이_검증을_통과하면_한_번만_호출하고_그대로_돌려준다(CapturedOutput output) {
+        // given
+        given(delegate.planMenu("system", "질문")).willReturn(planResult(validPlan()));
+
+        // when
+        LlmResult<MenuPlan> result = resilientLlmGateway.planMenu("system", "질문");
+
+        // then
+        assertThat(result.content()).isEqualTo(validPlan());
+        then(delegate).should(times(1)).planMenu("system", "질문");
+        // 메뉴 계획 호출도 시도마다 한 줄 로그가 남는다
+        assertThat(attemptLogLines(output)).singleElement()
+                .satisfies(line -> assertThat(line).contains("attempt=1 model=gpt-test")
+                        .contains("success=true").contains("promptTokens=30 completionTokens=20"));
+    }
+
+    @Test
+    void 메뉴_계획이_검증에_실패하면_한_번_더_물어보고_그래도_실패하면_AI_INVALID_RESPONSE로_실패한다() {
+        // given: 장보기 요청인데 재료가 없다
+        given(delegate.planMenu(anyString(), anyString())).willReturn(planResult(planWithoutIngredients()));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        then(delegate).should(times(2)).planMenu(anyString(), anyString());
+    }
+
+    @Test
+    void 메뉴_계획_검증_실패가_반복돼도_서킷은_열리지_않아_다음_정상_요청은_성공한다() {
+        // given: 메시지 하나가 재시도까지 2번 실패하므로, 3개면 최소 시도 수(4)를 넘는다
+        given(delegate.planMenu(anyString(), anyString())).willReturn(planResult(planWithoutIngredients()));
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        }
+        willReturn(REPLY).given(delegate).explain(anyString(), anyString());
+
+        // when: 다른 사용자의 채팅
+        LlmReply reply = resilientLlmGateway.explain("system", "질문");
+
+        // then: 검증 실패는 장부에 적히지 않아 성공 1번만 남는다
+        assertThat(reply).isEqualTo(REPLY);
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isZero();
+        assertThat(circuitBreaker.getMetrics().getNumberOfBufferedCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void 메뉴_계획이_처음에_검증에_실패해도_다시_물어서_맞게_답하면_돌려준다() {
+        // given
+        given(delegate.planMenu(anyString(), anyString()))
+                .willReturn(planResult(planWithoutIngredients()))
+                .willReturn(planResult(validPlan()));
+
+        // when
+        LlmResult<MenuPlan> result = resilientLlmGateway.planMenu("system", "질문");
+
+        // then
+        assertThat(result.content()).isEqualTo(validPlan());
+        then(delegate).should(times(2)).planMenu(anyString(), anyString());
+    }
+
+    @Test
+    void 메뉴_계획_JSON을_객체로_바꾸지_못하면_한_번_더_물어보고_AI_INVALID_RESPONSE로_실패한다() {
+        // given
+        given(delegate.planMenu(anyString(), anyString())).willThrow(OpenAiErrors.invalidJson());
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        then(delegate).should(times(2)).planMenu(anyString(), anyString());
+    }
+
+    @Test
+    void 메뉴_계획_응답이_비어_있으면_재시도하지_않고_AI_EMPTY_RESPONSE로_실패한다() {
+        // given
+        given(delegate.planMenu(anyString(), anyString())).willReturn(planResult(null));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_EMPTY_RESPONSE));
+        then(delegate).should(times(1)).planMenu(anyString(), anyString());
+    }
+
+    @Test
+    void 메뉴_계획도_시간_안에_답하지_않으면_한_번_재시도하고_AI_TIMEOUT으로_실패한다() {
+        // given
+        given(delegate.planMenu(anyString(), anyString())).willAnswer(invocation -> {
+            Thread.sleep(2_000);
+            return planResult(validPlan());
+        });
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", "질문"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+        then(delegate).should(times(2)).planMenu(anyString(), anyString());
+    }
+
+    private static LlmResult<MenuPlan> planResult(MenuPlan menuPlan) {
+        return LlmResult.of(menuPlan, "gpt-test", 30, 20);
+    }
+
+    private static MenuPlan validPlan() {
+        return MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 4, null,
+                List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY), List.of());
+    }
+
+    private static MenuPlan planWithoutIngredients() {
+        return MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 4, null, List.of(), List.of(), List.of());
     }
 
     private List<String> attemptLogLines(CapturedOutput output) {

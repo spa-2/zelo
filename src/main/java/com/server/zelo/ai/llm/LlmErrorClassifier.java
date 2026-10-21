@@ -8,6 +8,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.io.InterruptedIOException;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
+import tools.jackson.core.JacksonException;
 
 // 다시 보내면 나을 수 있는 오류(타임아웃·429·5xx·네트워크)만 재시도한다. 4xx는 다시 보내도 똑같이 실패한다
 // OpenAI가 보내주는 예외가 우리 ErrorCode로 치면 무엇인가를 내타내는 클래스
@@ -20,7 +21,14 @@ public final class LlmErrorClassifier {
             ErrorCode.AI_TIMEOUT,
             ErrorCode.AI_RATE_LIMITED,
             ErrorCode.AI_SERVER_ERROR,
-            ErrorCode.AI_NETWORK_ERROR);
+            ErrorCode.AI_NETWORK_ERROR,
+            // 답이 형식·검증에 맞지 않음: 같은 질문을 다시 하면 맞게 답할 수 있어 한 번 더 물어본다
+            ErrorCode.AI_INVALID_RESPONSE);
+
+    private static final Set<ErrorCode> NOT_CIRCUIT_FAILURES = Set.of(
+            ErrorCode.AI_REQUEST_REJECTED,
+            // 엄격 모드라 형식 오류는 거의 없고, 대부분 "30명"처럼 사용자 말 때문에 검증 범위를 벗어난 경우다
+            ErrorCode.AI_INVALID_RESPONSE);
 
     private LlmErrorClassifier() {
     }
@@ -33,7 +41,7 @@ public final class LlmErrorClassifier {
     // 요청 자체가 잘못된 4xx는 OpenAI 장애가 아니므로 서킷 실패로 세지 않는다.
     // 세면 한 사용자의 잘못된 요청이 반복될 때 서킷이 열려 다른 사용자의 정상 요청까지 막힌다
     public static boolean isCircuitFailure(Throwable throwable) {
-        return classify(throwable) != ErrorCode.AI_REQUEST_REJECTED;
+        return !NOT_CIRCUIT_FAILURES.contains(classify(throwable));
     }
 
     // LLM이 보낸 예외를 우리 ErrorCode로 바꿈
@@ -42,6 +50,8 @@ public final class LlmErrorClassifier {
             case BusinessException e -> e.getErrorCode();
             case TimeoutException ignored -> ErrorCode.AI_TIMEOUT;
             case CallNotPermittedException ignored -> ErrorCode.AI_CIRCUIT_OPEN;
+            // 구조화 출력(MenuPlan 등)에서 LLM이 준 JSON을 객체로 바꾸지 못하면 Spring AI가 Jackson 예외를 그대로 던진다
+            case JacksonException ignored -> ErrorCode.AI_INVALID_RESPONSE;
             case OpenAIServiceException e -> fromStatus(e.statusCode());
             // 응답을 받지 못하면 Spring AI가 IOException을 감싸 던진다. 원인이 InterruptedIOException이면 HTTP 타임아웃이다
             case OpenAIIoException e ->

@@ -1,6 +1,7 @@
 package com.server.zelo.ai.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openai.errors.BadRequestException;
@@ -61,5 +62,26 @@ class FakeLlmGatewayTest {
         // then
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(300));
         assertThat(reply.text()).startsWith("[FAKE]");
+    }
+
+    @Test
+    void 메뉴_계획은_검증을_통과하는_고정_메모를_돌려준다() {
+        // when
+        LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", "김치볶음밥 재료");
+
+        // then
+        assertThat(result.model()).isEqualTo(FakeLlmGateway.MODEL);
+        assertThat(result.content().intent()).isEqualTo(MenuPlanIntent.SHOPPING_REQUEST);
+        assertThatCode(() -> result.content().validate(MenuPlanPrompt.INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 메뉴_계획도_실패_모드면_서버_오류를_던진다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+
+        // when & then
+        assertThatThrownBy(() -> fakeLlmGateway.planMenu("system", "질문"))
+                .isInstanceOf(InternalServerException.class);
     }
 }

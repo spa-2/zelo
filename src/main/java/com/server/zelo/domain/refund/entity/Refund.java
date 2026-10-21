@@ -21,6 +21,8 @@ import java.util.List;
 )
 public class Refund extends BaseTimeEntity {
 
+    private static final int MAX_REASON_LENGTH = 50;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -28,7 +30,7 @@ public class Refund extends BaseTimeEntity {
     @Column(name = "payment_id", nullable = false)
     private Long paymentId;
 
-    @Column(name = "reason", nullable = false, length = 50)
+    @Column(name = "reason", nullable = false, length = MAX_REASON_LENGTH)
     private String reason;
 
     @Enumerated(EnumType.STRING)
@@ -56,6 +58,9 @@ public class Refund extends BaseTimeEntity {
         if (reason == null || reason.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "환불 사유가 필요합니다.");
         }
+        if (reason.length() > MAX_REASON_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "환불 사유는 50자 이하여야 합니다.");
+        }
         this.paymentId = paymentId;
         this.refundType = refundType;
         this.reason = reason;
@@ -76,7 +81,9 @@ public class Refund extends BaseTimeEntity {
         }
 
         boolean duplicated = refundItems.stream()
-                .anyMatch(item -> item.getOrderItem() == refundItem.getOrderItem());
+                .anyMatch(item -> item.getOrderItem() == refundItem.getOrderItem()
+                        || (item.getOrderItem().getId() != null
+                        && item.getOrderItem().getId().equals(refundItem.getOrderItem().getId())));
         if (duplicated) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "한 환불에 같은 주문 상품을 두 번 담을 수 없습니다.");
         }

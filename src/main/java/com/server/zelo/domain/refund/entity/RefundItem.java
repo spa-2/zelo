@@ -45,7 +45,9 @@ public class RefundItem extends BaseCreatedEntity {
         if (orderItem == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "환불할 주문 상품이 필요합니다.");
         }
-        if (quantity == null || quantity < 1 || quantity > orderItem.getQuantity()) {
+
+        Integer orderQuantity = orderItem.getQuantity();
+        if (quantity == null || quantity < 1 || orderQuantity == null || quantity > orderQuantity) {
             throw new BusinessException(ErrorCode.INVALID_REFUND_QUANTITY);
         }
         Long unitPrice = orderItem.getUnitPrice();

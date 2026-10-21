@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -167,6 +170,7 @@ class OrderCommandServiceTest {
         fixture.secondItem().restore();
         fixture.secondInventory().restore(2);
         stubOrder(fixture);
+        stubProductIds();
 
         // when
         orderCommandService.cancel(ORDER_ID);
@@ -238,13 +242,14 @@ class OrderCommandServiceTest {
     @ValueSource(strings = {"completePayment", "failPayment", "cancel"})
     void 주문이_없으면_예외를_전달하고_재고는_조회하지_않는다(String operation) {
         // given
-        given(orderRepository.findWithOrderItemsById(ORDER_ID)).willReturn(Optional.empty());
+        given(orderRepository.findForUpdateById(ORDER_ID)).willReturn(Optional.empty());
 
         // when
         // then
         assertThatThrownBy(() -> execute(operation))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ORDER_NOT_FOUND));
+        then(orderRepository).should(never()).findWithOrderItemsById(ORDER_ID);
         verifyNoInteractions(inventoryRepository);
     }
 
@@ -291,7 +296,7 @@ class OrderCommandServiceTest {
         // given
         Fixture fixture = createFixture();
         stubOrder(fixture);
-        given(firstProduct.getId()).willReturn(7L);
+        stubProductIds();
         given(inventoryRepository.findInventoryByProduct_Id(7L)).willReturn(Optional.empty());
 
         // when
@@ -299,8 +304,36 @@ class OrderCommandServiceTest {
         assertThatThrownBy(() -> execute(operation))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode().getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        then(inventoryRepository).should().findInventoryByProduct_Id(7L);
+        then(inventoryRepository).should(never()).findInventoryByProduct_Id(9L);
         assertQuantities(fixture.firstInventory(), 10, 4, 6);
         assertQuantities(fixture.secondInventory(), 20, 3, 17);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"completePayment", "failPayment", "cancel"})
+    void 주문을_먼저_잠그고_역순인_품목도_상품_ID_오름차순으로_처리한다(String operation) {
+        // given
+        Fixture fixture = createFixture();
+        stubOrder(fixture);
+        // 목록의 첫 상품 ID가 더 커야 정렬이 빠지는 회귀를 발견할 수 있다.
+        given(firstProduct.getId()).willReturn(9L);
+        given(secondProduct.getId()).willReturn(7L);
+        given(inventoryRepository.findInventoryByProduct_Id(9L))
+                .willReturn(Optional.of(fixture.firstInventory()));
+        given(inventoryRepository.findInventoryByProduct_Id(7L))
+                .willReturn(Optional.of(fixture.secondInventory()));
+
+        // when
+        execute(operation);
+
+        // then
+        InOrder queryOrder = inOrder(orderRepository, inventoryRepository);
+        queryOrder.verify(orderRepository).findForUpdateById(ORDER_ID);
+        queryOrder.verify(orderRepository).findWithOrderItemsById(ORDER_ID);
+        queryOrder.verify(inventoryRepository).findInventoryByProduct_Id(7L);
+        queryOrder.verify(inventoryRepository).findInventoryByProduct_Id(9L);
+        assertThat(fixture.order().getOrderItems()).containsExactly(fixture.firstItem(), fixture.secondItem());
     }
 
     private Fixture createFixture() {
@@ -316,12 +349,17 @@ class OrderCommandServiceTest {
     }
 
     private void stubOrder(Fixture fixture) {
+        given(orderRepository.findForUpdateById(ORDER_ID)).willReturn(Optional.of(fixture.order()));
         given(orderRepository.findWithOrderItemsById(ORDER_ID)).willReturn(Optional.of(fixture.order()));
     }
 
-    private void stubInventories(Fixture fixture) {
+    private void stubProductIds() {
         given(firstProduct.getId()).willReturn(7L);
         given(secondProduct.getId()).willReturn(9L);
+    }
+
+    private void stubInventories(Fixture fixture) {
+        stubProductIds();
         given(inventoryRepository.findInventoryByProduct_Id(7L)).willReturn(Optional.of(fixture.firstInventory()));
         given(inventoryRepository.findInventoryByProduct_Id(9L)).willReturn(Optional.of(fixture.secondInventory()));
     }

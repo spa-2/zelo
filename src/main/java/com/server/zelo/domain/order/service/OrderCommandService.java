@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.service;
 
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
@@ -7,6 +8,9 @@ import com.server.zelo.domain.order.entity.StockState;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @Transactional
@@ -17,11 +21,11 @@ public class OrderCommandService {
 
     // 결제 성공시
     public void completePayment(Long orderId) {
-        Order order = orderService.getOrderWithItems(orderId);
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
         order.pay(); // OrderStatus: PAYMENT_PENDING -> PAID
 
         // 품목별 재고 차감 확정
-        for(OrderItem orderItem : order.getOrderItems()) {
+        for(OrderItem orderItem : getItemsInProductOrder(order)) {
             orderItem.deduct(); // StockState: RESERVED → DEDUCTED
             inventoryService.deduct(orderItem.getProduct().getId(), orderItem.getQuantity());
         }
@@ -29,11 +33,11 @@ public class OrderCommandService {
 
     // 결제 실패시
     public void failPayment(Long orderId) {
-        Order order = orderService.getOrderWithItems(orderId);
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
         order.failPayment(); // OrderStatus: PAYMENT_PENDING -> PAYMENT_FAILED
 
         // 품목별 선점 해제
-        for(OrderItem orderItem : order.getOrderItems()) {
+        for(OrderItem orderItem : getItemsInProductOrder(order)) {
             orderItem.release();  // StockState: RESERVED → RELEASED
             inventoryService.release(orderItem.getProduct().getId(), orderItem.getQuantity());
         }
@@ -57,10 +61,10 @@ public class OrderCommandService {
      *         주문이 PAYMENT_PENDING·PAID가 아니거나 품목 상태 전이가 허용되지 않으면 INVALID_ORDER_STATUS
      */
     public void cancel(Long orderId) {
-        Order order = orderService.getOrderWithItems(orderId);
-        order.cancel(); // OrderStatus: PAID -> CANCELED
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        order.cancel(); // OrderStatus: PAYMENT_PENDING 또는 PAID → CANCELED
 
-        for(OrderItem orderItem : order.getOrderItems()) {
+        for(OrderItem orderItem : getItemsInProductOrder(order)) {
 
             // 품목이 RESERVED면 해제
             if (orderItem.getStockState() == StockState.RESERVED) {
@@ -74,5 +78,13 @@ public class OrderCommandService {
                 inventoryService.restore(orderItem.getProduct().getId(), orderItem.getQuantity());
             }
         }
+    }
+
+    private List<OrderItem> getItemsInProductOrder(Order order) {
+        // 여러 상품을 처리하는 모든 요청의 잠금 순서를 맞춰 교착 가능성을 줄인다.
+        return order.getOrderItems().stream()
+                .sorted(Comparator.comparing(item ->
+                        item.getProduct().getId()))
+                .toList();
     }
 }

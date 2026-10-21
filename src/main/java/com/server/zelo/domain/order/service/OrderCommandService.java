@@ -4,7 +4,6 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.order.entity.StockState;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

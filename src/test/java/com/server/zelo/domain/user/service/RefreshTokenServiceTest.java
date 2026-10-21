@@ -68,20 +68,20 @@ class RefreshTokenServiceTest {
     @Test
     void 현재_토큰과_일치하면_새_토큰으로_교체한다() {
         // given
-        given(refreshTokenRepository.matches(1L, "presented")).willReturn(true);
+        given(refreshTokenRepository.rotateIfMatches(1L, "presented", "newToken")).willReturn(true);
 
         // when
         refreshTokenService.rotateToken(1L, "presented", "newToken");
 
         // then
-        then(refreshTokenRepository).should().rotate(1L, "newToken");
         then(refreshTokenRepository).should(never()).delete(anyLong());
+        then(refreshTokenRepository).should(never()).isSuperseded(anyString());
     }
 
     @Test
     void 다른_기기_로그인으로_낡아진_토큰이면_LOGGED_IN_ELSEWHERE_예외가_발생하고_세션은_건드리지_않는다() {
         // given
-        given(refreshTokenRepository.matches(1L, "presented")).willReturn(false);
+        given(refreshTokenRepository.rotateIfMatches(1L, "presented", "newToken")).willReturn(false);
         given(refreshTokenRepository.isSuperseded("presented")).willReturn(true);
 
         // when & then
@@ -89,15 +89,14 @@ class RefreshTokenServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.LOGGED_IN_ELSEWHERE);
-        // 새 기기의 세션을 끊으면 안 되고, 교체도 하지 않음
+        // 새 기기의 세션을 끊으면 안 됨
         then(refreshTokenRepository).should(never()).delete(anyLong());
-        then(refreshTokenRepository).should(never()).rotate(anyLong(), anyString());
     }
 
     @Test
     void 저장된_토큰이_없으면_INVALID_TOKEN_예외가_발생하고_세션을_만들지_않는다() {
         // given
-        given(refreshTokenRepository.matches(1L, "presented")).willReturn(false);
+        given(refreshTokenRepository.rotateIfMatches(1L, "presented", "newToken")).willReturn(false);
         given(refreshTokenRepository.isSuperseded("presented")).willReturn(false);
         given(refreshTokenRepository.exists(1L)).willReturn(false);
 
@@ -106,17 +105,35 @@ class RefreshTokenServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_TOKEN);
-        // 로그아웃한 사용자의 토큰으로 세션이 되살아나면 안 됨
-        then(refreshTokenRepository).should(never()).rotate(anyLong(), anyString());
+        then(refreshTokenRepository).should(never()).delete(anyLong());
+        // 키가 없는데 rotated 표식을 보고 409를 주면 로그아웃한 세션이 재시도해도 되는 것처럼 보이므로 확인하지 않음
+        then(refreshTokenRepository).should(never()).isRotated(anyString());
+    }
+
+    @Test
+    void 방금_교체된_토큰이면_TOKEN_ALREADY_ROTATED_예외가_발생하고_세션은_삭제하지_않는다() {
+        // given
+        given(refreshTokenRepository.rotateIfMatches(1L, "presented", "newToken")).willReturn(false);
+        given(refreshTokenRepository.isSuperseded("presented")).willReturn(false);
+        given(refreshTokenRepository.exists(1L)).willReturn(true);
+        given(refreshTokenRepository.isRotated("presented")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> refreshTokenService.rotateToken(1L, "presented", "newToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.TOKEN_ALREADY_ROTATED);
+        // 동시 요청이나 재시도일 수 있어서 정상 세션을 지우면 안 됨
         then(refreshTokenRepository).should(never()).delete(anyLong());
     }
 
     @Test
-    void 교체된_토큰이_재사용되면_TOKEN_REUSED_예외가_발생하고_현재_토큰을_삭제한다() {
+    void 표식이_사라진_뒤_교체된_토큰이_재사용되면_TOKEN_REUSED_예외가_발생하고_현재_토큰을_삭제한다() {
         // given
-        given(refreshTokenRepository.matches(1L, "presented")).willReturn(false);
+        given(refreshTokenRepository.rotateIfMatches(1L, "presented", "newToken")).willReturn(false);
         given(refreshTokenRepository.isSuperseded("presented")).willReturn(false);
         given(refreshTokenRepository.exists(1L)).willReturn(true);
+        given(refreshTokenRepository.isRotated("presented")).willReturn(false);
 
         // when & then
         assertThatThrownBy(() -> refreshTokenService.rotateToken(1L, "presented", "newToken"))
@@ -124,6 +141,5 @@ class RefreshTokenServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.TOKEN_REUSED);
         then(refreshTokenRepository).should().delete(1L);
-        then(refreshTokenRepository).should(never()).rotate(anyLong(), anyString());
     }
 }

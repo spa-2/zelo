@@ -3,19 +3,23 @@ package com.server.zelo.domain.user.repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -114,48 +118,60 @@ class RefreshTokenRepositoryTest {
     }
 
     @Test
-    void 교체할_때는_해시를_저장하고_superseded는_기록하지_않는다() {
+    @SuppressWarnings("unchecked")
+    void 교체는_스크립트로_현재_키와_rotated_키_해시_TTL을_넘겨_실행한다() {
         // given
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
+        given(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class))).willReturn(1L);
 
         // when
-        refreshTokenRepository.rotate(1L, "newRefreshToken");
+        boolean result = refreshTokenRepository.rotateIfMatches(1L, "oldToken", "newToken");
 
         // then
-        then(valueOperations).should().set(
-                "refresh:1", sha256("newRefreshToken"), Duration.ofMillis(REFRESH_EXPIRATION));
-        then(valueOperations).should(never()).set(
-                startsWith("refresh:superseded:"), anyString(), any(Duration.class));
+        assertThat(result).isTrue();
+        ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
+        // 제시한 토큰 해시, 새 토큰 해시, 토큰 TTL(ms), rotated 표식 TTL(ms)
+        then(stringRedisTemplate).should().execute(any(RedisScript.class), keys.capture(),
+                eq(sha256("oldToken")), eq(sha256("newToken")), eq(String.valueOf(REFRESH_EXPIRATION)), eq("10000"));
+        // 현재 키, 직전 토큰의 rotated 키(해시 기준)
+        assertThat(keys.getValue()).containsExactly("refresh:1", "refresh:rotated:" + sha256("oldToken"));
     }
 
     @Test
-    void 저장된_해시와_같은_토큰이면_일치한다() {
+    @SuppressWarnings("unchecked")
+    void 스크립트가_0을_반환하면_교체되지_않은_것이다() {
         // given
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.get("refresh:1")).willReturn(sha256("refreshToken"));
+        given(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class))).willReturn(0L);
 
         // when & then
-        assertThat(refreshTokenRepository.matches(1L, "refreshToken")).isTrue();
+        assertThat(refreshTokenRepository.rotateIfMatches(1L, "oldToken", "newToken")).isFalse();
     }
 
     @Test
-    void 저장된_해시와_다른_토큰이면_일치하지_않는다() {
+    @SuppressWarnings("unchecked")
+    void 스크립트_결과가_null이면_교체되지_않은_것이다() {
         // given
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.get("refresh:1")).willReturn(sha256("otherToken"));
+        given(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(Object[].class))).willReturn(null);
 
         // when & then
-        assertThat(refreshTokenRepository.matches(1L, "refreshToken")).isFalse();
+        assertThat(refreshTokenRepository.rotateIfMatches(1L, "oldToken", "newToken")).isFalse();
     }
 
     @Test
-    void 저장된_토큰이_없으면_일치하지_않는다() {
+    void rotated에_기록된_토큰이면_true를_반환한다() {
         // given
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.get("refresh:1")).willReturn(null);
+        given(stringRedisTemplate.hasKey("refresh:rotated:" + sha256("oldToken"))).willReturn(true);
 
         // when & then
-        assertThat(refreshTokenRepository.matches(1L, "refreshToken")).isFalse();
+        assertThat(refreshTokenRepository.isRotated("oldToken")).isTrue();
+    }
+
+    @Test
+    void rotated에_없는_토큰이면_false를_반환한다() {
+        // given
+        given(stringRedisTemplate.hasKey("refresh:rotated:" + sha256("oldToken"))).willReturn(false);
+
+        // when & then
+        assertThat(refreshTokenRepository.isRotated("oldToken")).isFalse();
     }
 
     @Test

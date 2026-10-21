@@ -250,7 +250,7 @@ class UserControllerTest {
     @Test
     void 재발급하면_200과_새_액세스_토큰을_본문으로_반환한다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
+        given(userCommandService.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
 
         // when & then
         mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
@@ -262,7 +262,7 @@ class UserControllerTest {
     @Test
     void 재발급하면_새_리프레시_토큰을_HttpOnly_Secure_쿠키로_내려준다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
+        given(userCommandService.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
 
         // when
         var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")));
@@ -275,7 +275,7 @@ class UserControllerTest {
     @Test
     void 쿠키가_없어도_Facade에_null을_넘겨_401_처리를_맡긴다() throws Exception {
         // given
-        given(userFacade.reissue(null)).willThrow(new BusinessException(ErrorCode.INVALID_TOKEN));
+        given(userCommandService.reissue(null)).willThrow(new BusinessException(ErrorCode.INVALID_TOKEN));
 
         // when & then
         mockMvc.perform(post("/api/auth/reissue"))
@@ -286,7 +286,7 @@ class UserControllerTest {
     @Test
     void 인증에_실패하면_401을_반환하고_리프레시_토큰_쿠키를_만료시킨다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TOKEN_REUSED));
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TOKEN_REUSED));
 
         // when
         var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
@@ -301,7 +301,7 @@ class UserControllerTest {
     @Test
     void 다른_기기_로그인이_감지되면_전용_코드로_401을_반환한다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.LOGGED_IN_ELSEWHERE));
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.LOGGED_IN_ELSEWHERE));
 
         // when & then
         mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
@@ -310,24 +310,27 @@ class UserControllerTest {
     }
 
     @Test
-    void 락_대기에_실패하면_409를_반환하고_쿠키는_지우지_않는다() throws Exception {
+    void 방금_교체된_토큰이면_409를_반환하고_쿠키는_지우지_않는다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TOKEN_ALREADY_ROTATED));
 
         // when
         var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
                 .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.TOKEN_ALREADY_ROTATED.getCode()))
+                // 이 응답으로 새 토큰을 내주면 탈취된 토큰으로도 새 토큰을 받게 됨
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andReturn();
 
         // then
-        // 일시적인 오류인데 쿠키를 지우면 정상 사용자가 로그아웃됨
+        // 먼저 처리된 요청이 새 쿠키를 내려줬을 수 있어서 이 응답이 쿠키를 건드리면 안 됨
         assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
     }
 
     @Test
     void Redis_장애로_재발급에_실패하면_503을_반환하고_쿠키는_지우지_않는다() throws Exception {
         // given
-        given(userFacade.reissue("oldRefreshToken")).willThrow(new RedisConnectionFailureException("연결 실패"));
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new RedisConnectionFailureException("연결 실패"));
 
         // when
         var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))

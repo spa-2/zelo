@@ -72,7 +72,7 @@ public class Product extends BaseTimeEntity {
     /**
      * 가격과 내용량을 검증하고 재료의 카테고리, 판매량 0, 판매 중 상태로 초기화한다.
      *
-     * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우 또는 판매 단위가 비어 있는 경우
+     * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우 또는 판매 단위가 비어 있거나 20자를 초과하는 경우
      */
     private Product(String productCode, Ingredient ingredient, String name,
                     String description, Integer price, Integer contentAmount, String unitLabel) {
@@ -84,6 +84,9 @@ public class Product extends BaseTimeEntity {
         }
         if (unitLabel == null || unitLabel.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 판매 단위는 비어 있을 수 없습니다.");
+        }
+        if (unitLabel.length() > 20) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 판매 단위는 20자를 초과할 수 없습니다.");
         }
         this.productCode = productCode;
         // ERD 규칙: 상품 카테고리는 재료 카테고리와 같아야 하므로 입력받지 않고 재료에서 가져온다
@@ -107,10 +110,10 @@ public class Product extends BaseTimeEntity {
      * @param description 상품 설명 (없으면 null)
      * @param price 0 이상의 가격
      * @param contentAmount 재료의 기본 단위 기준으로 0보다 큰 내용량
-     * @param unitLabel 사람이 읽는 판매 단위 (예: 1kg, 10구)
+     * @param unitLabel 20자 이내의 사람이 읽는 판매 단위 (예: 1kg, 10구)
      * @return 생성한 상품
      * @throws BusinessException 가격이 없거나 음수이면 {@link ErrorCode#INVALID_PRICE},
-     *                          내용량이 없거나 0 이하이거나 판매 단위가 비어 있으면 {@link ErrorCode#INVALID_INPUT}으로 발생
+     *                          내용량이 없거나 0 이하이거나 판매 단위가 비어 있거나 20자를 초과하면 {@link ErrorCode#INVALID_INPUT}으로 발생
      */
     public static Product of(String productCode, Ingredient ingredient, String name,
                              String description, Integer price, Integer contentAmount, String unitLabel) {

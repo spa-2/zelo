@@ -15,6 +15,34 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ExtendWith(MockitoExtension.class)
 class ProductTest {
 
+    @ParameterizedTest
+    @ValueSource(ints = {1, 20})
+    void 판매_단위가_20자_이내이면_그대로_저장한다(int length) {
+        // given
+        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
+        String unitLabel = "단".repeat(length);
+
+        // when
+        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel);
+
+        // then
+        assertThat(product.getUnitLabel()).isEqualTo(unitLabel);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {21, 100})
+    void 판매_단위가_20자를_초과하면_예외가_발생한다(int length) {
+        // given
+        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
+        String unitLabel = "단".repeat(length);
+
+        // when
+        // then
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
     /**
      * 유효한 가격과 내용량으로 생성하면 재료의 카테고리와 초기 판매 상태를 갖는지 검증한다.
      *

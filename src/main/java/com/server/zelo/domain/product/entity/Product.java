@@ -33,7 +33,7 @@ public class Product extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 외부 노출용 상품 코드 (SKU)
+    // 외부 노출용 상품 코드
     @Column(name = "product_code", nullable = false, length = 50, unique = true)
     private String productCode;
 
@@ -58,6 +58,10 @@ public class Product extends BaseTimeEntity {
     @Column(name = "content_amount", nullable = false)
     private Integer contentAmount;
 
+    // 사람이 읽는 판매 단위 ex: 1kg, 10구, 1단. 견적과 주문 상품(order_items.product_unit)에 그대로 복사한다
+    @Column(name = "unit_label", nullable = false, length = 20)
+    private String unitLabel;
+
     @Column(name = "sales_count", nullable = false)
     private Integer salesCount;
 
@@ -68,15 +72,18 @@ public class Product extends BaseTimeEntity {
     /**
      * 가격과 내용량을 검증하고 재료의 카테고리, 판매량 0, 판매 중 상태로 초기화한다.
      *
-     * @throws BusinessException 가격이 없거나 음수인 경우 또는 내용량이 없거나 0 이하인 경우
+     * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우 또는 판매 단위가 비어 있는 경우
      */
     private Product(String productCode, Ingredient ingredient, String name,
-                    String description, Integer price, Integer contentAmount) {
+                    String description, Integer price, Integer contentAmount, String unitLabel) {
         if (price == null || price < 0) {
             throw new BusinessException(ErrorCode.INVALID_PRICE);
         }
         if (contentAmount == null || contentAmount <= 0) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 내용량은 0보다 커야 합니다.");
+        }
+        if (unitLabel == null || unitLabel.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 판매 단위는 비어 있을 수 없습니다.");
         }
         this.productCode = productCode;
         // ERD 규칙: 상품 카테고리는 재료 카테고리와 같아야 하므로 입력받지 않고 재료에서 가져온다
@@ -86,6 +93,7 @@ public class Product extends BaseTimeEntity {
         this.description = description;
         this.price = price;
         this.contentAmount = contentAmount;
+        this.unitLabel = unitLabel;
         this.salesCount = 0;
         this.status = ProductStatus.ON_SALE;
     }
@@ -99,12 +107,13 @@ public class Product extends BaseTimeEntity {
      * @param description 상품 설명 (없으면 null)
      * @param price 0 이상의 가격
      * @param contentAmount 재료의 기본 단위 기준으로 0보다 큰 내용량
+     * @param unitLabel 사람이 읽는 판매 단위 (예: 1kg, 10구)
      * @return 생성한 상품
      * @throws BusinessException 가격이 없거나 음수이면 {@link ErrorCode#INVALID_PRICE},
-     *                          내용량이 없거나 0 이하이면 {@link ErrorCode#INVALID_INPUT}으로 발생
+     *                          내용량이 없거나 0 이하이거나 판매 단위가 비어 있으면 {@link ErrorCode#INVALID_INPUT}으로 발생
      */
     public static Product of(String productCode, Ingredient ingredient, String name,
-                             String description, Integer price, Integer contentAmount) {
-        return new Product(productCode, ingredient, name, description, price, contentAmount);
+                             String description, Integer price, Integer contentAmount, String unitLabel) {
+        return new Product(productCode, ingredient, name, description, price, contentAmount, unitLabel);
     }
 }

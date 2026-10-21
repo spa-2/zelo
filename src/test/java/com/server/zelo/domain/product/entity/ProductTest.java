@@ -1,8 +1,7 @@
-package com.server.zelo.product.entity;
+package com.server.zelo.domain.product.entity;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.product.entity.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -30,11 +29,12 @@ class ProductTest {
         Ingredient ingredient = Ingredient.of(category, "사과", BaseUnit.EA);
 
         // when
-        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, contentAmount);
+        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, contentAmount, "1box");
 
         // then
         assertThat(product.getPrice()).isEqualTo(price);
         assertThat(product.getContentAmount()).isEqualTo(contentAmount);
+        assertThat(product.getUnitLabel()).isEqualTo("1box");
         assertThat(product.getCategory()).isSameAs(category);
         assertThat(product.getSalesCount()).isZero();
         assertThat(product.getStatus()).isEqualTo(ProductStatus.ON_SALE);
@@ -54,7 +54,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, 1))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, 1, "1box"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRICE));
     }
@@ -73,7 +73,26 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, contentAmount))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, contentAmount, "1box"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    /**
+     * 판매 단위가 없거나 공백이면 INVALID_INPUT 오류가 발생하는지 검증한다.
+     *
+     * @param unitLabel 유효하지 않은 판매 단위
+     */
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " "})
+    void 판매_단위가_없거나_공백이면_예외가_발생한다(String unitLabel) {
+        // given
+        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
+
+        // when
+        // then
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0, 1, unitLabel))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }

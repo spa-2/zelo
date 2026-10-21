@@ -1,6 +1,8 @@
 package com.server.zelo.domain.order.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.Product;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -79,5 +81,33 @@ public class OrderItem extends BaseTimeEntity {
 
         order.addOrderItem(orderItem);
         return orderItem;
+    }
+
+    // 차감
+    public void deduct() {
+        changeStockState(StockState.DEDUCTED);
+    }
+
+    // 해제
+    public void release() {
+        changeStockState(StockState.RELEASED);
+    }
+
+    // 복원
+    public void restore() {
+        changeStockState(StockState.RESTORED);
+    }
+
+    public boolean isReserved() {
+        return this.stockState == StockState.RESERVED;
+    }
+
+    // 허용하지 않은 상태 변경을 막아 재고 처리 순서를 지킨다.
+    private void changeStockState(StockState nextStatus) {
+        if (!this.stockState.isTransitionAllowed(nextStatus)) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS); // TODO(order): 재고 상태 전용 에러 코드 추가 시 교체
+        }
+
+        this.stockState = nextStatus;
     }
 }

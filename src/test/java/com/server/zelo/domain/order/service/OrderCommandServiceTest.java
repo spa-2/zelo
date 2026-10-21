@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -159,28 +160,34 @@ class OrderCommandServiceTest {
         assertQuantities(fixture.secondInventory(), 20, 1, 19);
     }
 
-    @Test
-    void 취소할_때_이미_해제되거나_복원된_품목의_재고는_다시_변경하지_않는다() {
+    @ParameterizedTest
+    @EnumSource(value = StockState.class, names = {"RELEASED", "RESTORED"})
+    void 이미_해제되거나_복원된_품목은_취소_예외를_던지고_재고를_변경하지_않는다(
+            StockState initialState) {
         // given
         Fixture fixture = createFixture();
-        fixture.firstItem().release();
-        fixture.firstInventory().release(3);
-        fixture.secondItem().deduct();
-        fixture.secondInventory().deduct(2);
-        fixture.secondItem().restore();
-        fixture.secondInventory().restore(2);
+        if (initialState == StockState.RELEASED) {
+            fixture.firstItem().release();
+            fixture.firstInventory().release(3);
+        } else {
+            fixture.firstItem().deduct();
+            fixture.firstInventory().deduct(3);
+            fixture.firstItem().restore();
+            fixture.firstInventory().restore(3);
+        }
         stubOrder(fixture);
         stubProductIds();
 
         // when
-        orderCommandService.cancel(ORDER_ID);
+        assertThatThrownBy(() -> orderCommandService.cancel(ORDER_ID))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ORDER_STATUS));
 
         // then
-        assertThat(fixture.order().getStatus()).isEqualTo(OrderStatus.CANCELED);
-        assertThat(fixture.firstItem().getStockState()).isEqualTo(StockState.RELEASED);
-        assertThat(fixture.secondItem().getStockState()).isEqualTo(StockState.RESTORED);
+        assertThat(fixture.firstItem().getStockState()).isEqualTo(initialState);
+        assertThat(fixture.secondItem().getStockState()).isEqualTo(StockState.RESERVED);
         assertQuantities(fixture.firstInventory(), 10, 1, 9);
-        assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        assertQuantities(fixture.secondInventory(), 20, 3, 17);
         verifyNoInteractions(inventoryRepository);
     }
 

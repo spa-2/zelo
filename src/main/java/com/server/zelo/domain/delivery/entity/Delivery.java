@@ -23,11 +23,9 @@ public class Delivery extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 주문 도메인과 엔티티로 묶이지 않도록 ID만 보관한다. 주문 1건에 배송 1건이라 unique다
     @Column(name = "order_id", nullable = false, unique = true)
     private Long orderId;
 
-    // 주소록(user_address)을 참조하지 않고 주문 시점 값을 복사한다. 주소록이 바뀌어도 배송지는 그대로여야 하기 때문
     @Column(name = "recipient_name", nullable = false, length = 50)
     private String recipientName;
 
@@ -80,19 +78,23 @@ public class Delivery extends BaseTimeEntity {
     }
 
     public void ship(LocalDateTime shippedAt) {
+        validateTime(shippedAt);
         changeStatus(DeliveryStatus.SHIPPING);
         this.shippedAt = shippedAt;
     }
 
     public void complete(LocalDateTime deliveredAt) {
+        validateTime(deliveredAt);
         changeStatus(DeliveryStatus.DELIVERED);
         this.deliveredAt = deliveredAt;
     }
 
     public void cancel(LocalDateTime canceledAt) {
+        validateTime(canceledAt);
         changeStatus(DeliveryStatus.CANCELED);
         this.canceledAt = canceledAt;
     }
+
 
     // 출고 전이어야 환불할 수 있다
     public boolean isCancelable() {
@@ -108,5 +110,11 @@ public class Delivery extends BaseTimeEntity {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private void validateTime(LocalDateTime time) {
+        if (time == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상태 변경 시각이 필요합니다.");
+        }
     }
 }

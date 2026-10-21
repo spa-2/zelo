@@ -72,4 +72,18 @@ class RefundItemTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFUND_QUANTITY));
     }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void 주문_당시_단가가_없거나_0_이하이면_예외가_발생한다(Long unitPrice) {
+        // given
+        given(orderItem.getUnitPrice()).willReturn(unitPrice);
+
+        // when
+        // then
+        assertThatThrownBy(() -> RefundItem.of(orderItem, 1))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
 }

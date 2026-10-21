@@ -1,5 +1,4 @@
 package com.server.zelo.domain.refund.entity;
-
 import com.server.zelo.common.entity.BaseCreatedEntity;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -49,6 +48,10 @@ public class RefundItem extends BaseCreatedEntity {
         if (quantity == null || quantity < 1 || quantity > orderItem.getQuantity()) {
             throw new BusinessException(ErrorCode.INVALID_REFUND_QUANTITY);
         }
+        Long unitPrice = orderItem.getUnitPrice();
+        if (unitPrice == null || unitPrice <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "주문 당시 단가는 0보다 커야 합니다.");
+        }
         this.orderItem = orderItem;
         this.quantity = quantity;
         this.unitPrice = orderItem.getUnitPrice();
@@ -61,7 +64,6 @@ public class RefundItem extends BaseCreatedEntity {
     public Long getAmount() {
         return unitPrice * quantity;
     }
-
 
     void assignRefund(Refund refund) {
         this.refund = refund;

@@ -28,7 +28,7 @@ public class Refund extends BaseTimeEntity {
     @Column(name = "payment_id", nullable = false)
     private Long paymentId;
 
-    @Column(name = "reason", length = 50)
+    @Column(name = "reason", nullable = false, length = 50)
     private String reason;
 
     @Enumerated(EnumType.STRING)
@@ -53,6 +53,9 @@ public class Refund extends BaseTimeEntity {
         if (paymentId == null || refundType == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "환불할 결제와 환불 유형이 필요합니다.");
         }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "환불 사유가 필요합니다.");
+        }
         this.paymentId = paymentId;
         this.refundType = refundType;
         this.reason = reason;
@@ -68,7 +71,10 @@ public class Refund extends BaseTimeEntity {
         if (refundItem == null || refundItem.getRefund() != null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "다른 환불에 담기지 않은 환불 상품만 담을 수 있습니다.");
         }
-        // DB unique(refund_id, order_item_id)에 걸리기 전에 같은 상품을 두 번 담는 실수를 막는다
+        if (status != RefundStatus.REQUESTED) {
+            throw new BusinessException(ErrorCode.INVALID_REFUND_STATUS);
+        }
+
         boolean duplicated = refundItems.stream()
                 .anyMatch(item -> item.getOrderItem() == refundItem.getOrderItem());
         if (duplicated) {
@@ -81,6 +87,7 @@ public class Refund extends BaseTimeEntity {
     }
 
     public void complete(LocalDateTime refundedAt) {
+        validateTime(refundedAt);
         changeStatus(RefundStatus.COMPLETED);
         this.refundedAt = refundedAt;
     }
@@ -99,5 +106,11 @@ public class Refund extends BaseTimeEntity {
             throw new BusinessException(ErrorCode.INVALID_REFUND_STATUS);
         }
         this.status = target;
+    }
+
+    private void validateTime(LocalDateTime time) {
+        if (time == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상태 변경 시각이 필요합니다.");
+        }
     }
 }

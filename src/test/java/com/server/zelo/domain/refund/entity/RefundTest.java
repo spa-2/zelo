@@ -4,6 +4,9 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.order.entity.OrderItem;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.LocalDateTime;
 
@@ -17,6 +20,17 @@ class RefundTest {
     private static final Long PAYMENT_ID = 1L;
     private static final String REASON = "단순 변심";
     private static final LocalDateTime REFUNDED_AT = LocalDateTime.of(2026, 10, 21, 12, 0);
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = " ")
+    void 환불_사유가_비어_있으면_예외가_발생한다(String reason) {
+        // when
+        // then
+        assertThatThrownBy(() -> Refund.of(PAYMENT_ID, RefundType.FULL, reason))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
 
     @Test
     void 환불을_생성하면_REQUESTED_상태이고_상품_금액_합계는_0이다() {

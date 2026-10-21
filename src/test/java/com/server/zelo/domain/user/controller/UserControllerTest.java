@@ -10,12 +10,14 @@ import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -116,8 +118,8 @@ class UserControllerTest {
     }
 
     @Test
-    void 리프레시_토큰_쿠키의_Path는_users다() throws Exception {
-        assertThat(refreshTokenCookieAttributes(performLogin())).contains("Path=/api/users");
+    void 리프레시_토큰_쿠키의_Path는_reissue다() throws Exception {
+        assertThat(refreshTokenCookieAttributes(performLogin())).contains("Path=/api/auth/reissue");
     }
 
     @Test
@@ -211,7 +213,7 @@ class UserControllerTest {
 
         // then
         assertThat(refreshTokenCookieAttributes(result))
-                .contains("refreshToken=", "Max-Age=0", "HttpOnly", "Secure", "Path=/api/users");
+                .contains("refreshToken=", "Max-Age=0", "HttpOnly", "Secure", "Path=/api/auth/reissue");
     }
 
     @Test
@@ -243,5 +245,101 @@ class UserControllerTest {
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+    }
+
+    @Test
+    void 재발급하면_200과_새_액세스_토큰을_본문으로_반환한다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
+
+        // when & then
+        mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("newAccessToken"))
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
+    }
+
+    @Test
+    void 재발급하면_새_리프레시_토큰을_HttpOnly_Secure_쿠키로_내려준다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willReturn(LoginResult.of("newAccessToken", "newRefreshToken"));
+
+        // when
+        var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")));
+
+        // then
+        assertThat(refreshTokenCookieAttributes(result))
+                .contains("refreshToken=newRefreshToken", "HttpOnly", "Secure", "Path=/api/auth/reissue", "Max-Age=1209600");
+    }
+
+    @Test
+    void 쿠키가_없어도_Facade에_null을_넘겨_401_처리를_맡긴다() throws Exception {
+        // given
+        given(userCommandService.reissue(null)).willThrow(new BusinessException(ErrorCode.INVALID_TOKEN));
+
+        // when & then
+        mockMvc.perform(post("/api/auth/reissue"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_TOKEN.getCode()));
+    }
+
+    @Test
+    void 인증에_실패하면_401을_반환하고_리프레시_토큰_쿠키를_만료시킨다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TOKEN_REUSED));
+
+        // when
+        var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.TOKEN_REUSED.getCode()));
+
+        // then
+        assertThat(refreshTokenCookieAttributes(result))
+                .contains("refreshToken=", "Max-Age=0", "HttpOnly", "Secure", "Path=/api/auth/reissue");
+    }
+
+    @Test
+    void 다른_기기_로그인이_감지되면_전용_코드로_401을_반환한다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.LOGGED_IN_ELSEWHERE));
+
+        // when & then
+        mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.LOGGED_IN_ELSEWHERE.getCode()));
+    }
+
+    @Test
+    void 방금_교체된_토큰이면_409를_반환하고_쿠키는_지우지_않는다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new BusinessException(ErrorCode.TOKEN_ALREADY_ROTATED));
+
+        // when
+        var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.TOKEN_ALREADY_ROTATED.getCode()))
+                // 이 응답으로 새 토큰을 내주면 탈취된 토큰으로도 새 토큰을 받게 됨
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andReturn();
+
+        // then
+        // 먼저 처리된 요청이 새 쿠키를 내려줬을 수 있어서 이 응답이 쿠키를 건드리면 안 됨
+        assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
+    }
+
+    @Test
+    void Redis_장애로_재발급에_실패하면_503을_반환하고_쿠키는_지우지_않는다() throws Exception {
+        // given
+        given(userCommandService.reissue("oldRefreshToken")).willThrow(new RedisConnectionFailureException("연결 실패"));
+
+        // when
+        var result = mockMvc.perform(post("/api/auth/reissue").cookie(new Cookie("refreshToken", "oldRefreshToken")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(ErrorCode.SERVICE_UNAVAILABLE.getCode()))
+                .andReturn();
+
+        // then
+        // 장애가 풀린 뒤 같은 쿠키로 다시 시도할 수 있어야 함
+        assertThat(result.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
     }
 }

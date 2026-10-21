@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,5 +72,71 @@ class UserCommandServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
         then(refreshTokenService).should(never()).saveRefreshToken(anyLong(), anyString());
+    }
+
+    @Test
+    void 재발급하면_새_토큰_둘을_발급하고_받은_리프레시_토큰과_함께_교체를_요청한다() {
+        // given
+        given(jwtUtil.validateToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.getUserId("oldRefreshToken")).willReturn(1L);
+        given(jwtUtil.createAccessToken(1L)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L)).willReturn("newRefreshToken");
+
+        // when
+        LoginResult result = userCommandService.reissue("oldRefreshToken");
+
+        // then
+        assertThat(result.accessToken()).isEqualTo("newAccessToken");
+        assertThat(result.refreshToken()).isEqualTo("newRefreshToken");
+        // 새 토큰이 아니라 사용자가 보낸 토큰으로 일치 여부를 확인해야 함
+        then(refreshTokenService).should().rotateToken(1L, "oldRefreshToken", "newRefreshToken");
+    }
+
+    @Test
+    void 위조되었거나_만료되었거나_비어있는_토큰이면_INVALID_TOKEN_예외가_발생하고_재발급하지_않는다() {
+        // given
+        given(jwtUtil.validateToken("invalidToken")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.reissue("invalidToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
+        then(jwtUtil).should(never()).getUserId(anyString());
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 액세스_토큰으로는_재발급할_수_없다() {
+        // given
+        given(jwtUtil.validateToken("accessToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("accessToken")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.reissue("accessToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
+        then(jwtUtil).should(never()).getUserId(anyString());
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 교체에_실패하면_새_토큰을_반환하지_않고_예외가_전달된다() {
+        // given
+        given(jwtUtil.validateToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.getUserId("oldRefreshToken")).willReturn(1L);
+        given(jwtUtil.createAccessToken(1L)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L)).willReturn("newRefreshToken");
+        willThrow(new BusinessException(ErrorCode.TOKEN_REUSED))
+                .given(refreshTokenService).rotateToken(1L, "oldRefreshToken", "newRefreshToken");
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.reissue("oldRefreshToken"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.TOKEN_REUSED);
     }
 }

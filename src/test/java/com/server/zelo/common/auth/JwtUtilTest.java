@@ -2,6 +2,7 @@ package com.server.zelo.common.auth;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import javax.crypto.SecretKey;
 import java.util.Base64;
 import java.util.Date;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -190,6 +192,46 @@ class JwtUtilTest {
 
         // then
         assertThat(refreshExp).isAfter(accessExp);
+    }
+
+    @Test
+    void 토큰에는_UUID_형식의_jti가_들어있다() {
+        // given
+        String token = jwtUtil.createRefreshToken(1L);
+
+        // when
+        String jti = parseClaims(token).getId();
+
+        // then
+        assertThat(jti).isNotNull();
+        assertThat(UUID.fromString(jti).toString()).isEqualTo(jti);
+    }
+
+    @Test
+    void 같은_유저로_연속_발급해도_리프레시_토큰이_서로_다르다() {
+        // given
+        // 발급 시각이 초 단위라 jti가 없으면 같은 초에 만든 토큰이 완전히 같아짐
+        String first = jwtUtil.createRefreshToken(1L);
+        String second = jwtUtil.createRefreshToken(1L);
+
+        // when & then
+        assertThat(first).isNotEqualTo(second);
+        assertThat(parseClaims(first).getId()).isNotEqualTo(parseClaims(second).getId());
+    }
+
+    @Test
+    void 같은_유저로_연속_발급해도_액세스_토큰이_서로_다르다() {
+        // given
+        String first = jwtUtil.createAccessToken(1L);
+        String second = jwtUtil.createAccessToken(1L);
+
+        // when & then
+        assertThat(first).isNotEqualTo(second);
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parser().verifyWith(testKey).build()
+                .parseSignedClaims(token).getPayload();
     }
 
     private Date parse(String token) {

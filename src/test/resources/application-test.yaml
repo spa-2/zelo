@@ -13,5 +13,10 @@ spring:
 zelo:
   llm:
     mode: fake
+    timeout: 500ms
+    retry:
+      wait-duration: 10ms
   portone:
     mode: fake
+    # 지연·재시도 테스트가 오래 걸리지 않도록 시도당 시간 제한과 재시도 대기를 줄인다 (서킷 브레이커 수치는 실제 설정 그대로)
+

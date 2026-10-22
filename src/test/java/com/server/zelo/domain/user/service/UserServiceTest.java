@@ -184,6 +184,8 @@ class UserServiceTest {
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
         // 저장된 비밀번호가 null이면 BCrypt 비교에서 예외가 나므로 비교 자체를 시도하면 안 됨
         then(passwordEncoder).shouldHaveNoInteractions();
+    }
+
     void 회원이_없으면_MEMBER_NOT_FOUND가_발생한다() {
         // given
         given(userRepository.findById(1L)).willReturn(Optional.empty());

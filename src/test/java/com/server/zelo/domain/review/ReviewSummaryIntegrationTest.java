@@ -14,7 +14,7 @@ import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.entity.ProductReviewSummary;
 import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.service.ReviewService;
-import com.server.zelo.domain.review.service.ReviewSummaryOrchestrator;
+import com.server.zelo.domain.review.service.ReviewCommandService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -56,7 +56,7 @@ class ReviewSummaryIntegrationTest {
     private TransactionTemplate transactionTemplate;
 
     @Autowired
-    private ReviewSummaryOrchestrator reviewSummaryOrchestrator;
+    private ReviewCommandService reviewCommandService;
 
     // LLM 호출 순간에 트랜잭션이 열려 있는지 보려고 실제 동작은 그대로 두고 호출만 엿본다
     @MockitoSpyBean
@@ -102,7 +102,7 @@ class ReviewSummaryIntegrationTest {
     @Test
     void 요약을_만들면_커밋되어_남고_리뷰_근거_조회에_함께_나온다() {
         // when
-        reviewSummaryOrchestrator.createSummaries();
+        reviewCommandService.createSummaries();
 
         // then
         ProductReviewEvidence evidence = reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId);
@@ -120,7 +120,7 @@ class ReviewSummaryIntegrationTest {
         }).given(resilientLlmGateway).summarizeReviews(anyString(), anyString());
 
         // when
-        reviewSummaryOrchestrator.createSummaries();
+        reviewCommandService.createSummaries();
 
         // then: 트랜잭션 안에서 부르면 LLM을 기다리는 동안 DB 커넥션을 붙잡는다
         assertThat(transactionActive).isFalse();
@@ -132,7 +132,7 @@ class ReviewSummaryIntegrationTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when
-        reviewSummaryOrchestrator.createSummaries();
+        reviewCommandService.createSummaries();
 
         // then
         assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary()).isNull();
@@ -141,11 +141,11 @@ class ReviewSummaryIntegrationTest {
     @Test
     void 이미_요약이_있으면_다시_실행해도_LLM을_부르지_않는다() {
         // given
-        reviewSummaryOrchestrator.createSummaries();
+        reviewCommandService.createSummaries();
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when: 다시 부르면 실패 모드라도 대상이 아니므로 요약이 그대로 남는다
-        reviewSummaryOrchestrator.createSummaries();
+        reviewCommandService.createSummaries();
 
         // then
         assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary())

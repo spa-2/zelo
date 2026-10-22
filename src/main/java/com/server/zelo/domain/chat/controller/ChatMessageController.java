@@ -8,7 +8,7 @@ import com.server.zelo.domain.chat.dto.request.SendChatMessageRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
-import com.server.zelo.domain.chat.service.ChatMessageOrchestrator;
+import com.server.zelo.domain.chat.service.ChatMessageCommandService;
 import com.server.zelo.domain.chat.service.ChatMessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,14 +28,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatMessageController {
 
     private final ChatMessageService chatMessageService;
-    private final ChatMessageOrchestrator chatMessageOrchestrator;
+    private final ChatMessageCommandService chatMessageCommandService;
 
     // 채팅방 없이 메인 화면에서 첫 메시지를 보내면 방 생성 + 메세지 생성
     @PostMapping("/messages")
     public ResponseEntity<ApiResponse<StartChatResponse>> startChat(
             @Auth AuthUser authUser,
             @Valid @RequestBody SendChatMessageRequest request) {
-        StartChatResponse response = chatMessageOrchestrator.startChat(authUser.id(), request.text());
+        StartChatResponse response = chatMessageCommandService.startChat(authUser.id(), request.text());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 
@@ -53,7 +53,7 @@ public class ChatMessageController {
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
             @Valid @RequestBody SendChatMessageRequest request) {
-        ChatMessageResponse response = chatMessageOrchestrator.sendMessage(roomId, authUser.id(), request.text());
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(roomId, authUser.id(), request.text());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 }

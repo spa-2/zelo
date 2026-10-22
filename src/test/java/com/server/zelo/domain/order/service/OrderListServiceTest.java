@@ -48,7 +48,6 @@ class OrderListServiceTest {
     @Test
     void 상태_필터가_없으면_본인_주문을_조회하고_목록과_페이지_정보를_변환한다() {
         // given
-        Pageable requestedPage = PageRequest.of(2, 2);
         Pageable sortedPage = latestPage(2, 2);
         SearchOrderCondition condition = new SearchOrderCondition(null, 2, 2);
         Order first = order(101L, "사과 주문", 3_000L, CREATED_AT, OrderStatus.PAYMENT_PENDING);
@@ -57,7 +56,7 @@ class OrderListServiceTest {
                 .willReturn(new PageImpl<>(List.of(first, second), sortedPage, 7));
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(requestedPage, USER_ID, condition);
+        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
         assertThat(result.content()).containsExactly(
@@ -76,7 +75,6 @@ class OrderListServiceTest {
     @EnumSource(OrderStatus.class)
     void 상태_필터가_있으면_사용자_ID와_요청한_상태를_함께_전달한다(OrderStatus status) {
         // given
-        Pageable requestedPage = PageRequest.of(0, 20);
         Pageable sortedPage = latestPage(0, 20);
         SearchOrderCondition condition = new SearchOrderCondition(status, 0, 20);
         Order order = order(101L, "사과 주문", 3_000L, CREATED_AT, status);
@@ -84,7 +82,7 @@ class OrderListServiceTest {
                 .willReturn(new PageImpl<>(List.of(order), sortedPage, 1));
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(requestedPage, USER_ID, condition);
+        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
         assertThat(result.content()).containsExactly(
@@ -99,7 +97,6 @@ class OrderListServiceTest {
     @ValueSource(booleans = {false, true})
     void 조회한_주문이_없으면_예외_없이_빈_목록과_페이지_정보를_반환한다(boolean filtered) {
         // given
-        Pageable requestedPage = PageRequest.of(3, 20);
         Pageable sortedPage = latestPage(3, 20);
         OrderStatus status = filtered ? OrderStatus.PAID : null;
         SearchOrderCondition condition = new SearchOrderCondition(status, 3, 20);
@@ -111,7 +108,7 @@ class OrderListServiceTest {
         }
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(requestedPage, USER_ID, condition);
+        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
         assertThat(result.content()).isEmpty();
@@ -129,12 +126,11 @@ class OrderListServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void 요청한_정렬과_관계없이_생성시각과_ID_내림차순으로_조회한다(boolean filtered) {
+    void 페이지_조건을_생략하면_기본값과_생성시각_ID_내림차순으로_조회한다(boolean filtered) {
         // given
-        Pageable requestedPage = PageRequest.of(1, 5, Sort.by(Sort.Order.asc("totalAmount")));
-        Pageable sortedPage = latestPage(1, 5);
+        Pageable sortedPage = latestPage(0, 20);
         OrderStatus status = filtered ? OrderStatus.PAID : null;
-        SearchOrderCondition condition = new SearchOrderCondition(status, 1, 5);
+        SearchOrderCondition condition = new SearchOrderCondition(status, null, null);
         if (filtered) {
             given(orderRepository.findByUser_IdAndStatus(sortedPage, USER_ID, status))
                     .willReturn(Page.empty(sortedPage));
@@ -143,9 +139,11 @@ class OrderListServiceTest {
         }
 
         // when
-        orderService.getMyOrders(requestedPage, USER_ID, condition);
+        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
+        assertThat(result.page()).isZero();
+        assertThat(result.size()).isEqualTo(20);
         if (filtered) {
             then(orderRepository).should().findByUser_IdAndStatus(sortedPage, USER_ID, status);
         } else {

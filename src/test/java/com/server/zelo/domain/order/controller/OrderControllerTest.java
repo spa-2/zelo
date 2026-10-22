@@ -21,8 +21,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,9 +50,6 @@ class OrderControllerTest {
     private OrderService orderService;
 
     @Captor
-    private ArgumentCaptor<Pageable> pageableCaptor;
-
-    @Captor
     private ArgumentCaptor<SearchOrderCondition> conditionCaptor;
 
     private MockMvc mockMvc;
@@ -63,7 +58,7 @@ class OrderControllerTest {
     void setUp() {
         SecurityContextHolder.clearContext();
         mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService))
-                .setCustomArgumentResolvers(new AuthArgumentResolver(), new PageableHandlerMethodArgumentResolver())
+                .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -79,7 +74,7 @@ class OrderControllerTest {
         authenticate();
         GetOrderSummaryResponse order = new GetOrderSummaryResponse(
                 101L, OrderStatus.PAID, "사과 주문", 3_000L, LocalDateTime.of(2026, 10, 22, 14, 30));
-        given(orderService.getMyOrders(any(Pageable.class), eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(order), 0, 20, 1, 1));
 
         // when
@@ -107,7 +102,7 @@ class OrderControllerTest {
     void 정의된_상태는_검색조건으로_전달하고_빈_목록도_200으로_반환한다(OrderStatus orderStatus) throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(any(Pageable.class), eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         // when
@@ -126,7 +121,7 @@ class OrderControllerTest {
     void 유효한_페이지와_크기는_그대로_전달한다(int page, int size) throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(any(Pageable.class), eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), page, size, 0, 0));
 
         // when
@@ -138,8 +133,24 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.page").value(page))
                 .andExpect(jsonPath("$.data.size").value(size));
         assertRequest(page, size, null);
-        assertThat(conditionCaptor.getValue().page()).isEqualTo(page);
-        assertThat(conditionCaptor.getValue().size()).isEqualTo(size);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"page, 2, 2, 20", "size, 5, 0, 5"})
+    void 페이지나_크기_중_하나만_보내면_생략한_값에만_기본값을_적용한다(
+            String name, String value, int expectedPage, int expectedSize) throws Exception {
+        // given
+        authenticate();
+        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+                .willReturn(new PageResponse<>(List.of(), expectedPage, expectedSize, 0, 0));
+
+        // when
+        // then
+        mockMvc.perform(get("/api/orders").param(name, value))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(expectedPage))
+                .andExpect(jsonPath("$.data.size").value(expectedSize));
+        assertRequest(expectedPage, expectedSize, null);
     }
 
     @ParameterizedTest
@@ -194,7 +205,7 @@ class OrderControllerTest {
     void 요청에_다른_사용자_ID를_넣어도_인증된_사용자_ID로_조회한다() throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(any(Pageable.class), eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         // when
@@ -224,10 +235,10 @@ class OrderControllerTest {
     }
 
     private void assertRequest(int page, int size, OrderStatus status) {
-        then(orderService).should().getMyOrders(pageableCaptor.capture(), eq(USER_ID), conditionCaptor.capture());
+        then(orderService).should().getMyOrders(eq(USER_ID), conditionCaptor.capture());
         then(orderService).shouldHaveNoMoreInteractions();
-        assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(page);
-        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(size);
+        assertThat(conditionCaptor.getValue().page()).isEqualTo(page);
+        assertThat(conditionCaptor.getValue().size()).isEqualTo(size);
         assertThat(conditionCaptor.getValue().status()).isEqualTo(status);
     }
 }

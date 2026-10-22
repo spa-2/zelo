@@ -67,6 +67,10 @@ dependencies {
     // security
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
+    // 포트원 웹훅 서명 검증
+    implementation 'io.portone:server-sdk:0.24.0'
+
+
     // Encryption & Token
     implementation 'at.favre.lib:bcrypt:0.10.2'
     compileOnly "io.jsonwebtoken:jjwt-api:0.12.6"

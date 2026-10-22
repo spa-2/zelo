@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.entity;
+package com.server.zelo.domain.paymentTest.entity;
 
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import org.junit.jupiter.params.ParameterizedTest;

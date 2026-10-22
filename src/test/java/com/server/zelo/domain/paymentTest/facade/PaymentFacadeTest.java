@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.facade;
+package com.server.zelo.domain.paymentTest.facade;
 
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;

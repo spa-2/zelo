@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.controller;
+package com.server.zelo.domain.paymentTest.controller;
 
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;

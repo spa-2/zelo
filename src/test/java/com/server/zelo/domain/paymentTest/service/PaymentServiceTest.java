@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.service;
+package com.server.zelo.domain.paymentTest.service;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;

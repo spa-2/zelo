@@ -58,6 +58,7 @@ zelo:
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET}
     store-id: ${PORTONE_STORE_ID}
+    webhook-secret: ${PORTONE_WEBHOOK_SECRET:}
     connect-timeout: 3s
     read-timeout: 5s
     time-zone: Asia/Seoul

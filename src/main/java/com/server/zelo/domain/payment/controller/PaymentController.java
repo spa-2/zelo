@@ -1,7 +1,7 @@
 package com.server.zelo.domain.payment.controller;
 
 import com.server.zelo.common.api.ApiResponse;
-import com.server.zelo.domain.webhook.dto.request.ReceivePaymentWebhookRequest;
+import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.payment.facade.PaymentFacade;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ public class PaymentController {
 
     // TODO(webhook): 포트원 웹훅 서명 검증 추가. 웹훅 내용은 믿지 않고 포트원에 다시 조회하므로 가짜 요청으로 결제를 완료시킬 수는 없다
     @PostMapping("/webhook")
-    public ResponseEntity<ApiResponse<Void>> receiveWebhook(@Valid @RequestBody ReceivePaymentWebhookRequest request) {
+    public ResponseEntity<ApiResponse<Void>> receiveWebhook(@Valid @RequestBody WebhookRequest request) {
         paymentFacade.confirmPayment(request.data().paymentId());
         return ResponseEntity.ok(ApiResponse.ok());
     }

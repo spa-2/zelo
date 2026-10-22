@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.entity;
+package com.server.zelo.domain.paymentTest.entity;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;

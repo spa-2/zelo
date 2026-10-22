@@ -1,4 +1,4 @@
-package com.server.zelo.paymentTest.service;
+package com.server.zelo.domain.paymentTest.service;
 
 import com.server.zelo.domain.order.mock.service.MockOrderService;
 import com.server.zelo.domain.portone.client.PortOneClient;

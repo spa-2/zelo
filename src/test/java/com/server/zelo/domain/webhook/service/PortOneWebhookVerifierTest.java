@@ -80,12 +80,17 @@ class PortOneWebhookVerifierTest {
 
     @ParameterizedTest
     @NullAndEmptySource
-    void 웹훅_시크릿이_없으면_생성할_수_없다(String secret) {
+    void 웹훅_시크릿이_없으면_웹훅을_거절한다(String secret) {
+        // given
+        PortOneWebhookVerifier noSecretVerifier = new PortOneWebhookVerifier(
+                secret, JsonMapper.builder().build(), Validation.buildDefaultValidatorFactory().getValidator());
+        String timestamp = now();
+
         // when
         // then
-        assertThatThrownBy(() -> new PortOneWebhookVerifier(
-                secret, JsonMapper.builder().build(), Validation.buildDefaultValidatorFactory().getValidator()))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> noSecretVerifier.verify(WEBHOOK_ID, timestamp, sign(timestamp, BODY), BODY))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_WEBHOOK_SIGNATURE));
     }
 
     private String now() {

@@ -35,7 +35,12 @@ public class PortOneWebhookVerifier {
 
     // 서명을 검증한 뒤 본문을 객체로 바꾼다. SDK 예외는 공통 에러코드로 바꿔 401로 응답한다
     public WebhookRequest verify(String webhookId, String webhookTimestamp,
-                                               String webhookSignature, String body) {
+                                 String webhookSignature, String body) {
+        
+        if (webhookVerifier == null) { // ★
+            log.error("포트원 웹훅 시크릿이 설정되지 않아 웹훅을 거절합니다 webhookId={}", webhookId);
+            throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);
+        }
         try {
             webhookVerifier.verify(body, webhookId, webhookSignature, webhookTimestamp);
         } catch (WebhookVerificationException e) {

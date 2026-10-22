@@ -79,4 +79,5 @@ jobs:
           # 추후에 추가할 예정
           PORTONE_API_SECRET: ${{ secrets.PORTONE_API_SECRET || 'dummy-portone-secret-for-ci' }}
           PORTONE_STORE_ID: ${{ secrets.PORTONE_STORE_ID || 'store-dummy-for-ci' }}
+          PORTONE_WEBHOOK_SECRET: ${{ secrets.PORTONE_WEBHOOK_SECRET || 'whsec_Y2•••••••••••••••••••••••••••••••••••••••••=' }}
         run: ./gradlew build sonar --info

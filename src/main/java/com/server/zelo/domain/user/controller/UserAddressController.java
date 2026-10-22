@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/users/addresses")
+@RequestMapping("/api/users/me/addresses")
 public class UserAddressController {
 
     private final UserFacade userFacade;

@@ -17,4 +17,8 @@ public class UserAddressService {
         return userAddressRepository.save(
                 UserAddress.of(user, place, recipientName, recipientPhone, zipCode, address, isDefault));
     }
+
+    public void releaseDefaultAddress(Long userId) {
+        userAddressRepository.findDefaultByUserId(userId).ifPresent(UserAddress::releaseDefault);
+    }
 }

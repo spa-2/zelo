@@ -59,4 +59,9 @@ public class UserAddress extends BaseTimeEntity {
                                  String zipCode, String address, boolean isDefault) {
         return new UserAddress(user, place, recipientName, recipientPhone, zipCode, address, isDefault);
     }
+
+    // 다른 배송지가 기본 배송지가 되면 기존 기본 배송지는 일반 배송지로 바뀐다
+    public void releaseDefault() {
+        this.isDefault = false;
+    }
 }

@@ -33,6 +33,16 @@ public class SpringAiLlmGateway implements LlmGateway {
 
     @Override
     public LlmReply explain(String systemPrompt, String userText) {
+        return reply(systemPrompt, userText);
+    }
+
+    // 리뷰 요약도 문장 하나를 받는 호출이라 채팅 답변과 같은 방식으로 보내고, 리뷰 전용 system 프롬프트만 다르다
+    @Override
+    public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
+        return reply(systemPrompt, reviewText);
+    }
+
+    private LlmReply reply(String systemPrompt, String userText) {
         // content()는 문장만 주므로, 토큰 사용량까지 받기 위해 chatResponse()를 사용
         ChatResponse response = chatClient.prompt()
                 .system(systemPrompt)

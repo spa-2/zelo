@@ -60,6 +60,11 @@ public class ResilientLlmGateway implements LlmGateway {
         return call(() -> requireValidPlan(llmGateway.planMenu(systemPrompt, userText)));
     }
 
+    @Override
+    public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
+        return call(() -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
+    }
+
     // 재시도(바깥) → 서킷 브레이커 → 시도당 시간 제한(안쪽) 순서로 감싼다.
     // 그래서 재시도한 시도도 서킷 브레이커가 한 번씩 세고, 서킷이 열려 막힌 호출은 재시도하지 않는다
     private <T> LlmResult<T> call(Supplier<LlmResult<T>> request) {
@@ -129,6 +134,17 @@ public class ResilientLlmGateway implements LlmGateway {
         }
         result.content().validate(MenuPlanPrompt.INGREDIENT_UNITS);
         return result;
+    }
+
+    // 요약은 한 줄로 저장하므로 줄바꿈·연속 공백을 한 칸으로 줄인 뒤 길이를 본다.
+    // 너무 길면 메뉴 계획 검증 실패처럼 한 번 더 물어볼 수 있게 시도 안에서 AI_INVALID_RESPONSE로 바꾼다
+    private LlmReply requireSummary(LlmReply reply) {
+        requireText(reply);
+        String summary = reply.text().strip().replaceAll("\\s+", " ");
+        if (summary.codePointCount(0, summary.length()) > ReviewSummaryPrompt.SUMMARY_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+        }
+        return LlmReply.of(summary, reply.model(), reply.promptTokens(), reply.completionTokens());
     }
 
     private static long elapsedMillis(long startNanos) {

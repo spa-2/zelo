@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 public class FakeLlmGateway implements LlmGateway {
 
     public static final String MODEL = "fake";
+    public static final String REVIEW_SUMMARY = "[FAKE] 리뷰 요약입니다.";
 
     // 실제 OpenAI SDK와 같은 예외를 던져, 재시도 대상 구분까지 실제와 똑같이 확인할 수 있게 한다
     public enum Mode {
@@ -55,6 +56,12 @@ public class FakeLlmGateway implements LlmGateway {
                 List.of(Keyword.NOT_SPICY),
                 List.of());
         return LlmResult.of(menuPlan, MODEL, 0, 0);
+    }
+
+    @Override
+    public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
+        applyMode();
+        return LlmReply.of(REVIEW_SUMMARY, MODEL, 0, 0);
     }
 
     public void changeMode(Mode mode) {

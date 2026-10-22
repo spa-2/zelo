@@ -40,7 +40,7 @@ public class UserAddressController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    @PutMapping("/{addressId}")
+    @RequestMapping(path = "/{addressId}", method = {RequestMethod.PUT, RequestMethod.PATCH})
     public ResponseEntity<ApiResponse<UpdateUserAddressResponse>> updateUserAddress(
             @Auth AuthUser authUser, @PathVariable Long addressId,
             @Valid @RequestBody UpdateUserAddressRequest request) {

@@ -1,10 +1,14 @@
 package com.server.zelo.domain.user.service;
 
+import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.repository.UserAddressRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -20,5 +24,12 @@ public class UserAddressService {
 
     public void releaseDefaultAddress(Long userId) {
         userAddressRepository.findDefaultByUserId(userId).ifPresent(UserAddress::releaseDefault);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GetUserAddressResponse> getUserAddresses(Long userId) {
+        return userAddressRepository.findAllActiveByUserId(userId).stream()
+                .map(GetUserAddressResponse::from)
+                .toList();
     }
 }

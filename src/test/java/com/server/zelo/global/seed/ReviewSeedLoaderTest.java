@@ -84,7 +84,7 @@ class ReviewSeedLoaderTest {
         // then
         then(reviewRepository).should().saveAll(reviewsCaptor.capture());
         List<Review> reviews = reviewsCaptor.getValue();
-        assertThat(reviews).hasSize(89);
+        assertThat(reviews).hasSize(94);
         // 실제 회원 ID와 섞이지 않는 번호대부터 하나씩 붙인다
         assertThat(reviews.getFirst().getUserId()).isEqualTo(9_100_000L);
         assertThat(reviews).extracting(Review::getUserId).doesNotHaveDuplicates();
@@ -99,14 +99,14 @@ class ReviewSeedLoaderTest {
         // when
         loader("real").load();
 
-        // then: 백김치 23건 평균 4.52, 포기김치(브랜드 G) 30건 평균 4.70, 포기김치 500g 3건
+        // then: 백김치 23건 평균 4.52, 포기김치(브랜드 G) 35건 평균 4.26, 포기김치 500g 3건
         then(productReviewSummaryRepository).should().saveAll(summariesCaptor.capture());
         assertThat(summariesCaptor.getValue())
                 .extracting(summary -> summary.getProduct().getProductCode(), ProductReviewSummary::getReviewCount,
                         ProductReviewSummary::getAvgRating)
                 .contains(
                         tuple("SID-0008", 23, new BigDecimal("4.52")),
-                        tuple("SID-0006", 30, new BigDecimal("4.70")),
+                        tuple("SID-0006", 35, new BigDecimal("4.26")),
                         tuple("SID-0005", 3, new BigDecimal("4.33")))
                 .hasSize(SEED_PRODUCT_CODES.size());
         assertThat(summariesCaptor.getValue()).allSatisfy(summary -> assertThat(summary.getContent()).isNull());
@@ -130,7 +130,7 @@ class ReviewSeedLoaderTest {
                         tuple(Keyword.NOT_SPICY, 15), tuple(Keyword.LOW_SALT, 6), tuple(Keyword.SPICY, 1));
         assertThat(keywords).filteredOn(of("SID-0006"))
                 .extracting(ProductReviewKeyword::getKeyword, ProductReviewKeyword::getMentionCount)
-                .containsExactlyInAnyOrder(tuple(Keyword.SPICY, 14), tuple(Keyword.NOT_SPICY, 1));
+                .containsExactlyInAnyOrder(tuple(Keyword.SPICY, 15), tuple(Keyword.NOT_SPICY, 1));
         // 키워드가 하나도 언급되지 않은 상품(계란 10구)은 행을 만들지 않는다
         assertThat(keywords).filteredOn(of("MEA-0025")).isEmpty();
         assertThat(keywords).allSatisfy(keyword -> assertThat(keyword.getMentionCount()).isPositive());

@@ -42,6 +42,18 @@ class ReviewSummaryPromptTest {
     }
 
     @Test
+    void system_프롬프트는_맛_소수_의견은_빼고_식품_안전_의견은_한_건이라도_소수_의견으로_넣으라고_한다() {
+        // when
+        String systemPrompt = reviewSummaryPrompt.systemPrompt();
+
+        // then: 실험(local-notes/llm-model-decision.md 6장)에서 이 규칙만으로 안전 의견을 빠짐없이 넣었다
+        assertThat(systemPrompt).contains("한두 명만 말한 내용은 빼")
+                .contains("식품 안전 문제는 1건이라도 빼지 마")
+                .contains("일부 ~라는 의견도 있어요")
+                .contains("맛·취향이나 배송 의견은 한두 명이면 그대로 빼");
+    }
+
+    @Test
     void 사용자_글에는_상품_이름과_리뷰를_한_줄씩_평점과_함께_넣는다() {
         // given
         List<Review> reviews = List.of(

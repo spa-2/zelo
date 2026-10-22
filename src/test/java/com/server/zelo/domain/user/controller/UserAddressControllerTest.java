@@ -5,6 +5,8 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
+import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,12 +22,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,6 +47,8 @@ class UserAddressControllerTest {
 
     @Mock
     private UserFacade userFacade;
+
+    @Mock private UserAddressService userAddressService;
 
     private MockMvc mockMvc;
 
@@ -101,6 +108,31 @@ class UserAddressControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
         then(userFacade).should(never()).createUserAddress(anyLong(), any());
+    }
+
+    @Test
+    void 배송지_목록을_요청하면_200과_목록을_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(userAddressService.getUserAddresses(1L)).willReturn(List.of(
+                new GetUserAddressResponse(1L, "집", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true),
+                new GetUserAddressResponse(2L, "회사", "홍길동", "010-1234-5678", "54321", "서울시 중구", false)));
+
+        // when // then
+        mockMvc.perform(get("/api/users/me/addresses"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].place").value("집"))
+                .andExpect(jsonPath("$.data[0].isDefault").value(true));
+    }
+
+    @Test
+    void 인증_정보_없이_목록을_요청하면_401을_반환한다() throws Exception {
+        // when // then
+        mockMvc.perform(get("/api/users/me/addresses"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
+        then(userAddressService).should(never()).getUserAddresses(anyLong());
     }
 
     private void authenticate(Long userId) {

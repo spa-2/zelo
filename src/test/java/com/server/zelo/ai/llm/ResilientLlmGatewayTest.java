@@ -43,6 +43,7 @@ class ResilientLlmGatewayTest {
     private static final LlmReply REPLY = LlmReply.of("답변", "gpt-test", 10, 5);
     // 실패해서 응답이 없을 때 로그에 남는 설정 모델 이름 (성공 응답의 모델과 구분하려고 다른 이름을 쓴다)
     private static final String CONFIGURED_MODEL = "gpt-configured";
+    private static final String REVIEW_SUMMARY_MODEL = "gpt-review-configured";
     private static final String ATTEMPT_LOG = "LLM 호출 attempt=";
 
     @Mock
@@ -72,7 +73,8 @@ class ResilientLlmGatewayTest {
                 .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable))
                 .build());
         executorService = Executors.newVirtualThreadPerTaskExecutor();
-        resilientLlmGateway = new ResilientLlmGateway(retry, CONFIGURED_MODEL, delegate, timeLimiter, circuitBreaker, executorService);
+        resilientLlmGateway = new ResilientLlmGateway(retry, CONFIGURED_MODEL, REVIEW_SUMMARY_MODEL, delegate, timeLimiter,
+                circuitBreaker, executorService);
     }
 
     @AfterEach
@@ -488,6 +490,20 @@ class ResilientLlmGatewayTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
         then(delegate).should(times(2)).summarizeReviews(anyString(), anyString());
+    }
+
+    @Test
+    void 리뷰_요약이_실패하면_로그에_리뷰_요약용으로_설정한_모델을_남긴다(CapturedOutput output) {
+        // given
+        given(delegate.summarizeReviews(anyString(), anyString())).willThrow(OpenAiErrors.serverError(500));
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.summarizeReviews("system", "리뷰"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(attemptLogLines(output)).isNotEmpty()
+                .allSatisfy(line -> assertThat(line).contains("model=gpt-review-configured"));
     }
 
     @Test

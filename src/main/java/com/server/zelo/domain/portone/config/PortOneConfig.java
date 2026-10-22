@@ -1,5 +1,4 @@
 package com.server.zelo.domain.portone.config;
-import com.server.zelo.domain.portone.dto.response.PortOneProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;

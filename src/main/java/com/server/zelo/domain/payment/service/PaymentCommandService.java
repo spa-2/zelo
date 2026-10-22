@@ -1,6 +1,7 @@
 package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.domain.order.mock.service.MockOrderService;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -19,11 +20,17 @@ public class PaymentCommandService {
     private final MockOrderService mockOrderService;
     private final TransactionOperations transactionOperations;
 
+    public PaymentStatus confirmPayment(Long userId, String portoneId) {
+        Payment payment = paymentService.getPayment(portoneId);
+        // TODO(order): 주문 도메인 머지 후 OrderService로 교체
+        mockOrderService.validateOwner(payment.getOrderId(), userId);
+        return confirmPayment(portoneId);
+    }
     // 포트원 조회와 환불은 외부 HTTP 호출이라 DB 커넥션을 붙잡지 않도록 트랜잭션 밖에서 하고, 상태 반영만 트랜잭션으로 묶는다
-    public void confirmPayment(String portoneId) {
+    public PaymentStatus confirmPayment(String portoneId) {
         Payment payment = transactionOperations.execute(status -> paymentService.startConfirm(portoneId));
         if (payment.isConfirmed()) {
-            return;
+            return payment.getStatus();
         }
 
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
@@ -35,7 +42,7 @@ public class PaymentCommandService {
                 // TODO(order): OrderService로 교체
                 mockOrderService.completePayment(orderId);
             });
-            return;
+            return PaymentStatus.PAID;
         }
 
         if (pgPayment.isPaid()) {
@@ -46,7 +53,7 @@ public class PaymentCommandService {
                 // TODO(order): 주문 취소 Command로 교체 (재고 복구 포함)
                 mockOrderService.cancel(orderId);
             });
-            return;
+            return PaymentStatus.CANCELED;
         }
 
         if (pgPayment.isFailed()) {
@@ -55,7 +62,10 @@ public class PaymentCommandService {
                 // TODO(order): 주문 취소 Command로 교체 (재고 복구 포함)
                 mockOrderService.cancel(orderId);
             });
+            return PaymentStatus.FAILED;
         }
         // 그 외(결제창 진행 중 등)는 확인 대기로 남겨 두고 웹훅이나 스케줄러가 다시 확인한다
+        return PaymentStatus.CONFIRM_PENDING;
     }
+
 }

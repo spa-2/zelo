@@ -1,5 +1,7 @@
 package com.server.zelo.domain.user.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
@@ -31,5 +33,11 @@ public class UserAddressService {
         return userAddressRepository.findAllActiveByUserId(userId).stream()
                 .map(GetUserAddressResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public UserAddress getDefaultAddress(Long userId) {
+        return userAddressRepository.findDefaultByUserId(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DEFAULT_ADDRESS_NOT_FOUND));
     }
 }

@@ -87,7 +87,8 @@ public enum ErrorCode {
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),
     INVALID_REFUND_QUANTITY(HttpStatus.BAD_REQUEST, "REFUND_002", "환불 수량은 1 이상, 주문 수량 이하여야 합니다."),
     // Delivery
-    INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다.");
+    INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다."),
+    DEFAULT_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_010", "기본 배송지를 찾을 수 없습니다.");
 
 
     private final HttpStatus status;

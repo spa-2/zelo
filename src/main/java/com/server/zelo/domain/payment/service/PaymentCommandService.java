@@ -1,11 +1,13 @@
 package com.server.zelo.domain.payment.service;
 
+import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
@@ -19,6 +21,8 @@ public class PaymentCommandService {
     private final OrderService orderService;
     private final PortOneClient portOneClient;
     private final PaymentService paymentService;
+    private final DeliveryService deliveryService;
+    private final UserAddressService userAddressService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
 
@@ -42,6 +46,7 @@ public class PaymentCommandService {
             transactionOperations.executeWithoutResult(status -> {
                 paymentService.complete(portoneId, pgPayment.amount(), pgPayment.paidAt());
                 orderCommandService.completePayment(orderId);
+                createDelivery(orderId);
             });
             return PaymentStatus.PAID;
         }
@@ -63,7 +68,16 @@ public class PaymentCommandService {
             });
             return PaymentStatus.FAILED;
         }
+
         // 그 외(결제창 진행 중 등)는 확인 대기로 남겨 두고 웹훅이나 스케줄러가 다시 확인한다
         return PaymentStatus.CONFIRM_PENDING;
+
     }
+        // 결제가 완료된 주문은 주문한 사용자의 기본 배송지로 배송을 접수한다
+        private void createDelivery(Long orderId) {
+            Long userId = orderService.getOrderWithItems(orderId).getUser().getId();
+            deliveryService.createDelivery(orderId, userAddressService.getDefaultAddress(userId));
+        }
+
+
 }

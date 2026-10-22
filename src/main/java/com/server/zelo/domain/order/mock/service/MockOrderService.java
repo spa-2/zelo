@@ -18,4 +18,9 @@ public class MockOrderService {
     public void cancel(Long orderId) {
         log.info("[MOCK] 주문 취소 및 재고 복구 orderId={}", orderId);
     }
+
+    // TODO(order): 주문의 사용자와 다르면 ORDER_ACCESS_DENIED
+    public void validateOwner(Long orderId, Long userId) {
+        log.info("[MOCK] 주문 소유자 확인 orderId={}, userId={}", orderId, userId);
+    }
 }

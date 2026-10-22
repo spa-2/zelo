@@ -1,12 +1,10 @@
-package com.server.zelo.domain.paymentTest.service;
+package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.domain.order.mock.service.MockOrderService;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.payment.entity.Payment;
-import com.server.zelo.domain.payment.service.PaymentCommandService;
-import com.server.zelo.domain.payment.service.PaymentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

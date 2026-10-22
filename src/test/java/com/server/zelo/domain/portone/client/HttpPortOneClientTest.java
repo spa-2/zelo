@@ -2,7 +2,7 @@ package com.server.zelo.domain.portone.client;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
-import com.server.zelo.domain.portone.dto.response.PortOneProperties;
+import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

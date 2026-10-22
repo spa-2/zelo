@@ -1,6 +1,5 @@
-package com.server.zelo.domain.paymentTest.entity;
+package com.server.zelo.domain.payment.entity;
 
-import com.server.zelo.domain.payment.entity.PaymentStatus;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;

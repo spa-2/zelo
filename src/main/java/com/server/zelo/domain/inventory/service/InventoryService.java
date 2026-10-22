@@ -8,6 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -36,6 +40,28 @@ public class InventoryService {
     public void restore(Long productId, Integer requestedQuantity) {
         Inventory inventory = findInventory(productId);
         inventory.restore(requestedQuantity);
+    }
+
+    // 상품별 가용수량 모두 조회
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> findAvailableQuantities(Collection<Long> productIds) {
+
+        // 불필요한 쿼리를 막기 위해 빈 목록이면 조회 없이 빈 Map 반환
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+
+        // 상품 ID별 가용 수량 Map 반환
+        Map<Long, Integer> quantities = inventoryRepository.findAllByProduct_IdIn(productIds).stream()
+                .collect(Collectors.toMap(
+                        inventory -> inventory.getProduct().getId(),
+                        Inventory::getAvailableQuantity
+                ));
+
+        // 재고 행이 없는 상품은 0으로 채워 반환
+        productIds.forEach(productId -> quantities.putIfAbsent(productId, 0));
+
+        return quantities;
     }
 
     private Inventory findInventory(Long productId) {

@@ -23,5 +23,11 @@ public interface UserAddressRepository extends JpaRepository<UserAddress, Long> 
         return findAllByUserIdAndDeleteAtIsNullOrderByIsDefaultDescIdDesc(userId);
     }
 
+    Optional<UserAddress> findByIdAndUserIdAndDeleteAtIsNull(Long id, Long userId);
+
+    // 본인의 삭제되지 않은 배송지를 찾는다
+    default Optional<UserAddress> findActiveByIdAndUserId(Long id, Long userId) {
+        return findByIdAndUserIdAndDeleteAtIsNull(id, userId);
+    }
 
 }

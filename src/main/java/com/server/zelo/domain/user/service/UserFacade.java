@@ -4,8 +4,10 @@ import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.request.UpdateUserAddressRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +17,7 @@ public class UserFacade {
 
     private final UserCommandService userCommandService;
     private final LockDistributeService lockDistributeService;
+    private final UserAddressService userAddressService;
 
 
     // @Transactional은 Command에 있고, 락이 커밋 이후에 풀리도록 Facade에서는 락만 검
@@ -27,6 +30,11 @@ public class UserFacade {
     public CreateUserAddressResponse createUserAddress(Long userId, CreateUserAddressRequest request) {
         return lockDistributeService.execute(LockKey.createUserAddress(userId),
                 () -> userCommandService.createUserAddress(userId, request));
+    }
+
+    public UpdateUserAddressResponse updateUserAddress(Long userId, Long addressId, UpdateUserAddressRequest request) {
+        return lockDistributeService.execute(LockKey.updateUserAddress(userId),
+                () -> userAddressService.updateUserAddress(userId, addressId, request));
     }
 
 }

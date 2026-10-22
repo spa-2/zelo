@@ -4,8 +4,11 @@ import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.request.UpdateUserAddressRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
+import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,9 @@ class UserFacadeTest {
 
     @Mock
     private LockDistributeService lockDistributeService;
+
+    @Mock
+    private UserAddressService userAddressService;
 
     @Test
     @SuppressWarnings("unchecked")
@@ -76,5 +82,24 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserAddress(1L, request);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 등록과_같은_사용자_단위_락_안에서_배송지를_수정한다() {
+        // given
+        UpdateUserAddressRequest request =
+                new UpdateUserAddressRequest("회사", "김철수", "010-9876-5432", "54321", "서울시 중구", true);
+        UpdateUserAddressResponse response =
+                new UpdateUserAddressResponse(2L, "회사", "김철수", "010-9876-5432", "54321", "서울시 중구", true);
+        given(userAddressService.updateUserAddress(1L, 2L, request)).willReturn(response);
+        given(lockDistributeService.execute(eq(LockKey.createUserAddress(1L)), any(Supplier.class)))
+                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
+
+        // when
+        UpdateUserAddressResponse result = userFacade.updateUserAddress(1L, 2L, request);
+
+        // then
+        assertThat(result).isEqualTo(response);
     }
 }

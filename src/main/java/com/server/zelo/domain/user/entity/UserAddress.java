@@ -1,6 +1,8 @@
 package com.server.zelo.domain.user.entity;
 
 import com.server.zelo.common.entity.BaseTimeEntity;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -53,6 +55,24 @@ public class UserAddress extends BaseTimeEntity {
         this.zipCode = zipCode;
         this.address = address;
         this.isDefault = isDefault;
+    }
+    public void update(String place, String recipientName, String recipientPhone, String zipCode, String address) {
+        this.place = place;
+        this.recipientName = recipientName;
+        this.recipientPhone = recipientPhone;
+        this.zipCode = zipCode;
+        this.address = address;
+    }
+
+    public void changeToDefault() {
+        this.isDefault = true;
+    }
+
+    // 기본 배송지가 없어지면 배송지를 정할 수 없으므로, 다른 배송지를 기본으로 지정하는 방식으로만 바꾼다
+    public void validateKeepDefault(boolean isDefault) {
+        if (this.isDefault && !isDefault) {
+            throw new BusinessException(ErrorCode.DEFAULT_ADDRESS_REQUIRED);
+        }
     }
 
     public static UserAddress of(User user, String place, String recipientName, String recipientPhone,

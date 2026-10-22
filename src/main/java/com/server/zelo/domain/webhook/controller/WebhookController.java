@@ -1,28 +1,37 @@
 package com.server.zelo.domain.webhook.controller;
 
 import com.server.zelo.common.api.ApiResponse;
-import com.server.zelo.domain.webhook.dto.request.ReceivePaymentWebhookRequest;
 import com.server.zelo.domain.payment.facade.PaymentFacade;
-import jakarta.validation.Valid;
+import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
+import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// 웹훅은 실제 포트원과 연결된 real 모드에서만 받는다
 @RestController
-@RequiredArgsConstructor
-@Profile({"local", "dev"})
 @RequestMapping("/api/payments")
+@RequiredArgsConstructor
+@ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 public class WebhookController {
 
     private final PaymentFacade paymentFacade;
+    private final PortOneWebhookVerifier portOneWebhookVerifier;
 
-    // TODO(webhook): 포트원 웹훅 서명 검증 추가. 웹훅 내용은 믿지 않고 포트원에 다시 조회하므로 가짜 요청으로 결제를 완료시킬 수는 없다
+    // 서명은 포트원이 보낸 본문 그대로 계산해야 해서 원문으로 받는다
     @PostMapping("/webhook")
-    public ResponseEntity<ApiResponse<Void>> receiveWebhook(@Valid @RequestBody ReceivePaymentWebhookRequest request) {
+    public ResponseEntity<ApiResponse<Void>> receiveWebhook(
+            @RequestHeader(name = "webhook-id", required = false) String webhookId,
+            @RequestHeader(name = "webhook-timestamp", required = false) String webhookTimestamp,
+            @RequestHeader(name = "webhook-signature", required = false) String webhookSignature,
+            @RequestBody String body) {
+        WebhookRequest request =
+                portOneWebhookVerifier.verify(webhookId, webhookTimestamp, webhookSignature, body);
         paymentFacade.confirmPayment(request.data().paymentId());
         return ResponseEntity.ok(ApiResponse.ok());
     }

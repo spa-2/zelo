@@ -31,17 +31,8 @@
 
 {{KEYWORDS}}
 
-- 사용자 말 예시
-  - 안 맵게, 순한 맛, 매운 거 못 먹음, 초등학생, 아이 → NOT_SPICY
-  - 얼큰하게, 칼칼하게, 맵게 → SPICY
-  - 부드럽게, 씹기 편하게, 이가 약해서 → SOFT
-  - 싱겁게, 짜지 않게, 혈압 때문에 → LOW_SALT
-  - 달지 않게, 당 적게, 당뇨 때문에 → LOW_SUGAR
-  - 단백질 많이, 운동, 헬스 → HIGH_PROTEIN
-  - 고기 빼고, 채식 → VEGETARIAN (이때 고기 재료도 넣지 마)
-  - 국산으로, 국내산만 → DOMESTIC
-  - 유기농으로, 친환경 → ORGANIC
-  - 빨리, 간단하게, 바빠서 → EASY_COOK
+- 괄호 안은 그 키워드로 고를 사용자 말 예시야.
+- VEGETARIAN을 고르면 ingredients에 고기 재료를 넣지 마.
 
 ## unmatchedConditions
 - 위 키워드로 표현할 수 없는 조건은 버리지 말고, 사용자가 한 말 그대로 여기에 적어. 없으면 빈 배열.

@@ -3,9 +3,12 @@ package com.server.zelo.domain.user.service;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
+import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.entity.User;
+import com.server.zelo.domain.user.entity.UserAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -138,5 +142,43 @@ class UserCommandServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.TOKEN_REUSED);
+    }
+
+    @Test
+    void 기본_배송지로_등록하면_기존_기본_배송지를_해제한다() {
+        // given
+        User user = mock(User.class);
+        CreateUserAddressRequest request = addressRequest(true);
+        given(userService.getUser(1L)).willReturn(user);
+        given(userAddressService.createUserAddress(user, "회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true))
+                .willReturn(UserAddress.of(user, "회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true));
+
+        // when
+        CreateUserAddressResponse response = userCommandService.createUserAddress(1L, request);
+
+        // then
+        assertThat(response.isDefault()).isTrue();
+        then(userAddressService).should().releaseDefaultAddress(1L);
+    }
+
+    @Test
+    void 기본_배송지가_아니면_기존_기본_배송지를_유지한다() {
+        // given
+        User user = mock(User.class);
+        CreateUserAddressRequest request = addressRequest(false);
+        given(userService.getUser(1L)).willReturn(user);
+        given(userAddressService.createUserAddress(user, "회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", false))
+                .willReturn(UserAddress.of(user, "회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", false));
+
+        // when
+        CreateUserAddressResponse response = userCommandService.createUserAddress(1L, request);
+
+        // then
+        assertThat(response.isDefault()).isFalse();
+        then(userAddressService).should(never()).releaseDefaultAddress(anyLong());
+    }
+
+    private CreateUserAddressRequest addressRequest(boolean isDefault) {
+        return new CreateUserAddressRequest("회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", isDefault);
     }
 }

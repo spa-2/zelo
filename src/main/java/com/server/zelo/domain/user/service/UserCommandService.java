@@ -3,8 +3,10 @@ package com.server.zelo.domain.user.service;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
+import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.entity.User;
@@ -53,6 +55,21 @@ public class UserCommandService {
         return LoginResult.of(accessToken, refreshToken);
     }
 
+    @Transactional
+    public CreateUserAddressResponse createUserAddress(Long userId, CreateUserAddressRequest request) {
+        User user = userService.getUser(userId);
+
+        // 기본 배송지는 회원마다 하나만 두므로, 새 배송지를 기본으로 정하면 기존 기본 배송지를 해제함
+        if (request.isDefault()) {
+            userAddressService.releaseDefaultAddress(userId);
+        }
+
+        UserAddress userAddress = userAddressService.createUserAddress(user, request.place(),
+                request.recipientName(), request.recipientPhone(), request.zipCode(), request.address(),
+                request.isDefault());
+        return CreateUserAddressResponse.from(userAddress);
+    }
+
     // 교체 자체는 Redis 안에서 원자적으로 처리되어서 락 없이 호출함
     public LoginResult reissue(String refreshToken) {
         Long userId = verifyTokenAndGetUserId(refreshToken);
@@ -72,4 +89,6 @@ public class UserCommandService {
 
         return jwtUtil.getUserId(refreshToken);
     }
+
+
 }

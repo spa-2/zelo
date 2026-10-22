@@ -53,4 +53,10 @@ public class UserService {
 
         return user;
     }
+
+    //아이디가 일치하는지 확인
+    public User getUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+    }
 }

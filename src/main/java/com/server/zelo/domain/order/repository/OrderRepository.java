@@ -28,4 +28,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // 상태 조건을 포함해 본인 주문 조회
     Page<Order> findByUser_IdAndStatus(Pageable pageable, Long userId, OrderStatus status);
+
+    // 주문 전체를 불러오지 않고 소유 여부만 조회
+    boolean existsByIdAndUser_Id(Long id, Long userId);
+
 }

@@ -60,4 +60,11 @@ public class OrderService {
         // PageResponse 변환
         return PageResponse.of(orders, GetOrderSummaryResponse::from);
     }
+
+    // 주문이 없는 경우도 같은 예외로 응답해 다른 사용자의 주문 존재 여부를 노출하지 않음.
+    public void validateOwner(Long orderId, Long userId) {
+        if (!orderRepository.existsByIdAndUser_Id(orderId, userId)) {
+            throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+        }
+    }
 }

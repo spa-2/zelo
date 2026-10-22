@@ -24,11 +24,8 @@ public class PortOneWebhookVerifier {
 
     public PortOneWebhookVerifier(@Value("${zelo.portone.webhook-secret}") String webhookSecret,
                                   JsonMapper jsonMapper, Validator validator) {
-        // 시크릿이 없으면 모든 웹훅이 거절되므로 시작 단계에서 실패시킨다
-        if (webhookSecret == null || webhookSecret.isBlank()) {
-            throw new IllegalStateException("포트원 웹훅 시크릿이 설정되지 않았습니다.");
-        }
-        this.webhookVerifier = new WebhookVerifier(webhookSecret);
+        // 시크릿이 없는 환경(CI, 로컬)에서도 앱은 떠야 하므로 시작 단계에서 막지 않고 웹훅 수신 시 거절한다
+        this.webhookVerifier = (webhookSecret == null || webhookSecret.isBlank()) ? null : new WebhookVerifier(webhookSecret);
         this.jsonMapper = jsonMapper;
         this.validator = validator;
     }
@@ -36,7 +33,7 @@ public class PortOneWebhookVerifier {
     // 서명을 검증한 뒤 본문을 객체로 바꾼다. SDK 예외는 공통 에러코드로 바꿔 401로 응답한다
     public WebhookRequest verify(String webhookId, String webhookTimestamp,
                                  String webhookSignature, String body) {
-        
+
         if (webhookVerifier == null) { // ★
             log.error("포트원 웹훅 시크릿이 설정되지 않아 웹훅을 거절합니다 webhookId={}", webhookId);
             throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);

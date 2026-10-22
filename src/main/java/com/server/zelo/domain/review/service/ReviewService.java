@@ -1,5 +1,7 @@
 package com.server.zelo.domain.review.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.entity.ProductReviewKeyword;
@@ -12,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -30,6 +33,7 @@ public class ReviewService {
     // 요청한 상품은 리뷰가 없어도 모두 결과에 넣어, 호출하는 쪽이 "없음"을 따로 처리하지 않게 한다
     @Transactional(readOnly = true)
     public Map<Long, ProductReviewEvidence> findReviewEvidences(List<Long> productIds, Set<Keyword> keywords) {
+        validateEvidenceRequest(productIds, keywords);
         if (productIds.isEmpty()) {
             return Map.of();
         }
@@ -47,6 +51,17 @@ public class ReviewService {
             evidences.putIfAbsent(productId, evidence);
         }
         return evidences;
+    }
+
+    // 다른 도메인(견적)이 부르는 메서드라 잘못된 입력은 공통 오류로 바로 알린다.
+    // null 상품 ID는 예외 없이 null 키 결과로 섞여 나가므로 반드시 막는다.
+    // List.of·Set.of는 contains(null)만 불러도 NPE를 던져서, 요소를 하나씩 보며 null을 찾는다
+    private void validateEvidenceRequest(List<Long> productIds, Set<Keyword> keywords) {
+        if (productIds == null || keywords == null
+                || productIds.stream().anyMatch(Objects::isNull)
+                || keywords.stream().anyMatch(Objects::isNull)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
     }
 
     private Map<Long, Map<Keyword, Integer>> findMentions(List<Long> productIds, Set<Keyword> keywords) {

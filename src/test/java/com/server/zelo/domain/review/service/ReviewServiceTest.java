@@ -1,10 +1,13 @@
 package com.server.zelo.domain.review.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.entity.Ingredient;
@@ -16,6 +19,8 @@ import com.server.zelo.domain.review.entity.ProductReviewSummary;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -136,6 +141,41 @@ class ReviewServiceTest {
 
         // then
         assertThat(result.keySet()).containsExactly(POGI_ID, BAEK_ID);
+    }
+
+    @Test
+    void 상품_목록이_null이면_조회하지_않고_INVALID_INPUT이_발생한다() {
+        // when & then
+        assertInvalidInput(null, Set.of(Keyword.NOT_SPICY));
+    }
+
+    @Test
+    void 상품_목록에_null이_섞여_있으면_조회하지_않고_INVALID_INPUT이_발생한다() {
+        // when & then: 그대로 두면 예외 없이 null 키 결과가 섞여 나간다
+        assertInvalidInput(Arrays.asList(BAEK_ID, null), Set.of(Keyword.NOT_SPICY));
+    }
+
+    @Test
+    void 조건_키워드가_null이면_조회하지_않고_INVALID_INPUT이_발생한다() {
+        // when & then
+        assertInvalidInput(List.of(BAEK_ID), null);
+    }
+
+    @Test
+    void 조건_키워드에_null이_섞여_있으면_조회하지_않고_INVALID_INPUT이_발생한다() {
+        // given
+        Set<Keyword> keywords = new HashSet<>(Arrays.asList(Keyword.NOT_SPICY, null));
+
+        // when & then
+        assertInvalidInput(List.of(BAEK_ID), keywords);
+    }
+
+    private void assertInvalidInput(List<Long> productIds, Set<Keyword> keywords) {
+        assertThatThrownBy(() -> reviewService.findReviewEvidences(productIds, keywords))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        then(productReviewSummaryRepository).shouldHaveNoInteractions();
+        then(productReviewKeywordRepository).shouldHaveNoInteractions();
     }
 
     private Product product(Long id) {

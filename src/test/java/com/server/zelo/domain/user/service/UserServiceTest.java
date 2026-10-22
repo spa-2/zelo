@@ -128,4 +128,61 @@ class UserServiceTest {
         // then
         assertThat(result).isSameAs(user);
     }
+
+    @Test
+    void 소셜_가입_이메일이_이미_있으면_예외가_발생하고_저장하지_않는다() {
+        // given
+        given(userRepository.existsByEmail("jieun@gmail.com")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> userService.createSocialUser("jieun@gmail.com", "지은", "010-1234-5678"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+        then(userRepository).should(never()).save(any(User.class));
+    }
+
+    @Test
+    void 대문자가_섞인_소셜_이메일도_소문자로_중복을_확인한다() {
+        // given
+        given(userRepository.existsByEmail("jieun@gmail.com")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> userService.createSocialUser("Jieun@Gmail.com", "지은", "010-1234-5678"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.DUPLICATE_EMAIL);
+    }
+
+    @Test
+    void 소셜_사용자는_비밀번호_없이_저장된다() {
+        // given
+        given(userRepository.existsByEmail("jieun@gmail.com")).willReturn(false);
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        User user = userService.createSocialUser("Jieun@Gmail.com", "Jieun Kim", "010-1234-5678");
+
+        // then
+        assertThat(user.getPassword()).isNull();
+        assertThat(user.getEmail()).isEqualTo("jieun@gmail.com");
+        assertThat(user.getName()).isEqualTo("Jieun Kim");
+        // 비밀번호가 없으니 암호화를 시도하면 안 됨
+        then(passwordEncoder).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 소셜_전용_계정은_비밀번호로_로그인할_수_없다() {
+        // given
+        User socialUser = User.ofSocial("jieun@gmail.com", "지은", "010-1234-5678");
+        given(userRepository.findByEmail("jieun@gmail.com")).willReturn(Optional.of(socialUser));
+
+        // when & then
+        assertThatThrownBy(() -> userService.getUserByEmailAndPassword("jieun@gmail.com", "Password1!"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+        // 저장된 비밀번호가 null이면 BCrypt 비교에서 예외가 나므로 비교 자체를 시도하면 안 됨
+        then(passwordEncoder).shouldHaveNoInteractions();
+    }
 }

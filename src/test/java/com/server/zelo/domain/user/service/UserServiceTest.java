@@ -128,4 +128,16 @@ class UserServiceTest {
         // then
         assertThat(result).isSameAs(user);
     }
+
+    @Test
+    void 회원이_없으면_MEMBER_NOT_FOUND가_발생한다() {
+        // given
+        given(userRepository.findById(1L)).willReturn(Optional.empty());
+
+        // when
+        // then
+        assertThatThrownBy(() -> userService.getUser(1L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MEMBER_NOT_FOUND));
+    }
 }

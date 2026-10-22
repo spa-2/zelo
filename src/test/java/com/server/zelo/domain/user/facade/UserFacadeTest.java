@@ -2,7 +2,9 @@ package com.server.zelo.domain.user.facade;
 
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
@@ -53,5 +55,26 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserWithAddress(request);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 사용자_단위_락_안에서_배송지를_등록한다() {
+        // given
+        CreateUserAddressRequest request =
+                new CreateUserAddressRequest("회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true);
+        CreateUserAddressResponse response =
+                new CreateUserAddressResponse(2L, "회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true);
+        given(userCommandService.createUserAddress(1L, request)).willReturn(response);
+        // 락을 실제로 잡지 않고 넘겨받은 로직만 실행
+        given(lockDistributeService.execute(eq(LockKey.createUserAddress(1L)), any(Supplier.class)))
+                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
+
+        // when
+        CreateUserAddressResponse result = userFacade.createUserAddress(1L, request);
+
+        // then
+        assertThat(result).isEqualTo(response);
+        then(userCommandService).should().createUserAddress(1L, request);
     }
 }

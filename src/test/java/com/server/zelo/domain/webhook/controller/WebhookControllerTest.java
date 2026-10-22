@@ -1,8 +1,7 @@
-package com.server.zelo.paymentTest.controller;
+package com.server.zelo.domain.webhook.controller;
 
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
-import com.server.zelo.domain.payment.controller.PaymentController;
 import com.server.zelo.domain.payment.facade.PaymentFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -22,10 +21,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
-class PaymentControllerTest {
+class WebhookControllerTest {
 
     @InjectMocks
-    private PaymentController paymentController;
+    private WebhookController webhookController;
 
     @Mock
     private PaymentFacade paymentFacade;
@@ -34,7 +33,7 @@ class PaymentControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(paymentController)
+        mockMvc = MockMvcBuilders.standaloneSetup(webhookController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -79,6 +78,6 @@ class PaymentControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        then(paymentFacade).should(never()).confirmPayment(any());
+        then(paymentFacade).should(never()).confirmPayment(anyString());
     }
 }

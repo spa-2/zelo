@@ -6,7 +6,7 @@ import com.server.zelo.domain.portone.dto.request.PortOneCancelRequest;
 import com.server.zelo.domain.portone.dto.response.PortOneErrorResponse;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.dto.response.PortOnePaymentResponse;
-import com.server.zelo.domain.portone.dto.response.PortOneProperties;
+import com.server.zelo.domain.portone.config.PortOneProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

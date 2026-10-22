@@ -93,6 +93,23 @@ class PortOneWebhookVerifierTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_WEBHOOK_SIGNATURE));
     }
 
+    @ParameterizedTest
+    @NullAndEmptySource
+    void 서명_헤더가_없으면_INVALID_WEBHOOK_SIGNATURE가_발생한다(String signature) {
+                assertThatThrownBy(() -> verifier.verify(WEBHOOK_ID, now(), signature, BODY))
+                                .isInstanceOfSatisfying(BusinessException.class,
+                                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_WEBHOOK_SIGNATURE));
+            }
+
+            @Test
+                void timestamp가_오래되면_INVALID_WEBHOOK_SIGNATURE가_발생한다() {
+                String timestamp = "0";
+
+                        assertThatThrownBy(() -> verifier.verify(WEBHOOK_ID, timestamp, sign(timestamp, BODY), BODY))
+                               .isInstanceOfSatisfying(BusinessException.class,
+                                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_WEBHOOK_SIGNATURE));
+            }
+
     private String now() {
         return String.valueOf(Instant.now().getEpochSecond());
     }

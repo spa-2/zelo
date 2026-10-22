@@ -36,7 +36,6 @@ public class OrderService {
     }
 
     public PageResponse<GetOrderSummaryResponse> getMyOrders(
-            Pageable pageable,
             Long userId,
             SearchOrderCondition condition
     ) {
@@ -45,8 +44,8 @@ public class OrderService {
          * 생성 시각이 같으면 ID 내림차순으로 정렬해 페이지 간 순서를 일정하게 유지
          */
         Pageable sortedPageable = PageRequest.of(
-                pageable.getPageNumber(),
-                pageable.getPageSize(),
+                condition.page(),
+                condition.size(),
                 Sort.by(
                         Sort.Order.desc("createdAt"),
                         Sort.Order.desc("id")

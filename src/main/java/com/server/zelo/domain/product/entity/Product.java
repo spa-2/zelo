@@ -29,6 +29,8 @@ import lombok.NoArgsConstructor;
 })
 public class Product extends BaseTimeEntity {
 
+    private static final String DEFAULT_BRAND = "기타";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -44,6 +46,10 @@ public class Product extends BaseTimeEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ingredient_id", nullable = false)
     private Ingredient ingredient;
+
+    // 같은 재료(김치)라도 브랜드별로 다른 상품이라 구분용으로 둠
+    @Column(name = "brand", nullable = false, length = 50)
+    private String brand;
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;
@@ -72,9 +78,9 @@ public class Product extends BaseTimeEntity {
     /**
      * 가격과 내용량을 검증하고 재료의 카테고리, 판매량 0, 판매 중 상태로 초기화한다.
      *
-     * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우 또는 판매 단위가 비어 있거나 20자를 초과하는 경우
+     * @throws BusinessException 가격이 없거나 음수인 경우, 내용량이 없거나 0 이하인 경우, 판매 단위가 비어 있거나 20자를 초과하는 경우 또는 브랜드가 비어 있거나 50자를 초과하는 경우
      */
-    private Product(String productCode, Ingredient ingredient, String name,
+    private Product(String productCode, Ingredient ingredient, String brand, String name,
                     String description, Long price, Integer contentAmount, String unitLabel) {
         if (price == null || price < 0) {
             throw new BusinessException(ErrorCode.INVALID_PRICE);
@@ -88,10 +94,14 @@ public class Product extends BaseTimeEntity {
         if (unitLabel.length() > 20) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 판매 단위는 20자를 초과할 수 없습니다.");
         }
+        if (brand == null || brand.isBlank() || brand.length() > 50) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "상품 브랜드는 1~50자여야 합니다.");
+        }
         this.productCode = productCode;
         // ERD 규칙: 상품 카테고리는 재료 카테고리와 같아야 하므로 입력받지 않고 재료에서 가져온다
         this.category = ingredient.getCategory();
         this.ingredient = ingredient;
+        this.brand = brand;
         this.name = name;
         this.description = description;
         this.price = price;
@@ -106,6 +116,7 @@ public class Product extends BaseTimeEntity {
      *
      * @param productCode 외부 노출용 상품 코드
      * @param ingredient 상품의 재료와 카테고리를 제공하는 재료
+     * @param brand 브랜드 (1~50자)
      * @param name 상품 이름
      * @param description 상품 설명 (없으면 null)
      * @param price 0 이상의 가격
@@ -113,10 +124,17 @@ public class Product extends BaseTimeEntity {
      * @param unitLabel 20자 이내의 사람이 읽는 판매 단위 (예: 1kg, 10구)
      * @return 생성한 상품
      * @throws BusinessException 가격이 없거나 음수이면 {@link ErrorCode#INVALID_PRICE},
-     *                          내용량이 없거나 0 이하이거나 판매 단위가 비어 있거나 20자를 초과하면 {@link ErrorCode#INVALID_INPUT}으로 발생
+     *                          내용량, 판매 단위, 브랜드가 잘못되면 {@link ErrorCode#INVALID_INPUT}으로 발생
      */
+    public static Product of(String productCode, Ingredient ingredient, String brand, String name,
+                             String description, Long price, Integer contentAmount, String unitLabel) {
+        return new Product(productCode, ingredient, brand, name, description, price, contentAmount, unitLabel);
+    }
+
+    // TODO(유림님 리뷰 테스트 수정 후 삭제): 브랜드 추가 전 모양. 리뷰 테스트가 아직 이걸 써서 잠깐 남겨둠
+    @Deprecated
     public static Product of(String productCode, Ingredient ingredient, String name,
                              String description, Long price, Integer contentAmount, String unitLabel) {
-        return new Product(productCode, ingredient, name, description, price, contentAmount, unitLabel);
+        return of(productCode, ingredient, DEFAULT_BRAND, name, description, price, contentAmount, unitLabel);
     }
 }

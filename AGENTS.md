@@ -46,6 +46,7 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 ### 패키지 · 네이밍
 - 공통 기능은 `common`, 비즈니스 코드는 도메인 패키지(`user`, `order`, `payment` ...)에 둔다.
 - 클래스명은 `도메인 + 역할`: `OrderFacade`, `OrderCustomRepository`, `OrderCustomRepositoryImpl`.
+- Command 클래스는 `도메인 + CommandService`로 쓴다: `UserCommandService`, `SocialCommandService`.
 - 어노테이션은 **짧은 것 → 긴 것** 순서로 쓴다. (`@Slf4j` → `@Service` → `@RequiredArgsConstructor`)
 - 필드명은 타입명과 맞추고, 선언도 **짧은 것 → 긴 것** 순서로 쓴다.
 ### 계층 책임 (호출 흐름: Controller → Facade → Command → Service → Repository)
@@ -106,5 +107,5 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 - JPQL이나 QueryDSL 같은 커스텀 쿼리에는 Repository 테스트를 작성한다.
 - 단위 테스트는 `@ExtendWith(MockitoExtension.class)`를 쓰고, 스텁은 BDDMockito `given(...).willReturn(...)`, 검증은 AssertJ `assertThat(...)`으로 한다. 본문은 `// given // when // then` 주석으로 구분한다.
 ### 미정 (임의로 만들지 말고 먼저 물어볼 것)
-- Command 클래스의 네이밍 규칙
+- 현재 없음
 

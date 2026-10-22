@@ -1,6 +1,7 @@
 package com.server.zelo.domain.user.controller;
 
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.common.auth.RefreshTokenCookieFactory;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -23,7 +24,6 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -63,9 +63,9 @@ class UserControllerTest {
 
     @BeforeEach
     void setUp() {
-        UserController userController = new UserController(userFacade, userCommandService, refreshTokenService);
-        // @Value 필드는 스프링 없이 주입되지 않아서 테스트에서 직접 넣음
-        ReflectionTestUtils.setField(userController, "refreshTokenExpiration", REFRESH_EXPIRATION);
+        // 쿠키 속성까지 응답에서 확인하려고 mock이 아닌 실제 팩토리를 씀
+        UserController userController = new UserController(userFacade, userCommandService, refreshTokenService,
+                new RefreshTokenCookieFactory(REFRESH_EXPIRATION));
 
         mockMvc = MockMvcBuilders.standaloneSetup(userController)
                 .setCustomArgumentResolvers(new AuthArgumentResolver())

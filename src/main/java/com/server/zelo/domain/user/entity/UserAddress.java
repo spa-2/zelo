@@ -67,10 +67,6 @@ public class UserAddress extends BaseTimeEntity {
         this.address = address;
     }
 
-    public void changeToDefault() {
-        this.isDefault = true;
-    }
-
     // 기본 배송지가 없어지면 배송지를 정할 수 없으므로, 다른 배송지를 기본으로 지정하는 방식으로만 바꾼다
     public void validateKeepDefault(boolean isDefault) {
         if (this.isDefault && !isDefault) {
@@ -87,4 +83,15 @@ public class UserAddress extends BaseTimeEntity {
     public void releaseDefault() {
         this.isDefault = false;
     }
+
+    public void validateDeletable() {
+        if (this.isDefault) {
+            throw new BusinessException(ErrorCode.DEFAULT_ADDRESS_REQUIRED);
+        }
+    }
+
+    public void changeToDefault() {
+        this.isDefault = true;
+    }
 }
+

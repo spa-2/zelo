@@ -22,4 +22,8 @@ public class LockKey {
 
     // 등록과 같은 키를 써서 같은 사용자의 등록·수정이 동시에 기본 배송지를 바꾸지 못하게 함
     public static String updateUserAddress(Long userId) {return USER_ADDRESS + userId;}
+
+    // 등록·수정과 같은 키를 써서 삭제 도중 기본 배송지가 바뀌지 않게 함
+    public static String deleteUserAddress(Long userId) {return USER_ADDRESS + userId;
+    }
 }

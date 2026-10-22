@@ -23,8 +23,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserFacadeTest {
@@ -101,5 +100,21 @@ class UserFacadeTest {
 
         // then
         assertThat(result).isEqualTo(response);
+    }
+
+    @Test
+    void 등록과_같은_사용자_단위_락_안에서_배송지를_삭제한다() {
+        // given
+        // 락을 실제로 잡지 않고 넘겨받은 로직만 실행
+        willAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(1)).run();
+            return null;
+        }).given(lockDistributeService).execute(eq(LockKey.createUserAddress(1L)), any(Runnable.class));
+
+        // when
+        userFacade.deleteUserAddress(1L, 2L);
+
+        // then
+        then(userAddressService).should().deleteUserAddress(1L, 2L);
     }
 }

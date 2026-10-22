@@ -2,6 +2,7 @@ package com.server.zelo.domain.user.controller;
 
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
@@ -28,8 +29,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -171,5 +171,29 @@ class UserAddressControllerTest {
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+    }
+
+    @Test
+    void 배송지를_삭제하면_204를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when // then
+        mockMvc.perform(delete("/api/users/me/addresses/{addressId}", 2L))
+                .andExpect(status().isNoContent());
+        then(userFacade).should().deleteUserAddress(1L, 2L);
+    }
+
+    @Test
+    void 기본_배송지를_삭제하면_400과_DEFAULT_ADDRESS_REQUIRED를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        willThrow(new BusinessException(ErrorCode.DEFAULT_ADDRESS_REQUIRED))
+                .given(userFacade).deleteUserAddress(1L, 2L);
+
+        // when // then
+        mockMvc.perform(delete("/api/users/me/addresses/{addressId}", 2L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.DEFAULT_ADDRESS_REQUIRED.getCode()));
     }
 }

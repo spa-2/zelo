@@ -19,6 +19,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -160,6 +161,45 @@ class UserAddressServiceTest {
 
         // then
         assertThat(response.place()).isEqualTo("회사");
+    }
+
+    @Test
+    void 배송지를_삭제하면_DB에서_지운다() {
+        // given
+        UserAddress address = UserAddress.of(mock(User.class), "회사", "홍길동", "010-1234-5678", "12345", "서울시", false);
+        given(userAddressRepository.findActiveByIdAndUserId(2L, 1L)).willReturn(Optional.of(address));
+
+        // when
+        userAddressService.deleteUserAddress(1L, 2L);
+
+        // then
+        then(userAddressRepository).should().delete(address);
+    }
+
+    @Test
+    void 기본_배송지는_삭제하지_않는다() {
+        // given
+        UserAddress address = UserAddress.of(mock(User.class), "집", "홍길동", "010-1234-5678", "12345", "서울시", true);
+        given(userAddressRepository.findActiveByIdAndUserId(2L, 1L)).willReturn(Optional.of(address));
+
+        // when
+        // then
+        assertThatThrownBy(() -> userAddressService.deleteUserAddress(1L, 2L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DEFAULT_ADDRESS_REQUIRED));
+        then(userAddressRepository).should(never()).delete(any(UserAddress.class));
+    }
+
+    @Test
+    void 삭제할_배송지가_없으면_USER_ADDRESS_NOT_FOUND가_발생한다() {
+        // given
+        given(userAddressRepository.findActiveByIdAndUserId(2L, 1L)).willReturn(Optional.empty());
+
+        // when
+        // then
+        assertThatThrownBy(() -> userAddressService.deleteUserAddress(1L, 2L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_ADDRESS_NOT_FOUND));
     }
 
     private UpdateUserAddressRequest updateRequest(boolean isDefault) {

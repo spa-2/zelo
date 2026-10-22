@@ -17,12 +17,16 @@ import java.math.RoundingMode;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 @Getter
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "product_review_summaries")
 public class ProductReviewSummary extends BaseUpdatedEntity {
+
+    // AI 한 줄 요약의 최대 글자 수. LLM 응답 검증도 이 값을 써서 DB 컬럼 길이와 어긋나지 않게 한다
+    public static final int CONTENT_MAX_LENGTH = 200;
 
     private static final BigDecimal MIN_AVG_RATING = BigDecimal.ONE;
     private static final BigDecimal MAX_AVG_RATING = BigDecimal.valueOf(5);
@@ -46,7 +50,7 @@ public class ProductReviewSummary extends BaseUpdatedEntity {
     private Integer reviewCount;
 
     // 리뷰 원문을 AI가 한 줄로 줄인 문장. 요약을 만들기 전에는 null이다
-    @Column(name = "content", nullable = true, length = 200)
+    @Column(name = "content", nullable = true, length = CONTENT_MAX_LENGTH)
     private String content;
 
     private ProductReviewSummary(Product product, BigDecimal avgRating, Integer reviewCount) {
@@ -61,6 +65,14 @@ public class ProductReviewSummary extends BaseUpdatedEntity {
         }
         // DB 컬럼(decimal(3,2))과 같은 자릿수로 맞춰, 저장 전후 값이 달라 보이지 않게 한다
         return new ProductReviewSummary(product, avgRating.setScale(AVG_RATING_SCALE, RoundingMode.HALF_UP), reviewCount);
+    }
+
+    public void updateContent(String content) {
+        // PostgreSQL varchar 길이는 글자(code point) 단위라, 이모지가 섞여도 DB와 같은 기준으로 센다
+        if (!StringUtils.hasText(content) || content.codePointCount(0, content.length()) > CONTENT_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        this.content = content;
     }
 
     private static boolean isValidAvgRating(BigDecimal avgRating) {

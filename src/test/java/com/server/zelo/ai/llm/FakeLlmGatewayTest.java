@@ -27,6 +27,26 @@ class FakeLlmGatewayTest {
     }
 
     @Test
+    void 정상_모드면_고정된_리뷰_요약을_반환한다() {
+        // when
+        LlmReply reply = fakeLlmGateway.summarizeReviews("system", "상품: 백김치");
+
+        // then
+        assertThat(reply.text()).isEqualTo(FakeLlmGateway.REVIEW_SUMMARY);
+        assertThat(reply.model()).isEqualTo(FakeLlmGateway.MODEL);
+    }
+
+    @Test
+    void 실패_모드면_리뷰_요약도_서버_오류를_던진다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+
+        // when & then
+        assertThatThrownBy(() -> fakeLlmGateway.summarizeReviews("system", "상품: 백김치"))
+                .isInstanceOf(InternalServerException.class);
+    }
+
+    @Test
     void 실패_모드면_재시도_대상인_서버_오류를_던진다() {
         // given
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);

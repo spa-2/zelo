@@ -96,6 +96,26 @@ class SpringAiLlmGatewayMockTest {
     }
 
     @Test
+    void 리뷰_요약은_리뷰_전용_system_프롬프트와_리뷰_글을_보내고_문장과_토큰_수를_돌려준다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("맵지 않아 아이들이 잘 먹는다는 평이 많아요", "gpt-test", 200, 30));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+
+        // when
+        LlmReply reply = springAiLlmGateway.summarizeReviews("리뷰 요약 프롬프트", "상품: 백김치\n리뷰:\n- [5점] 안 매워요");
+
+        // then
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getSystemMessage().getText()).isEqualTo("리뷰 요약 프롬프트");
+        assertThat(promptCaptor.getValue().getUserMessage().getText()).isEqualTo("상품: 백김치\n리뷰:\n- [5점] 안 매워요");
+        assertThat(reply.text()).isEqualTo("맵지 않아 아이들이 잘 먹는다는 평이 많아요");
+        assertThat(reply.model()).isEqualTo("gpt-test");
+        assertThat(reply.promptTokens()).isEqualTo(200);
+        assertThat(reply.completionTokens()).isEqualTo(30);
+    }
+
+    @Test
     void 메뉴_계획_JSON_응답을_MenuPlan으로_바꾸고_모델명과_토큰_수를_함께_돌려준다() {
         // given
         given(chatModel.call(any(Prompt.class)))

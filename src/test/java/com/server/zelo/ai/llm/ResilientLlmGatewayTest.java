@@ -447,6 +447,91 @@ class ResilientLlmGatewayTest {
         then(delegate).should(times(2)).planMenu(anyString(), anyString());
     }
 
+    @Test
+    void 리뷰_요약은_줄바꿈과_연속_공백을_한_칸으로_줄여_한_줄로_돌려준다(CapturedOutput output) {
+        // given
+        given(delegate.summarizeReviews("system", "리뷰")).willReturn(LlmReply.of(" 맵지 않고\n아삭하다는   평이 많아요 ", "gpt-test", 40, 15));
+
+        // when
+        LlmReply reply = resilientLlmGateway.summarizeReviews("system", "리뷰");
+
+        // then
+        assertThat(reply.text()).isEqualTo("맵지 않고 아삭하다는 평이 많아요");
+        assertThat(reply.model()).isEqualTo("gpt-test");
+        then(delegate).should(times(1)).summarizeReviews("system", "리뷰");
+        // 리뷰 요약 호출도 시도마다 한 줄 로그가 남는다
+        assertThat(attemptLogLines(output)).singleElement()
+                .satisfies(line -> assertThat(line).contains("success=true").contains("promptTokens=40 completionTokens=15"));
+    }
+
+    @Test
+    void 리뷰_요약은_200자까지_허용한다() {
+        // given
+        String summary = "가".repeat(ReviewSummaryPrompt.SUMMARY_MAX_LENGTH);
+        given(delegate.summarizeReviews(anyString(), anyString())).willReturn(LlmReply.of(summary, "gpt-test", 1, 1));
+
+        // when
+        LlmReply reply = resilientLlmGateway.summarizeReviews("system", "리뷰");
+
+        // then
+        assertThat(reply.text()).isEqualTo(summary);
+    }
+
+    @Test
+    void 리뷰_요약이_200자를_넘으면_한_번_더_물어보고_그래도_길면_AI_INVALID_RESPONSE로_실패한다() {
+        // given
+        given(delegate.summarizeReviews(anyString(), anyString()))
+                .willReturn(LlmReply.of("가".repeat(ReviewSummaryPrompt.SUMMARY_MAX_LENGTH + 1), "gpt-test", 1, 1));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.summarizeReviews("system", "리뷰"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        then(delegate).should(times(2)).summarizeReviews(anyString(), anyString());
+    }
+
+    @Test
+    void 리뷰_요약이_처음에_너무_길어도_다시_물어서_짧게_답하면_돌려준다() {
+        // given
+        given(delegate.summarizeReviews(anyString(), anyString()))
+                .willReturn(LlmReply.of("가".repeat(ReviewSummaryPrompt.SUMMARY_MAX_LENGTH + 1), "gpt-test", 1, 1))
+                .willReturn(LlmReply.of("아삭하다는 평이 많아요", "gpt-test", 1, 1));
+
+        // when
+        LlmReply reply = resilientLlmGateway.summarizeReviews("system", "리뷰");
+
+        // then
+        assertThat(reply.text()).isEqualTo("아삭하다는 평이 많아요");
+        then(delegate).should(times(2)).summarizeReviews(anyString(), anyString());
+    }
+
+    @Test
+    void 리뷰_요약이_비어_있으면_재시도하지_않고_AI_EMPTY_RESPONSE로_실패한다() {
+        // given
+        given(delegate.summarizeReviews(anyString(), anyString())).willReturn(LlmReply.of(" \n ", "gpt-test", 1, 0));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.summarizeReviews("system", "리뷰"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_EMPTY_RESPONSE));
+        then(delegate).should(times(1)).summarizeReviews(anyString(), anyString());
+    }
+
+    @Test
+    void 리뷰_요약도_시간_안에_답하지_않으면_한_번_재시도하고_AI_TIMEOUT으로_실패한다() {
+        // given
+        given(delegate.summarizeReviews(anyString(), anyString())).willAnswer(invocation -> {
+            Thread.sleep(2_000);
+            return REPLY;
+        });
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.summarizeReviews("system", "리뷰"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+        then(delegate).should(times(2)).summarizeReviews(anyString(), anyString());
+    }
+
     private static LlmResult<MenuPlan> planResult(MenuPlan menuPlan) {
         return LlmResult.of(menuPlan, "gpt-test", 30, 20);
     }

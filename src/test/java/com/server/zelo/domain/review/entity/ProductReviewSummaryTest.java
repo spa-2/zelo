@@ -12,6 +12,7 @@ import com.server.zelo.domain.product.entity.Product;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -75,6 +76,55 @@ class ProductReviewSummaryTest {
     void 상품이_없으면_예외가_발생한다() {
         // when & then
         assertThatThrownBy(() -> ProductReviewSummary.of(null, new BigDecimal("4.5"), 23))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void AI_요약을_저장하면_content가_채워진다() {
+        // given
+        ProductReviewSummary summary = ProductReviewSummary.of(product, new BigDecimal("4.5"), 23);
+
+        // when
+        summary.updateContent("맵지 않아 아이들이 잘 먹는다는 평이 많아요");
+
+        // then
+        assertThat(summary.getContent()).isEqualTo("맵지 않아 아이들이 잘 먹는다는 평이 많아요");
+    }
+
+    @Test
+    void AI_요약은_200자까지_허용하고_이모지도_한_글자로_센다() {
+        // given
+        ProductReviewSummary summary = ProductReviewSummary.of(product, new BigDecimal("4.5"), 23);
+        String content = "😀".repeat(200);
+
+        // when
+        summary.updateContent(content);
+
+        // then
+        assertThat(summary.getContent()).isEqualTo(content);
+    }
+
+    @Test
+    void AI_요약이_200자를_넘으면_예외가_발생한다() {
+        // given
+        ProductReviewSummary summary = ProductReviewSummary.of(product, new BigDecimal("4.5"), 23);
+
+        // when & then
+        assertThatThrownBy(() -> summary.updateContent("가".repeat(201)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   ", "\n"})
+    void AI_요약이_비어_있으면_예외가_발생한다(String content) {
+        // given
+        ProductReviewSummary summary = ProductReviewSummary.of(product, new BigDecimal("4.5"), 23);
+
+        // when & then
+        assertThatThrownBy(() -> summary.updateContent(content))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }

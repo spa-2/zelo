@@ -42,6 +42,10 @@ public class UserAddressService {
     public UpdateUserAddressResponse updateUserAddress(Long userId, Long addressId, UpdateUserAddressRequest request) {
         UserAddress userAddress = userAddressRepository.findActiveByIdAndUserId(addressId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_ADDRESS_NOT_FOUND));
+
+        if (userAddressRepository.existsByUserIdAndPlaceAndIdNot(userId, request.place(), addressId)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);
+        }
         userAddress.validateKeepDefault(request.isDefault());
 
         if (request.isDefault() && !userAddress.isDefault()) {
@@ -52,5 +56,11 @@ public class UserAddressService {
         userAddress.update(request.place(), request.recipientName(), request.recipientPhone(),
                 request.zipCode(), request.address());
         return UpdateUserAddressResponse.from(userAddress);
+    }
+
+    public void validatePlaceNotDuplicated(Long userId, String place) {
+        if (userAddressRepository.existsByUserIdAndPlace(userId, place)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);
+        }
     }
 }

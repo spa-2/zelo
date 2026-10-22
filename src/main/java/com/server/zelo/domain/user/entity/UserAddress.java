@@ -12,7 +12,14 @@ import java.time.LocalDateTime;
 
 @Getter
 @Entity
-@Table(name = "user_addresses")
+@Table(
+        name = "user_addresses",
+        uniqueConstraints = @UniqueConstraint(
+                // 같은 사용자는 같은 이름의 배송지를 두 개 가질 수 없다 ex) A 사용자의 "회사" 2개 방지
+                name = "UK_user_address_place",
+                columnNames = {"user_id", "place"}
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserAddress extends BaseTimeEntity {
 
@@ -41,10 +48,6 @@ public class UserAddress extends BaseTimeEntity {
 
     @Column(nullable = false)
     private boolean isDefault;
-
-    // 삭제 전에는 값이 없으므로 nullable
-    @Column(nullable = true)
-    private LocalDateTime deleteAt;
 
     private UserAddress(User user, String place, String recipientName, String recipientPhone,
                         String zipCode, String address, boolean isDefault) {

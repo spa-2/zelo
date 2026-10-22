@@ -121,6 +121,47 @@ class UserAddressServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_ADDRESS_NOT_FOUND));
     }
 
+    @Test
+    void 같은_이름의_배송지가_있으면_DUPLICATE_ADDRESS_PLACE가_발생한다() {
+        // given
+        given(userAddressRepository.existsByUserIdAndPlace(1L, "회사")).willReturn(true);
+
+        // when
+        // then
+        assertThatThrownBy(() -> userAddressService.validatePlaceNotDuplicated(1L, "회사"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_ADDRESS_PLACE));
+    }
+
+    @Test
+    void 다른_배송지와_같은_이름으로_수정하면_DUPLICATE_ADDRESS_PLACE가_발생한다() {
+        // given
+        UserAddress address = UserAddress.of(mock(User.class), "집", "홍길동", "010-1234-5678", "12345", "서울시", false);
+        given(userAddressRepository.findActiveByIdAndUserId(2L, 1L)).willReturn(Optional.of(address));
+        given(userAddressRepository.existsByUserIdAndPlaceAndIdNot(1L, "회사", 2L)).willReturn(true);
+
+        // when
+        // then
+        assertThatThrownBy(() -> userAddressService.updateUserAddress(1L, 2L, updateRequest(false)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_ADDRESS_PLACE));
+        assertThat(address.getPlace()).isEqualTo("집");
+    }
+
+    @Test
+    void 이름을_그대로_두고_수정하면_중복으로_보지_않는다() {
+        // given
+        UserAddress address = UserAddress.of(mock(User.class), "회사", "홍길동", "010-1234-5678", "12345", "서울시", false);
+        given(userAddressRepository.findActiveByIdAndUserId(2L, 1L)).willReturn(Optional.of(address));
+        given(userAddressRepository.existsByUserIdAndPlaceAndIdNot(1L, "회사", 2L)).willReturn(false);
+
+        // when
+        UpdateUserAddressResponse response = userAddressService.updateUserAddress(1L, 2L, updateRequest(false));
+
+        // then
+        assertThat(response.place()).isEqualTo("회사");
+    }
+
     private UpdateUserAddressRequest updateRequest(boolean isDefault) {
         return new UpdateUserAddressRequest("회사", "김철수", "010-9876-5432", "54321", "서울시 중구", isDefault);
     }

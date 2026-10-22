@@ -24,6 +24,7 @@ public enum ErrorCode {
     INACTIVE_ACCOUNT(HttpStatus.FORBIDDEN, "MEMBER_006", "비활성화 계정입니다"),
     USER_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_007", "배송지를 찾을 수 없습니다."),
     DEFAULT_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "MEMBER_008", "기본 배송지는 다른 배송지를 기본으로 지정해야 변경할 수 있습니다."),
+    DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
 
     // Product
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_001", "상품을 찾을 수 없습니다."),

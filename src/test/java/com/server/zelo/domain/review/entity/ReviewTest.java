@@ -18,7 +18,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ReviewTest {
 
     private final Product product = Product.of("KIMCHI-BAEK-1KG",
-            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "백김치", null, 11_000L, 1000, "1kg");
+            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "테스트브랜드", "백김치", null, 11_000L, 1000, "1kg");
 
     @ParameterizedTest
     @ValueSource(ints = {1, 5})

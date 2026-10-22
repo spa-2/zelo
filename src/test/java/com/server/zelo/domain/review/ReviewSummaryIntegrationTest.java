@@ -71,7 +71,7 @@ class ReviewSummaryIntegrationTest {
         productId = transactionTemplate.execute(status -> {
             Category category = Category.of("리뷰테스트-9000501", true);
             Ingredient ingredient = Ingredient.of(category, "리뷰테스트-9000501", BaseUnit.G);
-            Product product = Product.of("REVIEW-TEST-9000501", ingredient, "백김치", null, 11_000L, 1000, "1kg");
+            Product product = Product.of("REVIEW-TEST-9000501", ingredient, "테스트브랜드", "백김치", null, 11_000L, 1000, "1kg");
             entityManager.persist(category);
             entityManager.persist(ingredient);
             entityManager.persist(product);

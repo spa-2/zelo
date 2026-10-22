@@ -18,7 +18,7 @@ class ReviewSummaryPromptTest {
             new ReviewSummaryPrompt(new ClassPathResource("prompts/review-summary.md"));
 
     private final Product product = Product.of("KIMCHI-BAEK-1KG",
-            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "백김치", null, 11_000L, 1000, "1kg");
+            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "테스트브랜드", "백김치", null, 11_000L, 1000, "1kg");
 
     @Test
     void system_프롬프트에_요약_최대_길이를_DB_컬럼_길이로_채운다() {

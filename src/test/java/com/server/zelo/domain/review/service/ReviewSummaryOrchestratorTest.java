@@ -120,7 +120,7 @@ class ReviewSummaryOrchestratorTest {
 
     private List<Review> reviews(String productName, String content) {
         Product product = Product.of("KIMCHI-" + productName, Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G),
-                productName, null, 10_000L, 1000, "1kg");
+                "테스트브랜드", productName, null, 10_000L, 1000, "1kg");
         return List.of(Review.of(9_000_001L, product, 5, content));
     }
 }

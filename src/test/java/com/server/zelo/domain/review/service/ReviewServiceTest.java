@@ -252,7 +252,7 @@ class ReviewServiceTest {
 
     private Product product(Long id) {
         Product product = Product.of("KIMCHI-" + id, Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G),
-                "김치", null, 10_000L, 1000, "1kg");
+                "테스트브랜드", "김치", null, 10_000L, 1000, "1kg");
         ReflectionTestUtils.setField(product, "id", id);
         return product;
     }

@@ -73,7 +73,7 @@ class ReviewServiceQueryTest {
     }
 
     private Product persistProduct(Ingredient ingredient, String productCode) {
-        Product product = Product.of(productCode, ingredient, "김치", null, 10_000L, 1000, "1kg");
+        Product product = Product.of(productCode, ingredient, "테스트브랜드", "김치", null, 10_000L, 1000, "1kg");
         entityManager.persist(product);
         return product;
     }

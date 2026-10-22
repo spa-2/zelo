@@ -19,7 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ProductReviewSummaryTest {
 
     private final Product product = Product.of("KIMCHI-BAEK-1KG",
-            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "백김치", null, 11_000L, 1000, "1kg");
+            Ingredient.of(Category.of("김치", true), "김치", BaseUnit.G), "테스트브랜드", "백김치", null, 11_000L, 1000, "1kg");
 
     @Test
     void 요약을_생성하면_평균_평점과_리뷰_수를_갖고_AI_요약은_비어_있다() {

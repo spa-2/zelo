@@ -24,15 +24,15 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<PageResponse<GetOrderSummaryResponse>>> getAllOrders(
+    public ResponseEntity<ApiResponse<PageResponse<GetOrderSummaryResponse>>> getMyOrders(
             Pageable pageable,
             @Auth AuthUser authUser,
             // URL의 쿼리 파라미터를 검색 조건 DTO로 묶어 받는다는 의도를 명확히 하려고 붙인 @ModelAttribute
-            @Valid @ModelAttribute SearchOrderCondition searchOrder
+            @Valid @ModelAttribute SearchOrderCondition condition
     ) {
         return ResponseEntity
                 .ok(ApiResponse
-                        .ok(orderService.getMyOrders(pageable, authUser.id(), searchOrder))
+                        .ok(orderService.getMyOrders(pageable, authUser.id(), condition))
                 );
     }
 }

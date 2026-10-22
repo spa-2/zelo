@@ -39,7 +39,7 @@ public class ReviewService {
     private final ProductReviewKeywordRepository productReviewKeywordRepository;
     private final ProductReviewSummaryRepository productReviewSummaryRepository;
 
-    // 요청한 상품은 리뷰가 없어도 모두 결과에 넣어, 호출하는 쪽이 "없음"을 따로 처리하지 않게 한다
+    // 요청한 상품은 리뷰가 없어도 모두 결과에 넣어, 호출하는 쪽이 "없음"을 따로 처리하지 않도록 설계
     @Transactional(readOnly = true)
     public Map<Long, ProductReviewEvidence> findReviewEvidences(List<Long> productIds, Set<Keyword> keywords) {
         validateEvidenceRequest(productIds, keywords);

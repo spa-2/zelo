@@ -40,4 +40,34 @@ class UserTest {
             Locale.setDefault(original);
         }
     }
+
+    @Test
+    void 소셜_가입_사용자는_비밀번호가_없다() {
+        // when
+        User user = User.ofSocial("jieun@gmail.com", "지은", "010-1234-5678");
+
+        // then
+        assertThat(user.isPasswordNull()).isTrue();
+        assertThat(user.getPassword()).isNull();
+    }
+
+    @Test
+    void 소셜_가입_사용자의_이름은_변환하지_않고_이메일만_소문자로_저장된다() {
+        // when
+        User user = User.ofSocial("Jieun@Gmail.com", "Jieun Kim", "010-1234-5678");
+
+        // then
+        assertThat(user.getName()).isEqualTo("Jieun Kim");
+        assertThat(user.getEmail()).isEqualTo("jieun@gmail.com");
+        assertThat(user.getPhoneNumber()).isEqualTo("010-1234-5678");
+    }
+
+    @Test
+    void 일반_가입_사용자는_비밀번호가_있다() {
+        // when
+        User user = User.of("test@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+
+        // then
+        assertThat(user.isPasswordNull()).isFalse();
+    }
 }

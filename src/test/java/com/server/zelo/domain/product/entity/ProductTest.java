@@ -2,6 +2,7 @@ package com.server.zelo.domain.product.entity;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -23,7 +24,7 @@ class ProductTest {
         String unitLabel = "단".repeat(length);
 
         // when
-        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel);
+        Product product = Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, 0L, 1, unitLabel);
 
         // then
         assertThat(product.getUnitLabel()).isEqualTo(unitLabel);
@@ -38,7 +39,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, 0L, 1, unitLabel))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
@@ -57,12 +58,13 @@ class ProductTest {
         Ingredient ingredient = Ingredient.of(category, "사과", BaseUnit.EA);
 
         // when
-        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, contentAmount, "1box");
+        Product product = Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, price, contentAmount, "1box");
 
         // then
         assertThat(product.getPrice()).isEqualTo(price);
         assertThat(product.getContentAmount()).isEqualTo(contentAmount);
         assertThat(product.getUnitLabel()).isEqualTo("1box");
+        assertThat(product.getBrand()).isEqualTo("브랜드 A");
         assertThat(product.getCategory()).isSameAs(category);
         assertThat(product.getSalesCount()).isZero();
         assertThat(product.getStatus()).isEqualTo(ProductStatus.ON_SALE);
@@ -82,7 +84,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, price, 1, "1box"))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, price, 1, "1box"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRICE));
     }
@@ -101,7 +103,7 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, contentAmount, "1box"))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, 0L, contentAmount, "1box"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
@@ -120,8 +122,35 @@ class ProductTest {
 
         // when
         // then
-        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, unitLabel))
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, "브랜드 A", "사과 한 상자", null, 0L, 1, unitLabel))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " ", "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"})
+    void 브랜드가_없거나_50자를_넘으면_예외가_발생한다(String brand) {
+        // given
+        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
+
+        // when
+        // then
+        assertThatThrownBy(() -> Product.of("APPLE-BOX", ingredient, brand, "사과 한 상자", null, 0L, 1, "1box"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void 브랜드_없이_만들면_기타로_채운다() {
+        // given
+        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
+
+        // when
+        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, "1box");
+
+        // then
+        assertThat(product.getBrand()).isEqualTo("기타");
     }
 }

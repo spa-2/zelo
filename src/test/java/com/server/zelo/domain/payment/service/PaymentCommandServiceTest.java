@@ -221,6 +221,26 @@ class PaymentCommandServiceTest {
         then(deliveryService).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 포트원_결제가_취소면_결제와_주문을_취소한다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
+        then(orderCommandService).should().cancel(ORDER_ID);
+        then(orderCommandService).should(never()).failPayment(anyLong());
+        then(paymentService).should(never()).fail(any());
+        then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
+        then(deliveryService).shouldHaveNoInteractions();
+    }
+
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
     private void givenOrderedBy(Long userId) {
         Order order = mock(Order.class);

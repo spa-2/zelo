@@ -69,6 +69,15 @@ public class PaymentCommandService {
             return PaymentStatus.FAILED;
         }
 
+        // 결제창에서 취소된 결제는 실패가 아니라 주문 취소로 반영한다
+        if (pgPayment.isCancelled()) {
+            transactionOperations.executeWithoutResult(status -> {
+                paymentService.cancel(portoneId, pgPayment.amount());
+                orderCommandService.cancel(orderId);
+            });
+            return PaymentStatus.CANCELED;
+        }
+
         // 그 외(결제창 진행 중 등)는 확인 대기로 남겨 두고 웹훅이나 스케줄러가 다시 확인한다
         return PaymentStatus.CONFIRM_PENDING;
 

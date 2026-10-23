@@ -74,7 +74,7 @@ public class PaymentCommandService {
         if (pgPayment.isFailed()) {
             transactionOperations.executeWithoutResult(status -> {
                 paymentService.fail(portoneId);
-                orderCommandService.failPayment(orderId);
+                failOrderIfPossible(orderId);
             });
             return PaymentStatus.FAILED;
         }
@@ -107,6 +107,12 @@ public class PaymentCommandService {
     private void cancelOrderIfPossible(Long orderId) {
         if (orderService.getOrderWithItems(orderId).getStatus().isTransitionAllowed(OrderStatus.CANCELED)) {
             orderCommandService.cancel(orderId);
+        }
+    }
+
+    private void failOrderIfPossible(Long orderId) {
+        if (orderService.getOrderWithItems(orderId).getStatus().isTransitionAllowed(OrderStatus.PAYMENT_FAILED)) {
+            orderCommandService.failPayment(orderId);
         }
     }
 

@@ -157,6 +157,9 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
+        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
+
+
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -249,6 +252,7 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
+        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -279,6 +283,23 @@ class PaymentCommandServiceTest {
         then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
         then(orderCommandService).shouldHaveNoInteractions();
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
+    }
+
+    @Test
+    void 포트원_결제가_실패했지만_주문이_이미_취소됐으면_결제만_실패로_맞춘다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
+        givenOrderStatus(OrderStatus.CANCELED);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID);
+        then(orderCommandService).shouldHaveNoInteractions();
     }
 
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다

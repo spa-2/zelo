@@ -8,4 +8,6 @@ public interface PortOneClient {
     PortOnePayment getPayment(String portoneId);
 
     void cancelPayment(String portoneId, String reason);
+
+    void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount, Long currentCancellableAmount, String reason);
 }

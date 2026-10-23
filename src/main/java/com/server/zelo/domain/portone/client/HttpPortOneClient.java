@@ -60,9 +60,18 @@ public class HttpPortOneClient implements PortOneClient {
     }
     @Override
     public void cancelPayment(String portoneId, String reason) {
-        String idempotencyKey = IDEMPOTENCY_KEY_PREFIX + portoneId;
-        PortOneCancelRequest request = PortOneCancelRequest.of(portOneProperties.storeId(), reason);
+        cancel(portoneId, IDEMPOTENCY_KEY_PREFIX + portoneId,
+                PortOneCancelRequest.of(portOneProperties.storeId(), reason));
+    }
 
+    @Override
+    public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
+                                        Long currentCancellableAmount, String reason) {
+        cancel(portoneId, cancelKey,
+                PortOneCancelRequest.of(portOneProperties.storeId(), reason, amount, currentCancellableAmount));
+    }
+
+    private void cancel(String portoneId, String idempotencyKey, PortOneCancelRequest request) {
         try {
             portOneRestClient.post()
                     .uri("/payments/{paymentId}/cancel", portoneId)
@@ -90,7 +99,6 @@ public class HttpPortOneClient implements PortOneClient {
             throw toAccessError("취소", portoneId, e);
         }
     }
-
     private boolean isAlreadyCancelled(HttpClientErrorException e) {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);

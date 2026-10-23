@@ -215,11 +215,29 @@ class HttpPortOneClientTest {
                 .andRespond(request -> {
                     throw new ConnectException("Connection refused");
                 });
-
         // when // then
         assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 금액을_지정해_취소하면_취소_키와_금액_취소_가능_잔액을_포트원에_보낸다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Idempotency-Key", "refund-7"))
+                .andExpect(jsonPath("$.storeId").value("store-1"))
+                .andExpect(jsonPath("$.reason").value(CANCEL_REASON))
+                .andExpect(jsonPath("$.amount").value(3_000))
+                .andExpect(jsonPath("$.currentCancellableAmount").value(10_000))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        // when // then
+        assertThatCode(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
+                .doesNotThrowAnyException();
+        server.verify();
     }
 }

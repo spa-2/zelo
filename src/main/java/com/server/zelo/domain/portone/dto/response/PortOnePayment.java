@@ -29,6 +29,11 @@ public record PortOnePayment(
     }
 
     public boolean isFailed() {
-        return status == PortOnePaymentStatus.FAILED || status == PortOnePaymentStatus.CANCELLED;
+        return status == PortOnePaymentStatus.FAILED;
     }
+
+    public boolean isCancelled() {
+        return status == PortOnePaymentStatus.CANCELLED;
+    }
+
 }

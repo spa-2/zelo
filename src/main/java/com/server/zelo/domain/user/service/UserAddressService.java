@@ -37,7 +37,12 @@ public class UserAddressService {
                 .toList();
     }
 
-    // 기존 기본 배송지 변경과 수정이 같이 반영되거나 같이 롤백되어야 해서 트랜잭션을 묶음
+    @Transactional(readOnly = true)
+    public UserAddress getDefaultAddress(Long userId) {
+        return userAddressRepository.findDefaultByUserId(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DEFAULT_ADDRESS_NOT_FOUND));
+        // 기존 기본 배송지 변경과 수정이 같이 반영되거나 같이 롤백되어야 해서 트랜잭션을 묶음
+    }
     @Transactional
     public UpdateUserAddressResponse updateUserAddress(Long userId, Long addressId, UpdateUserAddressRequest request) {
         UserAddress userAddress = userAddressRepository.findActiveByIdAndUserId(addressId, userId)

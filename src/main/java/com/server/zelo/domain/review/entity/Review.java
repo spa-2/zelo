@@ -23,8 +23,8 @@ import org.springframework.util.StringUtils;
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
-        name = "reviews",
-        indexes = @Index(name = "idx_reviews_product_id", columnList = "product_id")
+        name = "product_review",
+        indexes = @Index(name = "idx_product_review_product_id", columnList = "product_id")
 )
 public class Review extends BaseCreatedEntity {
 

@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
+import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.entity.ChatSender;
@@ -53,6 +54,12 @@ public class ChatMessageService {
     @Transactional
     public ChatMessage createAssistantMessage(Long roomId, Long userId, String content) {
         return saveAssistantMessage(roomId, userId, content, null);
+    }
+
+    // 견적 카드를 payload(JSON)로 함께 저장해, 방을 다시 열어도 그때 본 카드가 그대로 보이게 한다
+    @Transactional
+    public ChatMessage createQuoteCardMessage(Long roomId, Long userId, String content, QuoteCardPayload quoteCard) {
+        return saveAssistantMessage(roomId, userId, content, jsonMapper.writeValueAsString(quoteCard));
     }
 
     @Transactional

@@ -58,6 +58,7 @@ public class UserCommandService {
     @Transactional
     public CreateUserAddressResponse createUserAddress(Long userId, CreateUserAddressRequest request) {
         User user = userService.getUser(userId);
+        userAddressService.validatePlaceNotDuplicated(userId, request.place());
 
         // 기본 배송지는 회원마다 하나만 두므로, 새 배송지를 기본으로 정하면 기존 기본 배송지를 해제함
         if (request.isDefault()) {

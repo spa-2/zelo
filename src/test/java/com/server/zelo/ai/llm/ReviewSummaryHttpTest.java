@@ -85,6 +85,8 @@ class ReviewSummaryHttpTest {
             assertThat(body).contains("리뷰 요약 담당").contains("하나도 안 매워서 애들이 잘 먹어요");
             // 문장 하나를 받는 요청이라 메뉴 계획과 달리 구조화 출력 옵션이 없다
             assertThat(body).doesNotContain("\"response_format\"");
+            // 리뷰 요약은 일반 설정(gpt-6-luna low)이 아니라 리뷰 요약용 모델로 보낸다
+            assertThat(body).contains("\"model\":\"gpt-5-mini\"", "\"reasoning_effort\":\"medium\"");
         });
     }
 

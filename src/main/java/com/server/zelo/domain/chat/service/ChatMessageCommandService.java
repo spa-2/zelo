@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 // 커넥션 풀(10개)이 채팅 요청에 묶이고 주문·결제까지 멈출 수 있다. 저장은 ChatMessageService의 짧은 트랜잭션으로 나눈다
 @Service
 @RequiredArgsConstructor
-public class ChatMessageOrchestrator {
+public class ChatMessageCommandService {
 
     private final LlmGateway llmGateway;
     private final ChatMessageService chatMessageService;

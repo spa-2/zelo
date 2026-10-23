@@ -92,8 +92,8 @@ class SpringAiLlmGatewayTimeoutTest {
         // then
         assertThat(reply.text()).isEqualTo("빠른 답변");
         assertThat(lastTimeoutHeader).isEqualTo(String.valueOf(TIMEOUT.toSeconds()));
-        // 요청 옵션을 직접 넣어도 application.yaml의 모델 설정이 유지되는지 확인한다
-        assertThat(lastRequestBody).contains("\"model\":\"gpt-5-mini\"");
+        // 요청 옵션을 직접 넣어도 application.yaml의 모델·추론 강도 설정이 유지되는지 확인한다
+        assertThat(lastRequestBody).contains("\"model\":\"gpt-6-luna\"", "\"reasoning_effort\":\"low\"");
     }
 
     @Test

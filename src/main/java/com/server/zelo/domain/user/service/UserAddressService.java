@@ -2,7 +2,9 @@ package com.server.zelo.domain.user.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.dto.request.UpdateUserAddressRequest;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.repository.UserAddressRepository;
@@ -39,5 +41,38 @@ public class UserAddressService {
     public UserAddress getDefaultAddress(Long userId) {
         return userAddressRepository.findDefaultByUserId(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DEFAULT_ADDRESS_NOT_FOUND));
+    // 기존 기본 배송지 변경과 수정이 같이 반영되거나 같이 롤백되어야 해서 트랜잭션을 묶음
+    @Transactional
+    public UpdateUserAddressResponse updateUserAddress(Long userId, Long addressId, UpdateUserAddressRequest request) {
+        UserAddress userAddress = userAddressRepository.findActiveByIdAndUserId(addressId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_ADDRESS_NOT_FOUND));
+
+        if (userAddressRepository.existsByUserIdAndPlaceAndIdNot(userId, request.place(), addressId)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);
+        }
+        userAddress.validateKeepDefault(request.isDefault());
+
+        if (request.isDefault() && !userAddress.isDefault()) {
+            releaseDefaultAddress(userId);
+            userAddress.changeToDefault();
+        }
+
+        userAddress.update(request.place(), request.recipientName(), request.recipientPhone(),
+                request.zipCode(), request.address());
+        return UpdateUserAddressResponse.from(userAddress);
+    }
+
+    @Transactional
+    public void deleteUserAddress(Long userId, Long addressId) {
+        UserAddress userAddress = userAddressRepository.findActiveByIdAndUserId(addressId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_ADDRESS_NOT_FOUND));
+        userAddress.validateDeletable();
+        userAddressRepository.delete(userAddress);
+    }
+
+    public void validatePlaceNotDuplicated(Long userId, String place) {
+        if (userAddressRepository.existsByUserIdAndPlace(userId, place)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);
+        }
     }
 }

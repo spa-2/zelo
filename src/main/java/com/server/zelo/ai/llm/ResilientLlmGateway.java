@@ -29,6 +29,7 @@ public class ResilientLlmGateway implements LlmGateway {
 
     private final Retry retry;
     private final String model;
+    private final String reviewSummaryModel;
     private final LlmGateway llmGateway;
     private final TimeLimiter timeLimiter;
     private final CircuitBreaker circuitBreaker;
@@ -36,14 +37,16 @@ public class ResilientLlmGateway implements LlmGateway {
 
     public ResilientLlmGateway(
             Retry retry,
-            // 실패해서 응답이 없으면 어떤 모델에 보냈는지 알 수 없어, 로그에는 설정한 모델 이름을 남긴다
+            // 실패해서 응답이 없으면 어떤 모델에 보냈는지 알 수 없어, 로그에는 설정한 모델 이름을 남긴다 (리뷰 요약은 따로 설정한 모델)
             @Value("${spring.ai.openai.chat.model}") String model,
+            @Value("${zelo.llm.review-summary.model}") String reviewSummaryModel,
             @Qualifier(DELEGATE) LlmGateway llmGateway,
             TimeLimiter timeLimiter,
             CircuitBreaker circuitBreaker,
             ExecutorService executorService) {
         this.retry = retry;
         this.model = model;
+        this.reviewSummaryModel = reviewSummaryModel;
         this.llmGateway = llmGateway;
         this.timeLimiter = timeLimiter;
         this.circuitBreaker = circuitBreaker;
@@ -52,22 +55,22 @@ public class ResilientLlmGateway implements LlmGateway {
 
     @Override
     public LlmReply explain(String systemPrompt, String userText) {
-        return call(() -> withUsage(requireText(llmGateway.explain(systemPrompt, userText)))).content();
+        return call(model, () -> withUsage(requireText(llmGateway.explain(systemPrompt, userText)))).content();
     }
 
     @Override
     public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
-        return call(() -> requireValidPlan(llmGateway.planMenu(systemPrompt, userText)));
+        return call(model, () -> requireValidPlan(llmGateway.planMenu(systemPrompt, userText)));
     }
 
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
-        return call(() -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
+        return call(reviewSummaryModel, () -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
     }
 
     // 재시도(바깥) → 서킷 브레이커 → 시도당 시간 제한(안쪽) 순서로 감싼다.
     // 그래서 재시도한 시도도 서킷 브레이커가 한 번씩 세고, 서킷이 열려 막힌 호출은 재시도하지 않는다
-    private <T> LlmResult<T> call(Supplier<LlmResult<T>> request) {
+    private <T> LlmResult<T> call(String requestModel, Supplier<LlmResult<T>> request) {
 
         // (가) 시도 1번 = 다른 스레드에서 실행하고, 5초만 기다린다.
         Callable<LlmResult<T>> attempt = () -> timeLimiter.executeFutureSupplier(
@@ -78,7 +81,7 @@ public class ResilientLlmGateway implements LlmGateway {
 
         // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
         AtomicInteger attemptNumber = new AtomicInteger();
-        Callable<LlmResult<T>> logged = () -> logAttempt(attemptNumber.incrementAndGet(), guarded);
+        Callable<LlmResult<T>> logged = () -> logAttempt(requestModel, attemptNumber.incrementAndGet(), guarded);
         try {
             // (다) 그걸 다시 재시도로 감싸서 실행한다.
             return Retry.decorateCallable(retry, logged).call();
@@ -98,7 +101,8 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     // 프롬프트·사용자 메시지 원문은 남기지 않는다
-    private <T> LlmResult<T> logAttempt(int attemptNumber, Callable<LlmResult<T>> guarded) throws Exception {
+    private <T> LlmResult<T> logAttempt(String requestModel, int attemptNumber, Callable<LlmResult<T>> guarded)
+            throws Exception {
         long start = System.nanoTime();
         try {
             LlmResult<T> result = guarded.call();
@@ -108,7 +112,7 @@ public class ResilientLlmGateway implements LlmGateway {
             return result;
         } catch (Exception e) {
             log.warn("LLM 호출 attempt={} model={} latencyMs={} success=false error={} promptTokens=- completionTokens=-",
-                    attemptNumber, model, elapsedMillis(start), LlmErrorClassifier.classify(e).getCode());
+                    attemptNumber, requestModel, elapsedMillis(start), LlmErrorClassifier.classify(e).getCode());
             throw e;
         }
     }

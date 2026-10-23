@@ -27,7 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
 
 @ExtendWith(MockitoExtension.class)
-class ReviewSummaryOrchestratorTest {
+class ReviewCommandServiceTest {
 
     private static final Long BAEK_ID = 1L;
     private static final Long POGI_ID = 2L;
@@ -39,13 +39,13 @@ class ReviewSummaryOrchestratorTest {
     private ReviewService reviewService;
 
     private ReviewSummaryPrompt reviewSummaryPrompt;
-    private ReviewSummaryOrchestrator reviewSummaryOrchestrator;
+    private ReviewCommandService reviewCommandService;
 
     @BeforeEach
     void setUp() {
         // 프롬프트는 파일을 읽어 글을 만드는 것뿐이라 실제 객체를 써서, LLM에 실제로 보낼 글을 그대로 확인한다
         reviewSummaryPrompt = new ReviewSummaryPrompt(new ClassPathResource("prompts/review-summary.md"));
-        reviewSummaryOrchestrator = new ReviewSummaryOrchestrator(llmGateway, reviewService, reviewSummaryPrompt);
+        reviewCommandService = new ReviewCommandService(llmGateway, reviewService, reviewSummaryPrompt);
     }
 
     @Test
@@ -59,7 +59,7 @@ class ReviewSummaryOrchestratorTest {
                 .willReturn(LlmReply.of("맵지 않다는 평이 많아요", "gpt-test", 1, 1));
 
         // when
-        int created = reviewSummaryOrchestrator.createSummaries();
+        int created = reviewCommandService.createSummaries();
 
         // then
         assertThat(created).isEqualTo(1);
@@ -82,7 +82,7 @@ class ReviewSummaryOrchestratorTest {
                 .willReturn(LlmReply.of("얼큰하다는 평이 많아요", "gpt-test", 1, 1));
 
         // when
-        int created = reviewSummaryOrchestrator.createSummaries();
+        int created = reviewCommandService.createSummaries();
 
         // then
         assertThat(created).isEqualTo(1);
@@ -96,7 +96,7 @@ class ReviewSummaryOrchestratorTest {
         given(reviewService.findSummaryTargetProductIds()).willReturn(List.of());
 
         // when
-        int created = reviewSummaryOrchestrator.createSummaries();
+        int created = reviewCommandService.createSummaries();
 
         // then
         assertThat(created).isZero();
@@ -110,7 +110,7 @@ class ReviewSummaryOrchestratorTest {
         given(reviewService.findRecentReviews(BAEK_ID)).willReturn(List.of());
 
         // when
-        int created = reviewSummaryOrchestrator.createSummaries();
+        int created = reviewCommandService.createSummaries();
 
         // then
         assertThat(created).isZero();

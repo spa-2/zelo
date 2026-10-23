@@ -6,7 +6,7 @@ import com.server.zelo.common.auth.AuthUser;
 
 import com.server.zelo.domain.payment.dto.response.PaymentConfirmResponse;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
-import com.server.zelo.domain.payment.facade.PaymentFacade;
+import com.server.zelo.domain.payment.service.PaymentFacade;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;

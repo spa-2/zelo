@@ -2,15 +2,19 @@ package com.server.zelo.ai.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.entity.ChatMessage;
+import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -30,6 +36,10 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 // OpenAI와 통신하는 ChatModel만 mock으로 바꾸고, ChatClient는 실제 객체로 거쳐 간다
 @ExtendWith(MockitoExtension.class)
 class SpringAiLlmGatewayMockTest {
+
+    // 테스트에서 쓰는 재료만 담은 재료 목록 (실제로는 재료 테이블에서 읽는다)
+    private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of(
+            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.BUNCH);
 
     @Mock
     private ChatModel chatModel;
@@ -52,7 +62,7 @@ class SpringAiLlmGatewayMockTest {
                 .willReturn(chatResponse("김치와 밥이 필요해요.", "gpt-test", 12, 7));
 
         // when
-        LlmReply reply = springAiLlmGateway.explain("너는 장보기 도우미야", "김치볶음밥 재료");
+        LlmReply reply = springAiLlmGateway.explain("너는 장보기 도우미야", List.of(), "김치볶음밥 재료");
 
         // then
         assertThat(reply.text()).isEqualTo("김치와 밥이 필요해요.");
@@ -69,13 +79,58 @@ class SpringAiLlmGatewayMockTest {
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
 
         // when
-        springAiLlmGateway.explain("너는 장보기 도우미야", "김치볶음밥 재료");
+        springAiLlmGateway.explain("너는 장보기 도우미야", List.of(), "김치볶음밥 재료");
 
         // then
         then(chatModel).should().call(promptCaptor.capture());
         Prompt prompt = promptCaptor.getValue();
         assertThat(prompt.getSystemMessage().getText()).isEqualTo("너는 장보기 도우미야");
         assertThat(prompt.getUserMessage().getText()).isEqualTo("김치볶음밥 재료");
+    }
+
+    @Test
+    void 대화_기록을_system과_이번_사용자_말_사이에_보낸_사람대로_넣는다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("답변", "gpt-test", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        List<ChatMessage> history = List.of(
+                ChatMessage.of(10L, ChatSender.USER, "초등학생 둘이랑 셋이 김치볶음밥"),
+                ChatMessage.of(10L, ChatSender.ASSISTANT, "김치, 밥, 계란이 필요해요."));
+
+        // when
+        springAiLlmGateway.explain("system", history, "그거 맵지 않게 해 줘");
+
+        // then
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getInstructions())
+                .extracting(Message::getMessageType, Message::getText)
+                .containsExactly(
+                        tuple(MessageType.SYSTEM, "system"),
+                        tuple(MessageType.USER, "초등학생 둘이랑 셋이 김치볶음밥"),
+                        tuple(MessageType.ASSISTANT, "김치, 밥, 계란이 필요해요."),
+                        tuple(MessageType.USER, "그거 맵지 않게 해 줘"));
+    }
+
+    @Test
+    void 메뉴_계획에도_대화_기록을_같은_순서로_넣는다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse(MENU_PLAN_JSON, "gpt-test", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        List<ChatMessage> history = List.of(ChatMessage.of(10L, ChatSender.USER, "초등학생 둘이랑 셋이 김치볶음밥"));
+
+        // when
+        springAiLlmGateway.planMenu("메뉴 계획 프롬프트", history, "4인분으로 바꿔줘", INGREDIENT_UNITS);
+
+        // then
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getInstructions())
+                .extracting(Message::getMessageType, Message::getText)
+                .containsExactly(
+                        tuple(MessageType.SYSTEM, "메뉴 계획 프롬프트"),
+                        tuple(MessageType.USER, "초등학생 둘이랑 셋이 김치볶음밥"),
+                        tuple(MessageType.USER, "4인분으로 바꿔줘"));
     }
 
     @Test
@@ -86,7 +141,7 @@ class SpringAiLlmGatewayMockTest {
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
 
         // when
-        springAiLlmGateway.explain("system", "질문");
+        springAiLlmGateway.explain("system", List.of(), "질문");
 
         // then: OpenAiChatModel은 이 값으로 요청 타임아웃을 정한다
         then(chatModel).should().call(promptCaptor.capture());
@@ -141,7 +196,7 @@ class SpringAiLlmGatewayMockTest {
                 .willReturn(chatResponse(MENU_PLAN_JSON, "gpt-test", 300, 120));
 
         // when
-        LlmResult<MenuPlan> result = springAiLlmGateway.planMenu("메뉴 계획 프롬프트", "초등학생 둘이랑 넷이 김치볶음밥");
+        LlmResult<MenuPlan> result = springAiLlmGateway.planMenu("메뉴 계획 프롬프트", List.of(), "초등학생 둘이랑 넷이 김치볶음밥", INGREDIENT_UNITS);
 
         // then
         MenuPlan menuPlan = result.content();
@@ -167,7 +222,7 @@ class SpringAiLlmGatewayMockTest {
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
 
         // when
-        springAiLlmGateway.planMenu("메뉴 계획 프롬프트", "김치볶음밥 재료");
+        springAiLlmGateway.planMenu("메뉴 계획 프롬프트", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
 
         // then
         then(chatModel).should().call(promptCaptor.capture());
@@ -188,7 +243,7 @@ class SpringAiLlmGatewayMockTest {
                 .willReturn(chatResponse("죄송해요, 다시 말씀해 주세요.", "gpt-test", 1, 1));
 
         // when & then
-        assertThatThrownBy(() -> springAiLlmGateway.planMenu("system", "질문"))
+        assertThatThrownBy(() -> springAiLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS))
                 .satisfies(exception -> assertThat(LlmErrorClassifier.classify(exception))
                         .isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
     }

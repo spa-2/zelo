@@ -43,7 +43,8 @@ public record MenuPlan(
         if (intent == null) {
             throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
         }
-        if (intent == MenuPlanIntent.GENERAL_QUESTION) {
+        // 견적 수정은 무엇을 바꿀지 이 메모가 아니라 견적 수정 도구가 정하므로, 일반 질문처럼 나머지 칸을 보지 않는다
+        if (intent == MenuPlanIntent.GENERAL_QUESTION || intent == MenuPlanIntent.QUOTE_EDIT) {
             return;
         }
         if (!StringUtils.hasText(menuName)) {

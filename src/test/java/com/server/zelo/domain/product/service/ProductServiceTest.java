@@ -10,6 +10,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.entity.ProductKeyword;
 import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.repository.IngredientRepository;
 import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import java.util.List;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,12 +32,28 @@ class ProductServiceTest {
     private ProductRepository productRepository;
 
     @Mock
+    private IngredientRepository ingredientRepository;
+
+    @Mock
     private ProductKeywordRepository productKeywordRepository;
 
     @InjectMocks
     private ProductService productService;
 
     private final Ingredient kimchi = Ingredient.of(Category.of(Category.of("국·반찬", true), "김치·젓갈"), "김치", BaseUnit.G);
+
+    @Test
+    void 재료_이름과_기본_단위를_id_순서대로_돌려준다() {
+        // given
+        Ingredient egg = Ingredient.of(Category.of(Category.of("정육·계란", true), "계란"), "계란", BaseUnit.EA);
+        given(ingredientRepository.findAll(Sort.by("id"))).willReturn(List.of(kimchi, egg));
+
+        // when
+        Map<String, BaseUnit> result = productService.findIngredientUnits();
+
+        // then: 프롬프트에 매번 같은 순서로 들어가야 한다
+        assertThat(result).containsExactly(Map.entry("김치", BaseUnit.G), Map.entry("계란", BaseUnit.EA));
+    }
 
     @Test
     void 재료_이름으로_판매중인_상품을_찾는다() {

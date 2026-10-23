@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.entity.ChatMessage;
+import com.server.zelo.domain.chat.entity.ChatSender;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -14,6 +17,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterAll;
@@ -28,6 +32,10 @@ import org.springframework.test.context.DynamicPropertySource;
 // 실제 OpenAI 클라이언트로 가짜 OpenAI 서버에 메뉴 계획을 요청해, 보내는 요청 모양과 응답 변환·검증·재시도를 HTTP 경로 그대로 확인한다
 @SpringBootTest
 class MenuPlanHttpTest {
+
+    // 테스트에서 쓰는 재료만 담은 재료 목록 (실제로는 재료 테이블에서 읽는다)
+    private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of(
+            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.BUNCH);
 
     private static final String VALID_PLAN = """
             {"intent":"SHOPPING_REQUEST","menuName":"김치볶음밥","servings":4,"budget":30000,
@@ -85,7 +93,7 @@ class MenuPlanHttpTest {
     @Test
     void 메뉴_계획_요청은_JSON_스키마를_엄격_모드로_보내고_프롬프트_파일을_system으로_보낸다() {
         // when
-        llmGateway.planMenu(menuPlanPrompt.systemPrompt(), "초등학생 둘이랑 넷이 김치볶음밥");
+        planMenu("초등학생 둘이랑 넷이 김치볶음밥");
 
         // then
         assertThat(requestBodies).singleElement().satisfies(body -> {
@@ -101,7 +109,7 @@ class MenuPlanHttpTest {
     @Test
     void 응답을_MenuPlan으로_바꿔_돌려준다() {
         // when
-        LlmResult<MenuPlan> result = llmGateway.planMenu(menuPlanPrompt.systemPrompt(), "김치볶음밥 3만 원");
+        LlmResult<MenuPlan> result = planMenu("김치볶음밥 3만 원");
 
         // then
         assertThat(result.content().menuName()).isEqualTo("김치볶음밥");
@@ -137,15 +145,41 @@ class MenuPlanHttpTest {
         contents = List.of(NOT_JSON, VALID_PLAN);
 
         // when
-        LlmResult<MenuPlan> result = llmGateway.planMenu(menuPlanPrompt.systemPrompt(), "김치볶음밥");
+        LlmResult<MenuPlan> result = planMenu("김치볶음밥");
 
         // then
         assertThat(result.content().menuName()).isEqualTo("김치볶음밥");
         assertThat(requestBodies).hasSize(2);
     }
 
+    @Test
+    void 현재_견적_메뉴와_대화_기록을_이번_말_앞에_순서대로_보낸다() {
+        // given: 프롬프트 파일의 예시 문장과 겹치지 않는 말을 써야 위치로 순서를 확인할 수 있다
+        List<ChatMessage> history = List.of(
+                ChatMessage.of(1L, ChatSender.USER, "아이 둘이랑 셋이 먹을 불고기 재료"),
+                ChatMessage.of(1L, ChatSender.ASSISTANT, "불고기 3인분 재료를 준비했어요."));
+
+        // when
+        llmGateway.planMenu(menuPlanPrompt.systemPrompt(INGREDIENT_UNITS, "불고기"), history,
+                "다섯 명으로 늘려 줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(requestBodies).singleElement().satisfies(body -> {
+            assertThat(body).contains("현재 견적 메뉴\\n불고기").contains("\"role\":\"assistant\"");
+            int firstUser = body.indexOf("아이 둘이랑 셋이 먹을 불고기 재료");
+            int assistant = body.indexOf("불고기 3인분 재료를 준비했어요.");
+            int currentUser = body.indexOf("다섯 명으로 늘려 줘");
+            assertThat(firstUser).isPositive().isLessThan(assistant);
+            assertThat(assistant).isLessThan(currentUser);
+        });
+    }
+
+    private LlmResult<MenuPlan> planMenu(String userText) {
+        return llmGateway.planMenu(menuPlanPrompt.systemPrompt(INGREDIENT_UNITS, null), List.of(), userText, INGREDIENT_UNITS);
+    }
+
     private void assertInvalidResponse() {
-        assertThatThrownBy(() -> llmGateway.planMenu(menuPlanPrompt.systemPrompt(), "김치볶음밥"))
+        assertThatThrownBy(() -> planMenu("김치볶음밥"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
     }

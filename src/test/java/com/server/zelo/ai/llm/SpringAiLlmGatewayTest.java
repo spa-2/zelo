@@ -2,6 +2,7 @@ package com.server.zelo.ai.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -28,7 +29,7 @@ class SpringAiLlmGatewayTest {
         String systemPrompt = "너는 장보기 도우미야. 한 문장으로 답해.";
 
         // when
-        LlmReply reply = llmGateway.explain(systemPrompt, "김치볶음밥에 뭐가 들어가?");
+        LlmReply reply = llmGateway.explain(systemPrompt, List.of(), "김치볶음밥에 뭐가 들어가?");
 
         // then
         assertThat(reply.text()).isNotBlank();

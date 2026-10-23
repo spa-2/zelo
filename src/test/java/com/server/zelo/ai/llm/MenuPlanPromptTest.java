@@ -2,7 +2,10 @@ package com.server.zelo.ai.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -19,7 +22,7 @@ class MenuPlanPromptTest {
     @Test
     void 조건_키워드_목록을_enum에서_만들어_프롬프트에_넣는다() {
         // when
-        String systemPrompt = menuPlanPrompt.systemPrompt();
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
 
         // then
         for (Keyword keyword : Keyword.values()) {
@@ -28,21 +31,59 @@ class MenuPlanPromptTest {
     }
 
     @Test
-    void 재료_목록을_이름과_기본_단위로_프롬프트에_넣는다() {
+    void 받은_재료_목록을_이름과_기본_단위로_받은_순서대로_넣는다() {
         // when
-        String systemPrompt = menuPlanPrompt.systemPrompt();
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
 
         // then
-        MenuPlanPrompt.INGREDIENT_UNITS.forEach((name, unit) ->
-                assertThat(systemPrompt).contains("- " + name + ": " + unit));
+        assertThat(systemPrompt).contains("- 김치: G\n- 계란: EA\n- 대파: BUNCH");
+    }
+
+    @Test
+    void 현재_견적이_있으면_그_메뉴_이름을_넣는다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), "김치볶음밥");
+
+        // then
+        assertThat(systemPrompt).contains("## 현재 견적 메뉴\n김치볶음밥\n");
+    }
+
+    @Test
+    void 현재_견적이_없으면_없음으로_넣는다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), " ");
+
+        // then
+        assertThat(systemPrompt).contains("## 현재 견적 메뉴\n없음\n");
+    }
+
+    @Test
+    void 견적_수정_판단_규칙과_앞_대화_유지_규칙이_들어_있다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
+
+        // then
+        assertThat(systemPrompt)
+                .contains("QUOTE_EDIT")
+                .contains("현재 견적 메뉴가 \"없음\"이면 QUOTE_EDIT를 쓰지 마")
+                .contains("인원(인분)을 바꾸는 말")
+                .contains("앞 대화에서 말한 그대로 유지");
     }
 
     @Test
     void 자리_표시가_모두_채워진다() {
         // when
-        String systemPrompt = menuPlanPrompt.systemPrompt();
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), "김치볶음밥");
 
         // then
         assertThat(systemPrompt).doesNotContain("{{");
+    }
+
+    private static Map<String, BaseUnit> ingredientUnits() {
+        Map<String, BaseUnit> ingredientUnits = new LinkedHashMap<>();
+        ingredientUnits.put("김치", BaseUnit.G);
+        ingredientUnits.put("계란", BaseUnit.EA);
+        ingredientUnits.put("대파", BaseUnit.BUNCH);
+        return ingredientUnits;
     }
 }

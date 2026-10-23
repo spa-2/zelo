@@ -240,4 +240,23 @@ class HttpPortOneClientTest {
                 .doesNotThrowAnyException();
         server.verify();
     }
+
+    @Test
+    void 금액을_지정한_취소에서_이미_취소된_결제면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"PAYMENT_ALREADY_CANCELLED","message":"이미 취소된 결제입니다."}
+                                """));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_FAILED));
+    }
+
+
 }

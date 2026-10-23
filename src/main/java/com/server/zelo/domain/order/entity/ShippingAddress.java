@@ -1,5 +1,7 @@
 package com.server.zelo.domain.order.entity;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.AccessLevel;
@@ -24,6 +26,23 @@ public class ShippingAddress {
     private String address;
 
     private ShippingAddress(String recipientName, String recipientPhone, String zipCode, String address) {
+        // 배송 필수 정보가 누락된 스냅샷이 생성되지 않도록 저장 전에 검증
+        if (recipientName == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "받는 사람 이름이 필요합니다.");
+        }
+
+        if (recipientPhone == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "받는 사람 연락처가 필요합니다.");
+        }
+
+        if (zipCode == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "우편번호가 필요합니다.");
+        }
+
+        if (address == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "주소가 필요합니다.");
+        }
+
         this.recipientName = recipientName;
         this.recipientPhone = recipientPhone;
         this.zipCode = zipCode;

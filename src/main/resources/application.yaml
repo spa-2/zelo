@@ -60,6 +60,9 @@ zelo:
     # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
       permitted-number-of-calls-in-half-open-state: 3
 
+  hash:
+    algorithm: SHA-256 # redis 와 같은 값 저장 시 사용 할 해쉬값
+
   portone:
     # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
     mode: ${PORTONE_MODE:fake}

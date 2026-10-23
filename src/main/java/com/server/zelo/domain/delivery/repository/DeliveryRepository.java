@@ -16,6 +16,7 @@ import java.util.Optional;
 public interface DeliveryRepository extends JpaRepository<Delivery, Long> {
 
     // 환불로 보류된 배송은 빼고, 상태가 바뀐 지 일정 시간이 지난 배송을 오래된 것부터 limit 건까지 찾는다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<Delivery> findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(
             DeliveryStatus status, LocalDateTime before, Limit limit);
 

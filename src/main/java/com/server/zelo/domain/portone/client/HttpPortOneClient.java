@@ -67,6 +67,7 @@ public class HttpPortOneClient implements PortOneClient {
     @Override
     public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
                                         Long currentCancellableAmount, String reason) {
+        validateCancelAmount(amount, currentCancellableAmount);
         cancel(portoneId, cancelKey,
                 PortOneCancelRequest.of(portOneProperties.storeId(), reason, amount, currentCancellableAmount), false);
     }
@@ -119,6 +120,12 @@ public class HttpPortOneClient implements PortOneClient {
         }
         log.error("포트원 결제 {} 연결 실패 portoneId={}", action, portoneId, e);
         return new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    private void validateCancelAmount(Long amount, Long currentCancellableAmount) {
+        if (amount == null || amount <= 0 || currentCancellableAmount == null || amount > currentCancellableAmount) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "취소 금액은 1원 이상, 취소 가능 잔액 이하여야 합니다.");
+        }
     }
 }
 

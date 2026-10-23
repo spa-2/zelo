@@ -6,6 +6,8 @@ import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -256,6 +258,23 @@ class HttpPortOneClientTest {
                 PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_FAILED));
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "null, 10000",
+            "0, 10000",
+            "-1, 10000",
+            "3000, null",
+            "20000, 10000"
+    }, nullValues = "null")
+    void 금액을_지정한_취소에서_금액이_올바르지_않으면_포트원에_보내지_않는다(Long amount, Long currentCancellableAmount) {
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", amount, currentCancellableAmount, CANCEL_REASON))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        server.verify();
     }
 
 

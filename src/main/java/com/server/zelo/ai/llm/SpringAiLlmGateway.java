@@ -18,9 +18,19 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "zelo.llm.mode", havingValue = "real")
 public class SpringAiLlmGateway implements LlmGateway {
 
+    private final Duration timeout;
     private final ChatClient chatClient;
+    private final String reviewSummaryModel;
+    private final String reviewSummaryReasoningEffort;
 
-    public SpringAiLlmGateway(ChatClient.Builder chatClientBuilder, @Value("${zelo.llm.timeout}") Duration timeout) {
+    public SpringAiLlmGateway(
+            ChatClient.Builder chatClientBuilder,
+            @Value("${zelo.llm.timeout}") Duration timeout,
+            @Value("${zelo.llm.review-summary.model}") String reviewSummaryModel,
+            @Value("${zelo.llm.review-summary.reasoning-effort}") String reviewSummaryReasoningEffort) {
+        this.timeout = timeout;
+        this.reviewSummaryModel = reviewSummaryModel;
+        this.reviewSummaryReasoningEffort = reviewSummaryReasoningEffort;
         this.chatClient = chatClientBuilder
                 // Spring AI 2.0.1은 요청마다 프롬프트 옵션의 timeout(기본 60초)으로 요청 타임아웃을 덮어써서
                 // spring.ai.openai.timeout만으로는 적용되지 않는다. 그래서 모든 요청의 옵션에 직접 넣는다.
@@ -33,18 +43,23 @@ public class SpringAiLlmGateway implements LlmGateway {
 
     @Override
     public LlmReply explain(String systemPrompt, String userText) {
-        return reply(systemPrompt, userText);
+        return reply(chatClient.prompt(), systemPrompt, userText);
     }
 
-    // 리뷰 요약도 문장 하나를 받는 호출이라 채팅 답변과 같은 방식으로 보내고, 리뷰 전용 system 프롬프트만 다르다
+    // 리뷰 요약도 문장 하나를 받는 호출이라 채팅 답변과 같은 방식으로 보내고, 리뷰 전용 system 프롬프트와 모델만 다르다.
+    // 요청 옵션을 넣으면 기본 옵션의 timeout이 기본값(60초)으로 덮이므로 timeout도 다시 넣는다
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
-        return reply(systemPrompt, reviewText);
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
+                .model(reviewSummaryModel)
+                .reasoningEffort(reviewSummaryReasoningEffort)
+                .timeout(timeout);
+        return reply(chatClient.prompt().options(options), systemPrompt, reviewText);
     }
 
-    private LlmReply reply(String systemPrompt, String userText) {
+    private LlmReply reply(ChatClient.ChatClientRequestSpec request, String systemPrompt, String userText) {
         // content()는 문장만 주므로, 토큰 사용량까지 받기 위해 chatResponse()를 사용
-        ChatResponse response = chatClient.prompt()
+        ChatResponse response = request
                 .system(systemPrompt)
                 .user(userText)
                 .call()

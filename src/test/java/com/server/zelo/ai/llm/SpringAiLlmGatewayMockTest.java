@@ -42,7 +42,7 @@ class SpringAiLlmGatewayMockTest {
     void setUp() {
         // ChatClient가 요청을 만들 때 모델의 기본 옵션을 복사하므로, 실제 OpenAiChatModel처럼 OpenAI 옵션을 준다
         given(chatModel.getOptions()).willReturn(OpenAiChatOptions.builder().build());
-        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel), TIMEOUT);
+        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel), TIMEOUT, "gpt-review", "medium");
     }
 
     @Test
@@ -113,6 +113,25 @@ class SpringAiLlmGatewayMockTest {
         assertThat(reply.model()).isEqualTo("gpt-test");
         assertThat(reply.promptTokens()).isEqualTo(200);
         assertThat(reply.completionTokens()).isEqualTo(30);
+    }
+
+    @Test
+    void 리뷰_요약은_리뷰_요약용_모델과_추론_강도로_보내고_타임아웃은_그대로_둔다() {
+        // given
+        given(chatModel.call(any(Prompt.class))).willReturn(chatResponse("요약", "gpt-review", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+
+        // when
+        springAiLlmGateway.summarizeReviews("리뷰 요약 프롬프트", "리뷰");
+
+        // then
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getOptions())
+                .isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
+                    assertThat(options.getModel()).isEqualTo("gpt-review");
+                    assertThat(options.getReasoningEffort()).isEqualTo("medium");
+                    assertThat(options.getTimeout()).isEqualTo(TIMEOUT);
+                });
     }
 
     @Test

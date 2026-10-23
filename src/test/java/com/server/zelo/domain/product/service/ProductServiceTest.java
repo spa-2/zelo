@@ -2,6 +2,7 @@ package com.server.zelo.domain.product.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
@@ -94,6 +95,24 @@ class ProductServiceTest {
 
         // then
         assertThat(result).containsExactly(product);
+    }
+
+    @Test
+    void 판매량을_올린다() {
+        // when
+        productService.increaseSalesCount(1L, 3);
+
+        // then
+        then(productRepository).should().increaseSalesCount(1L, 3);
+    }
+
+    @Test
+    void 판매량을_내린다() {
+        // when
+        productService.decreaseSalesCount(1L, 3);
+
+        // then
+        then(productRepository).should().decreaseSalesCount(1L, 3);
     }
 
     private Product product(Long id) {

@@ -97,4 +97,10 @@ public class Payment extends BaseTimeEntity {
         }
         this.status = target;
     }
+
+    public void validateRefundable() {
+        if (status != PaymentStatus.PAID) {
+            throw new BusinessException(ErrorCode.PAYMENT_NOT_REFUNDABLE);
+        }
+    }
 }

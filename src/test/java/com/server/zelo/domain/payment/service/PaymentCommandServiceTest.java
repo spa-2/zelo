@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -116,6 +117,7 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 1_000L, PAID_AT));
+        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -126,6 +128,26 @@ class PaymentCommandServiceTest {
         then(paymentService).should().cancel(PORTONE_ID, 1_000L);
         then(orderCommandService).should().cancel(ORDER_ID);
         then(paymentService).should(never()).complete(any(), any(), any());
+        then(deliveryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 주문이_먼저_취소된_뒤_결제가_완료되면_환불하고_결제만_취소한다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
+        givenOrderStatus(OrderStatus.CANCELED);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        then(portOneClient).should().cancelPayment(anyString(), anyString());
+        then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
+        then(paymentService).should(never()).complete(any(), any(), any());
+        then(orderCommandService).shouldHaveNoInteractions();
         then(deliveryService).shouldHaveNoInteractions();
     }
 
@@ -242,10 +264,18 @@ class PaymentCommandServiceTest {
     }
 
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
-    private void givenOrderedBy(Long userId) {
+    // 결제 반영 전에 주문이 결제 대기인지 확인하므로 주문 상태를 준비한다
+    private Order givenOrderStatus(OrderStatus status) {
         Order order = mock(Order.class);
-        User user = mock(User.class);
         given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+        given(order.getStatus()).willReturn(status);
+        return order;
+    }
+
+    // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
+    private void givenOrderedBy(Long userId) {
+        Order order = givenOrderStatus(OrderStatus.PAYMENT_PENDING);
+        User user = mock(User.class);
         given(order.getUser()).willReturn(user);
         given(user.getId()).willReturn(userId);
     }

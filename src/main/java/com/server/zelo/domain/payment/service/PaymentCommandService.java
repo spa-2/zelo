@@ -1,6 +1,7 @@
 package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -17,6 +18,7 @@ import org.springframework.transaction.support.TransactionOperations;
 public class PaymentCommandService {
 
     private static final String AMOUNT_MISMATCH_REASON = "결제 금액 불일치";
+    private static final String CLOSED_ORDER_REASON = "결제 대기 중이 아닌 주문";
 
     private final OrderService orderService;
     private final PortOneClient portOneClient;
@@ -41,6 +43,14 @@ public class PaymentCommandService {
 
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
         Long orderId = payment.getOrderId();
+
+        if (pgPayment.isPaid() && !isPaymentPending(orderId)) {
+            // 주문이 먼저 취소되어 결제를 반영할 수 없으므로, 이미 빠져나간 돈을 돌려주고 결제만 취소로 맞춘다
+            portOneClient.cancelPayment(portoneId, CLOSED_ORDER_REASON);
+            transactionOperations.executeWithoutResult(
+                    status -> paymentService.cancel(portoneId, pgPayment.amount()));
+            return PaymentStatus.CANCELED;
+        }
 
         if (pgPayment.isPaid() && payment.isAmountMatched(pgPayment.amount())) {
             transactionOperations.executeWithoutResult(status -> {
@@ -82,6 +92,11 @@ public class PaymentCommandService {
         return PaymentStatus.CONFIRM_PENDING;
 
     }
+        private boolean isPaymentPending(Long orderId) {
+        return orderService.getOrderWithItems(orderId).getStatus() == OrderStatus.PAYMENT_PENDING;
+    }
+
+
         // 결제가 완료된 주문은 주문한 사용자의 기본 배송지로 배송을 접수한다
         private void createDelivery(Long orderId) {
             Long userId = orderService.getOrderWithItems(orderId).getUser().getId();

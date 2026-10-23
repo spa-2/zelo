@@ -2,7 +2,10 @@ package com.server.zelo.domain.quote.service;
 
 import com.server.zelo.ai.llm.MenuPlan;
 import com.server.zelo.ai.llm.MenuPlanIngredient;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.inventory.service.InventoryService;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
@@ -41,18 +44,70 @@ public class QuoteCommandService {
 
     @Transactional(readOnly = true)
     public Quote createQuote(Long userId, Long roomId, MenuPlan menuPlan) {
-        List<String> ingredientNames = menuPlan.ingredients().stream().map(MenuPlanIngredient::name).toList();
+        Selection selection = select(menuPlan.ingredients(), new HashSet<>(menuPlan.conditions()));
+        return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems());
+    }
+
+    public Quote removeItem(Long userId, Long roomId, Long productId) {
+        Quote quote = getQuote(userId, roomId);
+        QuoteItem target = getItem(quote, productId);
+        List<QuoteItem> items = quote.items().stream().filter(item -> item != target).toList();
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems());
+    }
+
+    @Transactional(readOnly = true)
+    public Quote changeQuantity(Long userId, Long roomId, Long productId, Integer quantity) {
+        if (quantity == null || quantity < 1) {
+            throw new BusinessException(ErrorCode.INVALID_QUANTITY);
+        }
+        Quote quote = getQuote(userId, roomId);
+        QuoteItem target = getItem(quote, productId);
+        if (inventoryService.findAvailableQuantities(List.of(productId)).getOrDefault(productId, 0) < quantity) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+        }
+        List<QuoteItem> items = quote.items().stream()
+                .map(item -> item == target ? withQuantity(item, quantity) : item)
+                .toList();
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems());
+    }
+
+    // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
+    @Transactional(readOnly = true)
+    public Quote addItem(Long userId, Long roomId, String ingredientName, Integer amount, BaseUnit unit) {
+        if (amount == null || amount <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        Quote quote = getQuote(userId, roomId);
+        Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), Set.of());
+
+        List<QuoteItem> items = new ArrayList<>(quote.items());
+        for (QuoteItem added : selection.items()) {
+            QuoteItem same = items.stream().filter(item -> item.productId().equals(added.productId())).findFirst().orElse(null);
+            if (same == null) {
+                items.add(added);
+            } else {
+                items.set(items.indexOf(same), withQuantity(same, same.quantity() + added.quantity()));
+            }
+        }
+        List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems().stream()
+                .filter(excluded -> !excluded.name().equals(ingredientName))
+                .toList());
+        excludedItems.addAll(selection.excludedItems());
+        return save(userId, roomId, quote.menuName(), items, excludedItems);
+    }
+
+    private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions) {
+        List<String> ingredientNames = ingredients.stream().map(MenuPlanIngredient::name).toList();
         List<Product> products = productService.findOnSaleProducts(ingredientNames);
         List<Long> productIds = products.stream().map(Product::getId).toList();
 
-        Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
         Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);
         Map<Long, Set<Keyword>> keywords = productService.findKeywords(productIds);
         Map<Long, ProductReviewEvidence> reviews = reviewService.findReviewEvidences(productIds, conditions);
 
         List<QuoteItem> items = new ArrayList<>();
         List<ExcludedItem> excludedItems = new ArrayList<>();
-        for (MenuPlanIngredient ingredient : menuPlan.ingredients()) {
+        for (MenuPlanIngredient ingredient : ingredients) {
             List<Product> candidates = products.stream()
                     .filter(product -> product.getIngredient().getName().equals(ingredient.name()))
                     .toList();
@@ -77,21 +132,46 @@ public class QuoteCommandService {
             items.add(new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
                     product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity));
         }
+        return new Selection(items, excludedItems);
+    }
 
+    // 수정할 때마다 quoteId를 새로 발급해서 수정 전 카드로는 주문 못 하게 함
+    private Quote save(Long userId, Long roomId, String menuName, List<QuoteItem> items, List<ExcludedItem> excludedItems) {
         long totalAmount = items.stream().mapToLong(QuoteItem::lineAmount).sum();
         LocalDateTime now = LocalDateTime.now();
-        Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuPlan.menuName(),
+        Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName,
                 items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL));
         quoteRepository.save(quote);
         return quote;
     }
 
-    // 필요한 양을 상품 1개 용량으로 나눠서 올림 (필요한 김치 400g인데 500g짜리면 1개)
+    private Quote getQuote(Long userId, Long roomId) {
+        Quote quote = quoteRepository.findByRoomId(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.QUOTE_EXPIRED));
+        if (!quote.userId().equals(userId)) {
+            throw new BusinessException(ErrorCode.NO_AUTHORITY);
+        }
+        return quote;
+    }
+
+    private QuoteItem getItem(Quote quote, Long productId) {
+        return quote.items().stream()
+                .filter(item -> item.productId().equals(productId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    private QuoteItem withQuantity(QuoteItem item, int quantity) {
+        return new QuoteItem(item.productId(), item.productCode(), item.productName(), item.productUnit(),
+                item.unitPrice(), quantity, item.unitPrice() * quantity);
+    }
+
+    // 필요한 양을 상품 1개 용량으로 나눠서 올림 (김치 400g인데 500g짜리면 1개)
     private int quantity(MenuPlanIngredient ingredient, Product product) {
         return (ingredient.amount() + product.getContentAmount() - 1) / product.getContentAmount();
     }
 
-    // 조건 키워드가 붙은 상품이 있으면 그중에서만 고름 (ex : 아이 있는 집인데 매운 김치가 점수가 높다는 이유로 선택되면 안되서)
+    // 조건 키워드가 붙은 상품이 있으면 그중에서만 고름 (아이 있는 집인데 매운 김치가 점수로 이기면 안 돼서)
     private Product pick(MenuPlanIngredient ingredient, List<Product> candidates, Set<Keyword> conditions,
                          Map<Long, Set<Keyword>> keywords, Map<Long, ProductReviewEvidence> reviews) {
         List<Product> matched = candidates.stream()
@@ -128,5 +208,8 @@ public class QuoteCommandService {
 
     private long totalPrice(MenuPlanIngredient ingredient, Product product) {
         return product.getPrice() * quantity(ingredient, product);
+    }
+
+    private record Selection(List<QuoteItem> items, List<ExcludedItem> excludedItems) {
     }
 }

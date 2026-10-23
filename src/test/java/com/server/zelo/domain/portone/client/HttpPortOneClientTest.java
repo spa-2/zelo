@@ -6,6 +6,8 @@ import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -215,11 +217,65 @@ class HttpPortOneClientTest {
                 .andRespond(request -> {
                     throw new ConnectException("Connection refused");
                 });
-
         // when // then
         assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
     }
+
+    @Test
+    void 금액을_지정해_취소하면_취소_키와_금액_취소_가능_잔액을_포트원에_보낸다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Idempotency-Key", "refund-7"))
+                .andExpect(jsonPath("$.storeId").value("store-1"))
+                .andExpect(jsonPath("$.reason").value(CANCEL_REASON))
+                .andExpect(jsonPath("$.amount").value(3_000))
+                .andExpect(jsonPath("$.currentCancellableAmount").value(10_000))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        // when // then
+        assertThatCode(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void 금액을_지정한_취소에서_이미_취소된_결제면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"PAYMENT_ALREADY_CANCELLED","message":"이미 취소된 결제입니다."}
+                                """));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_FAILED));
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "null, 10000",
+            "0, 10000",
+            "-1, 10000",
+            "3000, null",
+            "20000, 10000"
+    }, nullValues = "null")
+    void 금액을_지정한_취소에서_금액이_올바르지_않으면_포트원에_보내지_않는다(Long amount, Long currentCancellableAmount) {
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", amount, currentCancellableAmount, CANCEL_REASON))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        server.verify();
+    }
+
+
 }

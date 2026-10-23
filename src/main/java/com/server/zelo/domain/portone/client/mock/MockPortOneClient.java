@@ -33,4 +33,11 @@ public class MockPortOneClient implements PortOneClient {
     public void cancelPayment(String portoneId, String reason) {
         log.info("[FAKE] 포트원 결제 취소 portoneId={}, reason={}", portoneId, reason);
     }
+
+    @Override
+    public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
+                                        Long currentCancellableAmount, String reason) {
+        log.info("[FAKE] 포트원 결제 금액 지정 취소 portoneId={}, cancelKey={}, amount={}, cancellable={}, reason={}",
+                portoneId, cancelKey, amount, currentCancellableAmount, reason);
+    }
 }

@@ -60,9 +60,21 @@ public class HttpPortOneClient implements PortOneClient {
     }
     @Override
     public void cancelPayment(String portoneId, String reason) {
-        String idempotencyKey = IDEMPOTENCY_KEY_PREFIX + portoneId;
-        PortOneCancelRequest request = PortOneCancelRequest.of(portOneProperties.storeId(), reason);
+        cancel(portoneId, IDEMPOTENCY_KEY_PREFIX + portoneId,
+                PortOneCancelRequest.of(portOneProperties.storeId(), reason), true);
+    }
 
+    @Override
+    public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
+                                        Long currentCancellableAmount, String reason) {
+        validateCancelAmount(amount, currentCancellableAmount);
+        cancel(portoneId, cancelKey,
+                PortOneCancelRequest.of(portOneProperties.storeId(), reason, amount, currentCancellableAmount), false);
+    }
+
+    // 전액 취소는 이미 취소된 결제면 목표를 이룬 것이지만, 금액 지정 취소는 이번 금액이 취소된 게 아니므로 실패로 본다
+    private void cancel(String portoneId, String idempotencyKey, PortOneCancelRequest request,
+                        boolean alreadyCancelledIsSuccess) {
         try {
             portOneRestClient.post()
                     .uri("/payments/{paymentId}/cancel", portoneId)
@@ -72,7 +84,7 @@ public class HttpPortOneClient implements PortOneClient {
                     .toBodilessEntity();
         } catch (HttpClientErrorException e) {
             // 이전 시도가 포트원에서는 성공하고 응답만 끊긴 경우라 환불은 이미 끝난 상태다
-            if (isAlreadyCancelled(e)) {
+            if (alreadyCancelledIsSuccess && isAlreadyCancelled(e)) {
                 log.info("포트원 결제 이미 취소됨 portoneId={}", portoneId);
                 return;
             }
@@ -90,7 +102,6 @@ public class HttpPortOneClient implements PortOneClient {
             throw toAccessError("취소", portoneId, e);
         }
     }
-
     private boolean isAlreadyCancelled(HttpClientErrorException e) {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
@@ -109,6 +120,12 @@ public class HttpPortOneClient implements PortOneClient {
         }
         log.error("포트원 결제 {} 연결 실패 portoneId={}", action, portoneId, e);
         return new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    private void validateCancelAmount(Long amount, Long currentCancellableAmount) {
+        if (amount == null || amount <= 0 || currentCancellableAmount == null || amount > currentCancellableAmount) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "취소 금액은 1원 이상, 취소 가능 잔액 이하여야 합니다.");
+        }
     }
 }
 

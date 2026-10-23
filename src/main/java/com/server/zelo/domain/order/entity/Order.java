@@ -7,6 +7,7 @@ import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.user.entity.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -66,11 +67,25 @@ public class Order extends BaseTimeEntity {
     @Column(name = "total_amount", nullable = false)
     private Long totalAmount;
 
+    @Embedded
+    private ShippingAddress shippingAddress;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.PERSIST)
     private List<OrderItem> orderItems = new ArrayList<>();
 
-    private Order(User user, String quoteId, String orderName,
-                  ActorType requesterType, ChatRoom chatRoom, Long totalAmount) {
+    private Order(
+            User user,
+            String quoteId,
+            String orderName,
+            ActorType requesterType,
+            ChatRoom chatRoom,
+            Long totalAmount,
+            ShippingAddress shippingAddress
+    ) {
+        if (shippingAddress == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "주문 배송지가 필요합니다.");
+        }
+
         this.user = user;
         this.quoteId = quoteId;
         this.chatRoom = chatRoom;
@@ -78,6 +93,7 @@ public class Order extends BaseTimeEntity {
         this.totalAmount = totalAmount;
         this.requesterType = requesterType;
         this.status = OrderStatus.PAYMENT_PENDING;
+        this.shippingAddress = shippingAddress;
     }
 
     /**
@@ -98,9 +114,16 @@ public class Order extends BaseTimeEntity {
         this.orderItems.add(orderItem);
     }
 
-    public static Order of(User user, String quoteId, String orderName,
-                           ActorType requesterType, ChatRoom chatRoom, Long totalAmount) {
-        return new Order(user, quoteId, orderName, requesterType, chatRoom, totalAmount);
+    public static Order of(
+            User user,
+            String quoteId,
+            String orderName,
+            ActorType requesterType,
+            ChatRoom chatRoom,
+            Long totalAmount,
+            ShippingAddress shippingAddress
+    ) {
+        return new Order(user, quoteId, orderName, requesterType, chatRoom, totalAmount, shippingAddress);
     }
 
     public void pay() {

@@ -69,6 +69,14 @@ public class ResilientLlmGateway implements LlmGateway {
                 llmGateway.planMenu(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
     }
 
+    // 수정 계획만 받고 견적은 고치지 않으므로, 재시도해도 견적이 두 번 바뀌지 않는다
+    @Override
+    public LlmResult<QuoteEditPlan> planQuoteEdit(String systemPrompt, List<ChatMessage> history, String userText,
+                                                  Map<String, BaseUnit> ingredientUnits) {
+        return call(model, () -> requireValidEditPlan(
+                llmGateway.planQuoteEdit(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
+    }
+
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
         return call(reviewSummaryModel, () -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
@@ -140,6 +148,16 @@ public class ResilientLlmGateway implements LlmGateway {
     private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result, Map<String, BaseUnit> ingredientUnits) {
         if (result == null || result.content() == null) {
             // 응답 본문이 비어 객체를 만들지 못한 경우. 문장 응답의 빈 답과 같게 본다
+            throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
+        }
+        result.content().validate(ingredientUnits);
+        return result;
+    }
+
+    // 메뉴 계획과 같은 규칙: 빈 답은 AI_EMPTY_RESPONSE, 검증 실패는 시도 안에서 AI_INVALID_RESPONSE로 바꿔 한 번 더 묻는다
+    private LlmResult<QuoteEditPlan> requireValidEditPlan(LlmResult<QuoteEditPlan> result,
+                                                          Map<String, BaseUnit> ingredientUnits) {
+        if (result == null || result.content() == null) {
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
         }
         result.content().validate(ingredientUnits);

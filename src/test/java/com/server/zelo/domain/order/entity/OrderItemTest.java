@@ -25,7 +25,7 @@ class OrderItemTest {
     @Test
     void 견적의_상품_정보를_보존하고_양방향_관계를_연결한다() {
         // given
-        Order order = Order.of(user, "QUOTE-ITEM-001", "백김치 주문", ActorType.USER, null, 17_800L);
+        Order order = Order.of(user, "QUOTE-ITEM-001", "백김치 주문", ActorType.USER, null, 17_800L, shippingAddress());
 
         // when
         OrderItem item = OrderItem.of(order, product, "백김치", "1kg", 8_900L, 2, 17_800L);
@@ -48,7 +48,7 @@ class OrderItemTest {
     @Test
     void 주문_상품을_생성하면_선점_상태로_초기화한다() {
         // given
-        Order order = Order.of(user, "QUOTE-ITEM-002", "계란 주문", ActorType.USER, null, 4_900L);
+        Order order = Order.of(user, "QUOTE-ITEM-002", "계란 주문", ActorType.USER, null, 4_900L, shippingAddress());
         // when
         OrderItem item = OrderItem.of(order, product, "계란", "10구", 4_900L, 1, 4_900L);
         // then
@@ -61,7 +61,7 @@ class OrderItemTest {
     @Test
     void 여러_주문_상품을_생성하면_같은_주문에_각각_한_번씩_연결한다() {
         // given
-        Order order = Order.of(user, "QUOTE-ITEM-003", "두 가지 재료", ActorType.USER, null, 13_800L);
+        Order order = Order.of(user, "QUOTE-ITEM-003", "두 가지 재료", ActorType.USER, null, 13_800L, shippingAddress());
 
         // when
         OrderItem kimchi = OrderItem.of(order, product, "백김치", "1kg", 8_900L, 1, 8_900L);
@@ -81,7 +81,7 @@ class OrderItemTest {
         // given
         Long unitPrice = 3_000_000_000L;
         Long lineAmount = 6_000_000_000L;
-        Order order = Order.of(user, "QUOTE-ITEM-004", "큰 금액 주문", ActorType.USER, null, lineAmount);
+        Order order = Order.of(user, "QUOTE-ITEM-004", "큰 금액 주문", ActorType.USER, null, lineAmount, shippingAddress());
 
         // when
         OrderItem item = OrderItem.of(order, product, "대량 상품", "1세트", unitPrice, 2, lineAmount);
@@ -90,5 +90,9 @@ class OrderItemTest {
         assertThat(item.getUnitPrice()).isEqualTo(unitPrice);
         assertThat(item.getLineAmount()).isEqualTo(lineAmount);
         assertThat(order.getTotalAmount()).isEqualTo(lineAmount);
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

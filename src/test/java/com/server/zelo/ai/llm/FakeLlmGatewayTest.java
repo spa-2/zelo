@@ -130,6 +130,41 @@ class FakeLlmGatewayTest {
     }
 
     @Test
+    void 수정_계획은_기본으로_견적을_고치지_않고_되묻는_계획을_돌려준다() {
+        // when
+        LlmResult<QuoteEditPlan> result = fakeLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.model()).isEqualTo(FakeLlmGateway.MODEL);
+        assertThat(result.content().edits()).isEmpty();
+        assertThat(result.content().question()).isEqualTo(FakeLlmGateway.EDIT_QUESTION);
+    }
+
+    @Test
+    void 수정_계획을_바꾸면_그_계획을_돌려준다() {
+        // given
+        QuoteEditPlan editPlan = QuoteEditPlan.of(
+                List.of(QuoteEdit.of(QuoteEditAction.REMOVE, 1L, 0, "", 0, BaseUnit.EA)), "");
+        fakeLlmGateway.changeQuoteEditPlan(editPlan);
+
+        // when
+        LlmResult<QuoteEditPlan> result = fakeLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.content()).isEqualTo(editPlan);
+    }
+
+    @Test
+    void 수정_계획도_실패_모드면_서버_오류를_던진다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+
+        // when & then
+        assertThatThrownBy(() -> fakeLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS))
+                .isInstanceOf(InternalServerException.class);
+    }
+
+    @Test
     void 메뉴_계획도_실패_모드면_서버_오류를_던진다() {
         // given
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);

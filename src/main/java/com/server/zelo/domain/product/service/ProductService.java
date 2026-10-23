@@ -54,4 +54,16 @@ public class ProductService {
                 .collect(Collectors.groupingBy(productKeyword -> productKeyword.getProduct().getId(),
                         Collectors.mapping(ProductKeyword::getKeyword, Collectors.toSet())));
     }
+
+    // 결제 완료 때 주문 쪽에서 부름
+    @Transactional
+    public void increaseSalesCount(Long productId, Integer quantity) {
+        productRepository.increaseSalesCount(productId, quantity);
+    }
+
+    // 취소·환불 때 주문 쪽에서 부름
+    @Transactional
+    public void decreaseSalesCount(Long productId, Integer quantity) {
+        productRepository.decreaseSalesCount(productId, quantity);
+    }
 }

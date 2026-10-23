@@ -470,6 +470,75 @@ class ResilientLlmGatewayTest {
     }
 
     @Test
+    void 수정_계획이_검증을_통과하면_한_번만_호출하고_그대로_돌려준다() {
+        // given
+        given(delegate.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS)).willReturn(editPlanResult(validEditPlan()));
+
+        // when
+        LlmResult<QuoteEditPlan> result = resilientLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.content()).isEqualTo(validEditPlan());
+        then(delegate).should(times(1)).planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+    }
+
+    @Test
+    void 수정_계획이_검증에_실패하면_한_번_더_물어보고_그래도_실패하면_AI_INVALID_RESPONSE로_실패한다() {
+        // given: 추가하는 계란의 단위가 재료 목록(EA)과 다르다
+        QuoteEditPlan wrongUnit = QuoteEditPlan.of(
+                List.of(QuoteEdit.of(QuoteEditAction.ADD, 0L, 0, "계란", 100, BaseUnit.G)), "");
+        given(delegate.planQuoteEdit(anyString(), anyList(), anyString(), anyMap())).willReturn(editPlanResult(wrongUnit));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planQuoteEdit("system", List.of(), "계란 더", INGREDIENT_UNITS))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
+        then(delegate).should(times(2)).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
+    }
+
+    @Test
+    void 수정_계획이_처음에_검증에_실패해도_다시_물어서_맞게_답하면_돌려준다() {
+        // given
+        given(delegate.planQuoteEdit(anyString(), anyList(), anyString(), anyMap()))
+                .willReturn(editPlanResult(QuoteEditPlan.of(null, "")))
+                .willReturn(editPlanResult(validEditPlan()));
+
+        // when
+        LlmResult<QuoteEditPlan> result = resilientLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.content()).isEqualTo(validEditPlan());
+        then(delegate).should(times(2)).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
+    }
+
+    @Test
+    void 수정_계획_응답이_비어_있으면_재시도하지_않고_AI_EMPTY_RESPONSE로_실패한다() {
+        // given
+        given(delegate.planQuoteEdit(anyString(), anyList(), anyString(), anyMap())).willReturn(editPlanResult(null));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_EMPTY_RESPONSE));
+        then(delegate).should(times(1)).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
+    }
+
+    @Test
+    void 수정_계획도_시간_안에_답하지_않으면_한_번_재시도하고_AI_TIMEOUT으로_실패한다() {
+        // given
+        given(delegate.planQuoteEdit(anyString(), anyList(), anyString(), anyMap())).willAnswer(invocation -> {
+            Thread.sleep(2_000);
+            return editPlanResult(validEditPlan());
+        });
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.planQuoteEdit("system", List.of(), "김치 빼줘", INGREDIENT_UNITS))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+        then(delegate).should(times(2)).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
+    }
+
+    @Test
     void 리뷰_요약은_줄바꿈과_연속_공백을_한_칸으로_줄여_한_줄로_돌려준다(CapturedOutput output) {
         // given
         given(delegate.summarizeReviews("system", "리뷰")).willReturn(LlmReply.of(" 맵지 않고\n아삭하다는   평이 많아요 ", "gpt-test", 40, 15));
@@ -575,6 +644,14 @@ class ResilientLlmGatewayTest {
     private static MenuPlan validPlan() {
         return MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 4, null,
                 List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY), List.of());
+    }
+
+    private static LlmResult<QuoteEditPlan> editPlanResult(QuoteEditPlan editPlan) {
+        return LlmResult.of(editPlan, "gpt-test", 30, 20);
+    }
+
+    private static QuoteEditPlan validEditPlan() {
+        return QuoteEditPlan.of(List.of(QuoteEdit.of(QuoteEditAction.REMOVE, 1L, 0, "", 0, BaseUnit.EA)), "");
     }
 
     private static MenuPlan planWithoutIngredients() {

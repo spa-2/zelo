@@ -37,7 +37,8 @@ public class MenuPlanPrompt {
                 .replace(CURRENT_MENU_PLACEHOLDER, StringUtils.hasText(currentMenuName) ? currentMenuName : NO_CURRENT_MENU);
     }
 
-    private static String ingredientLines(Map<String, BaseUnit> ingredientUnits) {
+    // 견적 수정 프롬프트도 같은 모양의 재료 목록을 써서 같은 패키지에 연다
+    static String ingredientLines(Map<String, BaseUnit> ingredientUnits) {
         return ingredientUnits.entrySet().stream()
                 .map(entry -> "- " + entry.getKey() + ": " + entry.getValue())
                 .collect(Collectors.joining("\n"));

@@ -85,14 +85,25 @@ public class SpringAiLlmGateway implements LlmGateway {
     @Override
     public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
                                         Map<String, BaseUnit> ingredientUnits) {
+        return structuredResult(systemPrompt, history, userText, MenuPlan.class);
+    }
+
+    @Override
+    public LlmResult<QuoteEditPlan> planQuoteEdit(String systemPrompt, List<ChatMessage> history, String userText,
+                                                  Map<String, BaseUnit> ingredientUnits) {
+        return structuredResult(systemPrompt, history, userText, QuoteEditPlan.class);
+    }
+
+    private <T> LlmResult<T> structuredResult(String systemPrompt, List<ChatMessage> history, String userText,
+                                              Class<T> type) {
         // useProviderStructuredOutput: JSON 스키마를 프롬프트 글이 아니라 OpenAI 요청 옵션(엄격 모드)으로 보내,
         // 정해진 칸과 키워드·단위 목록 밖의 값이 오지 않게 한다. 객체로 바꾸지 못하면 JacksonException이 난다
-        ResponseEntity<ChatResponse, MenuPlan> response = chatClient.prompt()
+        ResponseEntity<ChatResponse, T> response = chatClient.prompt()
                 .system(systemPrompt)
                 .messages(toMessages(history))
                 .user(userText)
                 .call()
-                .responseEntity(MenuPlan.class, ChatClient.EntityParamSpec::useProviderStructuredOutput);
+                .responseEntity(type, ChatClient.EntityParamSpec::useProviderStructuredOutput);
 
         ChatResponseMetadata metadata = response.response().getMetadata();
         return LlmResult.of(

@@ -1,5 +1,7 @@
 package com.server.zelo.ai.llm;
 
+import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
@@ -23,6 +25,13 @@ public class QuoteExplainPrompt {
             "CATEGORY_NOT_ALLOWED", "AI가 대신 살 수 없는 품목(주류 등)",
             "PRODUCT_NOT_FOUND", "판매하는 상품이 없음",
             "OUT_OF_STOCK", "재고 부족");
+    // 견적 수정 메서드가 던진 오류 중 채팅이 안내하는 것. 그 밖의 오류는 ErrorCode 문구를 쓴다
+    private static final Map<ErrorCode, String> EDIT_FAILURE_REASONS = Map.of(
+            ErrorCode.INSUFFICIENT_STOCK, "재고 부족",
+            ErrorCode.PRODUCT_NOT_FOUND, "견적에 없는 상품",
+            ErrorCode.QUOTE_EXPIRED, "견적 만료");
+    private static final Map<BaseUnit, String> UNIT_LABELS = Map.of(
+            BaseUnit.G, "g", BaseUnit.ML, "ml", BaseUnit.EA, "개", BaseUnit.BUNCH, "단");
 
     private final String systemPrompt;
 
@@ -48,6 +57,28 @@ public class QuoteExplainPrompt {
         if (!menuPlan.unmatchedConditions().isEmpty()) {
             lines.add("상품 조건으로 반영하지 못한 요청: " + String.join(", ", menuPlan.unmatchedConditions()));
         }
+        addQuoteLines(lines, quote);
+        return String.join("\n", lines);
+    }
+
+    // 고친 견적의 안내용 글. 무엇을 고쳤는지는 LLM의 수정 계획이 아니라 실제로 실행한 수정만 적는다.
+    // failedEdit·failure: 중간에 실패한 수정과 그 오류. 모두 고쳤으면 null
+    public String editedText(Quote before, Quote after, List<QuoteEdit> appliedEdits,
+                             QuoteEdit failedEdit, ErrorCode failure) {
+        List<String> lines = new ArrayList<>();
+        lines.add("메뉴: " + after.menuName());
+        lines.add("수정한 내용:");
+        appliedEdits.forEach(edit -> lines.add("- " + editLabel(before, edit)));
+        if (failedEdit != null) {
+            lines.add("하지 못한 수정:");
+            lines.add("- " + editLabel(before, failedEdit) + ": "
+                    + EDIT_FAILURE_REASONS.getOrDefault(failure, failure.getMessage()));
+        }
+        addQuoteLines(lines, after);
+        return String.join("\n", lines);
+    }
+
+    private static void addQuoteLines(List<String> lines, Quote quote) {
         lines.add("담은 상품:" + (quote.items().isEmpty() ? " 없음" : ""));
         for (QuoteItem item : quote.items()) {
             lines.add("- " + productLabel(item) + " " + item.quantity() + "개, " + won(item.lineAmount()));
@@ -60,7 +91,23 @@ public class QuoteExplainPrompt {
             }
         }
         lines.add("합계: " + won(quote.totalAmount()));
-        return String.join("\n", lines);
+    }
+
+    // 뺀 상품은 고친 견적에 없으므로 고치기 전 견적에서 이름을 찾는다
+    private static String editLabel(Quote before, QuoteEdit edit) {
+        return switch (edit.action()) {
+            case REMOVE -> productLabel(before, edit.productId()) + " 빼기";
+            case CHANGE_QUANTITY -> productLabel(before, edit.productId()) + " " + edit.quantity() + "개로 바꾸기";
+            case ADD -> edit.ingredientName() + " " + edit.amount() + UNIT_LABELS.get(edit.unit()) + " 추가";
+        };
+    }
+
+    private static String productLabel(Quote quote, Long productId) {
+        return quote.items().stream()
+                .filter(item -> item.productId().equals(productId))
+                .findFirst()
+                .map(QuoteExplainPrompt::productLabel)
+                .orElse("상품 " + productId);
     }
 
     // 상품명에 단위가 이미 들어 있으면(ex: "백김치 1kg") 같은 말을 두 번 쓰지 않는다

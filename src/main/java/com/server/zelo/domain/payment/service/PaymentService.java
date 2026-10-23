@@ -6,8 +6,10 @@ import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -28,6 +30,11 @@ public class PaymentService {
     public Payment getPayment(String portoneId) {
         return paymentRepository.findByPortoneId(portoneId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Payment> findLatestPayment(Long orderId) {
+        return paymentRepository.findTopByOrderIdOrderByIdDesc(orderId);
     }
 
     // 이전 확인이 중간에 끊겨 이미 확인 대기인 결제는 상태를 바꾸지 않고 그대로 다시 확인한다

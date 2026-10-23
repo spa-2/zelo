@@ -126,7 +126,7 @@ public class OrderCommandService {
 
     // ex) "서울특별시 강남구 테헤란로 123" → "집 · 서울특별시 강남구"
     private String toAddressSummary(GetUserAddressResponse address) {
-        String[] parts = address.address().split(" ");
+        String[] parts = address.address().trim().split("\\s+");
         String region = parts.length >= 2 ? parts[0] + " " + parts[1] : address.address();
         return address.place() + " · " + region;
     }

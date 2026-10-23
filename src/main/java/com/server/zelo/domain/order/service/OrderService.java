@@ -6,6 +6,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -15,11 +16,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository orderRepository;
+    private final OrderConfirmationRepository orderConfirmationRepository;
 
     public Order getOrderWithItems(Long orderId) {
         return orderRepository.findWithOrderItemsById(orderId)
@@ -59,5 +63,24 @@ public class OrderService {
 
         // PageResponse 변환
         return PageResponse.of(orders, GetOrderSummaryResponse::from);
+    }
+
+    // OrderConfirmationRepository랑 OrderCommandService 연결
+    @Transactional
+    public void createConfirmation(
+            String confirmationId,
+            Long userId,
+            Long roomId,
+            String quoteId,
+            LocalDateTime expiresAt
+    ) {
+        orderConfirmationRepository.save(confirmationId, userId, roomId, quoteId, expiresAt);
+    }
+
+    // 주문이 없는 경우도 같은 예외로 응답해 다른 사용자의 주문 존재 여부를 노출하지 않음.
+    public void validateOwner(Long orderId, Long userId) {
+        if (!orderRepository.existsByIdAndUser_Id(orderId, userId)) {
+            throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+        }
     }
 }

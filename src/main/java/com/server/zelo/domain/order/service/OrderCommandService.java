@@ -1,22 +1,35 @@
 package com.server.zelo.domain.order.service;
 
 import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.inventory.service.InventoryService;
+import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
+import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
+import com.server.zelo.domain.quote.mock.service.MockQuoteService;
+import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class OrderCommandService {
-    private final OrderService orderService;          // 주문 조회
-    private final InventoryService inventoryService;  // 재고 변경 (#55)
+    private final OrderService orderService;
+    private final MockQuoteService quoteService;
+    private final ChatRoomService chatRoomService;
+    private final InventoryService inventoryService;
+    private final UserAddressService userAddressService;
 
     // 결제 성공시
     public void completePayment(Long orderId) {
@@ -78,11 +91,43 @@ public class OrderCommandService {
         }
     }
 
+    public CreateOrderConfirmationResponse createOrder(Long userId, CreateOrderConfirmationRequest request) {
+        // 본인 명의 채팅방 소유 확인
+        chatRoomService.getOwnedChatRoom(request.roomId(), userId);
+
+        // 견적 조회·검증 (Mock)
+        Quote quote = quoteService.validateForOrder(request.roomId(), userId, request.quoteId());
+
+        // 기본 배송지 조회
+        GetUserAddressResponse defaultAddress = userAddressService.getUserAddresses(userId).stream()
+                .filter(GetUserAddressResponse::isDefault)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT, "기본 배송지가 없습니다."));
+
+        String addrSummary = toAddressSummary(defaultAddress);
+
+        // 확인 정보 발급
+        String confirmationId = UUID.randomUUID().toString(); // 키 생성
+        LocalDateTime expiresAt = quote.expiresAt(); // 견적에 있는 만료시각
+
+        // Redis에 사용자 ID·roomId·quoteId 저장
+        orderService.createConfirmation(confirmationId, userId, request.roomId(), request.quoteId(), expiresAt);
+
+        return CreateOrderConfirmationResponse.of(confirmationId, quote, addrSummary, expiresAt);
+    }
+
     private List<OrderItem> getItemsInProductOrder(Order order) {
         // 여러 상품을 처리하는 모든 요청의 잠금 순서를 맞춰 교착 가능성을 줄인다.
         return order.getOrderItems().stream()
                 .sorted(Comparator.comparing(item ->
                         item.getProduct().getId()))
                 .toList();
+    }
+
+    // ex) "서울특별시 강남구 테헤란로 123" → "집 · 서울특별시 강남구"
+    private String toAddressSummary(GetUserAddressResponse address) {
+        String[] parts = address.address().split(" ");
+        String region = parts.length >= 2 ? parts[0] + " " + parts[1] : address.address();
+        return address.place() + " · " + region;
     }
 }

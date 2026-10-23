@@ -11,8 +11,8 @@ import com.server.zelo.domain.user.repository.UserAddressRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -26,9 +26,6 @@ public class UserAddressService {
                 UserAddress.of(user, place, recipientName, recipientPhone, zipCode, address, isDefault));
     }
 
-    public void releaseDefaultAddress(Long userId) {
-        userAddressRepository.findDefaultByUserId(userId).ifPresent(UserAddress::releaseDefault);
-    }
 
     @Transactional(readOnly = true)
     public List<GetUserAddressResponse> getUserAddresses(Long userId) {
@@ -37,11 +34,16 @@ public class UserAddressService {
                 .toList();
     }
 
+    // 기본 배송지가 없을 때의 처리를 호출하는 쪽에서 정할 수 있게 Optional로 돌려준다
+    @Transactional(readOnly = true)
+    public Optional<UserAddress> findDefaultAddress(Long userId) {
+        return userAddressRepository.findDefaultByUserId(userId);
+    }
+
     @Transactional(readOnly = true)
     public UserAddress getDefaultAddress(Long userId) {
-        return userAddressRepository.findDefaultByUserId(userId)
+        return findDefaultAddress(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DEFAULT_ADDRESS_NOT_FOUND));
-        // 기존 기본 배송지 변경과 수정이 같이 반영되거나 같이 롤백되어야 해서 트랜잭션을 묶음
     }
     @Transactional
     public UpdateUserAddressResponse updateUserAddress(Long userId, Long addressId, UpdateUserAddressRequest request) {
@@ -75,5 +77,9 @@ public class UserAddressService {
         if (userAddressRepository.existsByUserIdAndPlace(userId, place)) {
             throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);
         }
+    }
+
+    public void releaseDefaultAddress(Long userId) {
+        userAddressRepository.findDefaultByUserId(userId).ifPresent(UserAddress::releaseDefault);
     }
 }

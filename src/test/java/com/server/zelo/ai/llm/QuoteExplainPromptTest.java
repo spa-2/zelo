@@ -2,6 +2,7 @@ package com.server.zelo.ai.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
@@ -97,6 +98,63 @@ class QuoteExplainPromptTest {
                 .contains("- 트러플: 판매하는 상품이 없음")
                 .contains("- 계란: 재고 부족")
                 .contains("- 쌀: NEW_REASON");
+    }
+
+    @Test
+    void 고친_견적은_수정한_내용을_먼저_적고_고친_견적의_상품과_합계를_적는다() {
+        // given: 뺀 상품의 이름은 고치기 전 견적에서 찾는다
+        Quote before = quote(List.of(
+                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L),
+                new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 1, 4_500L)), List.of());
+        Quote after = quote(List.of(new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 2, 9_000L)),
+                List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")));
+        List<QuoteEdit> edits = List.of(
+                QuoteEdit.of(QuoteEditAction.REMOVE, 1L, 0, "", 0, BaseUnit.EA),
+                QuoteEdit.of(QuoteEditAction.CHANGE_QUANTITY, 2L, 2, "", 0, BaseUnit.EA),
+                QuoteEdit.of(QuoteEditAction.ADD, 0L, 0, "소주", 360, BaseUnit.ML));
+
+        // when
+        String text = quoteExplainPrompt.editedText(before, after, edits, null, null);
+
+        // then
+        assertThat(text).isEqualTo("""
+                메뉴: 김치볶음밥
+                수정한 내용:
+                - 백김치 (1kg) 빼기
+                - 계란 (10구) 2개로 바꾸기
+                - 소주 360ml 추가
+                담은 상품:
+                - 계란 (10구) 2개, 9,000원
+                빠진 재료:
+                - 소주: AI가 대신 살 수 없는 품목(주류 등)
+                합계: 9,000원""");
+    }
+
+    @Test
+    void 중간에_실패한_수정은_이유와_함께_하지_못한_수정으로_적는다() {
+        // given
+        Quote before = quote(List.of(new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 1, 4_500L)), List.of());
+        QuoteEdit added = QuoteEdit.of(QuoteEditAction.ADD, 0L, 0, "대파", 1, BaseUnit.BUNCH);
+        QuoteEdit failed = QuoteEdit.of(QuoteEditAction.CHANGE_QUANTITY, 2L, 50, "", 0, BaseUnit.EA);
+
+        // when
+        String text = quoteExplainPrompt.editedText(before, before, List.of(added), failed, ErrorCode.INSUFFICIENT_STOCK);
+
+        // then
+        assertThat(text).contains("""
+                수정한 내용:
+                - 대파 1단 추가
+                하지 못한 수정:
+                - 계란 (10구) 50개로 바꾸기: 재고 부족
+                """);
+    }
+
+    @Test
+    void 프롬프트에_수정한_내용과_하지_못한_수정을_안내하는_규칙이_있다() {
+        // then
+        assertThat(quoteExplainPrompt.systemPrompt())
+                .contains("수정한 내용이 있으면 무엇을 바꿨는지 먼저")
+                .contains("하지 못한 수정이 있으면 무엇을 왜 못 했는지");
     }
 
     @Test

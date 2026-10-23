@@ -72,7 +72,7 @@ class OrderConfirmationControllerTest {
     void 인증된_사용자의_요청으로_확인_정보를_발급하고_201과_공통_응답을_반환한다() throws Exception {
         // given
         authenticate();
-        given(orderCommandService.createOrder(USER_ID, REQUEST)).willReturn(response(REQUEST));
+        given(orderCommandService.createConfirmation(USER_ID, REQUEST)).willReturn(response(REQUEST));
 
         // when
         // then
@@ -90,7 +90,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.data.totalAmount").value(10_500))
                 .andExpect(jsonPath("$.data.addressSummary").value("집 · 서울특별시 강남구"))
                 .andExpect(jsonPath("$.data.expiresAt").exists());
-        then(orderCommandService).should().createOrder(USER_ID, REQUEST);
+        then(orderCommandService).should().createConfirmation(USER_ID, REQUEST);
         then(orderCommandService).shouldHaveNoMoreInteractions();
         verifyNoInteractions(orderService);
     }
@@ -102,7 +102,7 @@ class OrderConfirmationControllerTest {
         authenticate();
         String quoteId = "Q".repeat(quoteIdLength);
         CreateOrderConfirmationRequest request = new CreateOrderConfirmationRequest(1L, quoteId);
-        given(orderCommandService.createOrder(USER_ID, request)).willReturn(response(request));
+        given(orderCommandService.createConfirmation(USER_ID, request)).willReturn(response(request));
 
         // when
         // then
@@ -112,7 +112,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.quoteId").value(quoteId));
-        then(orderCommandService).should().createOrder(USER_ID, request);
+        then(orderCommandService).should().createConfirmation(USER_ID, request);
         verifyNoInteractions(orderService);
     }
 
@@ -185,7 +185,7 @@ class OrderConfirmationControllerTest {
     void 검증_실패는_해당_비즈니스_예외의_상태와_코드로_응답한다(ErrorCode code) throws Exception {
         // given
         authenticate();
-        given(orderCommandService.createOrder(USER_ID, REQUEST)).willThrow(new BusinessException(code));
+        given(orderCommandService.createConfirmation(USER_ID, REQUEST)).willThrow(new BusinessException(code));
 
         // when
         // then
@@ -204,7 +204,7 @@ class OrderConfirmationControllerTest {
     void Redis_접속_실패는_503으로_응답하고_내부_오류_내용을_노출하지_않는다() throws Exception {
         // given
         authenticate();
-        given(orderCommandService.createOrder(USER_ID, REQUEST))
+        given(orderCommandService.createConfirmation(USER_ID, REQUEST))
                 .willThrow(new RedisConnectionFailureException("테스트 내부 연결 오류"));
 
         // when

@@ -9,15 +9,17 @@ import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
-import com.server.zelo.domain.quote.mock.service.MockQuoteService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.repository.QuoteRepository;
+import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -30,6 +32,7 @@ import org.springframework.data.redis.RedisConnectionFailureException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -55,7 +58,7 @@ class OrderConfirmationCommandServiceTest {
     private static final CreateOrderConfirmationRequest REQUEST = new CreateOrderConfirmationRequest(ROOM_ID, QUOTE_ID);
 
     @Mock
-    private MockQuoteService quoteService;
+    private QuoteRepository quoteRepository;
 
     @Mock
     private ChatRoomService chatRoomService;
@@ -79,8 +82,9 @@ class OrderConfirmationCommandServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Command에서 Service를 거쳐 확인 정보 저장소까지 전달되는 값을 확인한다.
+        // 실제 견적 검증부터 확인 정보 저장까지 이어지는 흐름을 확인한다.
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
+        QuoteService quoteService = new QuoteService(quoteRepository);
         orderCommandService = new OrderCommandService(
                 orderService, quoteService, chatRoomService, inventoryService, userAddressService);
     }
@@ -93,7 +97,7 @@ class OrderConfirmationCommandServiceTest {
                 address("집", "서울특별시 강남구 테헤란로 123", true)));
 
         // when
-        CreateOrderConfirmationResponse result = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse result = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(UUID.fromString(result.confirmationId()).toString()).isEqualTo(result.confirmationId());
@@ -102,9 +106,9 @@ class OrderConfirmationCommandServiceTest {
         assertThat(result.totalAmount()).isEqualTo(10_500L);
         assertThat(result.addressSummary()).isEqualTo("집 · 서울특별시 강남구");
         assertThat(result.expiresAt()).isEqualTo(EXPIRES_AT);
-        InOrder calls = inOrder(chatRoomService, quoteService, userAddressService, orderConfirmationRepository);
+        InOrder calls = inOrder(chatRoomService, quoteRepository, userAddressService, orderConfirmationRepository);
         calls.verify(chatRoomService).getOwnedChatRoom(ROOM_ID, USER_ID);
-        calls.verify(quoteService).validateForOrder(ROOM_ID, USER_ID, QUOTE_ID);
+        calls.verify(quoteRepository).findByRoomId(ROOM_ID);
         calls.verify(userAddressService).getUserAddresses(USER_ID);
         calls.verify(orderConfirmationRepository).save(
                 result.confirmationId(), USER_ID, ROOM_ID, QUOTE_ID, EXPIRES_AT);
@@ -118,8 +122,8 @@ class OrderConfirmationCommandServiceTest {
         stubQuoteAndAddresses(List.of(address("집", "서울특별시 강남구 테헤란로 123", true)));
 
         // when
-        CreateOrderConfirmationResponse first = orderCommandService.createOrder(USER_ID, REQUEST);
-        CreateOrderConfirmationResponse second = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse first = orderCommandService.createConfirmation(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse second = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(first.confirmationId()).isNotEqualTo(second.confirmationId());
@@ -140,7 +144,7 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST))
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         verifyNoInteractions(orderConfirmationRepository, orderRepository, inventoryService);
@@ -155,22 +159,28 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST)).isSameAs(failure);
         then(chatRoomService).should().getOwnedChatRoom(ROOM_ID, USER_ID);
-        verifyNoInteractions(quoteService, userAddressService, orderConfirmationRepository, orderRepository, inventoryService);
+        verifyNoInteractions(quoteRepository, userAddressService, orderConfirmationRepository, orderRepository, inventoryService);
     }
 
-    @Test
-    void 견적_검증에서_권한_예외가_발생하면_배송지_조회와_발급을_진행하지_않는다() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidQuotes")
+    void 견적_검증에_실패하면_해당_예외를_반환하고_배송지_조회와_발급을_진행하지_않는다(
+            String scenario, Optional<Quote> currentQuote, ErrorCode expectedCode) {
         // given
         given(chatRoomService.getOwnedChatRoom(ROOM_ID, USER_ID)).willReturn(ChatRoom.of(USER_ID));
-        BusinessException failure = new BusinessException(ErrorCode.NO_AUTHORITY);
-        given(quoteService.validateForOrder(ROOM_ID, USER_ID, QUOTE_ID)).willThrow(failure);
+        given(quoteRepository.findByRoomId(ROOM_ID)).willReturn(currentQuote);
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST)).isSameAs(failure);
-        then(quoteService).should().validateForOrder(ROOM_ID, USER_ID, QUOTE_ID);
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(expectedCode));
+        InOrder calls = inOrder(chatRoomService, quoteRepository);
+        calls.verify(chatRoomService).getOwnedChatRoom(ROOM_ID, USER_ID);
+        calls.verify(quoteRepository).findByRoomId(ROOM_ID);
+        calls.verifyNoMoreInteractions();
         verifyNoInteractions(userAddressService, orderConfirmationRepository, orderRepository, inventoryService);
     }
 
@@ -184,7 +194,7 @@ class OrderConfirmationCommandServiceTest {
         stubQuoteAndAddresses(List.of(address("집", address, true)));
 
         // when
-        CreateOrderConfirmationResponse result = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse result = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(result.addressSummary()).isEqualTo(expectedSummary);
@@ -200,19 +210,32 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST)).isSameAs(failure);
         verifyNoInteractions(orderRepository, inventoryService);
     }
 
     private void stubQuoteAndAddresses(List<GetUserAddressResponse> addresses) {
         given(chatRoomService.getOwnedChatRoom(ROOM_ID, USER_ID)).willReturn(ChatRoom.of(USER_ID));
-        given(quoteService.validateForOrder(ROOM_ID, USER_ID, QUOTE_ID)).willReturn(new Quote(
-                QUOTE_ID, USER_ID, ROOM_ID, "김치볶음밥 재료",
+        given(quoteRepository.findByRoomId(ROOM_ID)).willReturn(Optional.of(quote(USER_ID, QUOTE_ID)));
+        given(userAddressService.getUserAddresses(USER_ID)).willReturn(addresses);
+    }
+
+    private static Quote quote(Long userId, String quoteId) {
+        return new Quote(
+                quoteId, userId, ROOM_ID, "김치볶음밥 재료",
                 List.of(
                         new QuoteItem(1L, "P-001", "신선 달걀", "10구", 4_500L, 1, 4_500L),
                         new QuoteItem(2L, "P-002", "볶음김치", "500g", 6_000L, 1, 6_000L)),
-                List.of(), 10_500L, CREATED_AT, EXPIRES_AT));
-        given(userAddressService.getUserAddresses(USER_ID)).willReturn(addresses);
+                List.of(), 10_500L, CREATED_AT, EXPIRES_AT);
+    }
+
+    private static Stream<Arguments> invalidQuotes() {
+        return Stream.of(
+                Arguments.of("견적이 없거나 Redis에서 만료됨", Optional.<Quote>empty(), ErrorCode.QUOTE_EXPIRED),
+                Arguments.of("타인 견적", Optional.of(quote(999L, QUOTE_ID)), ErrorCode.NO_AUTHORITY),
+                Arguments.of("현재 견적 ID와 불일치", Optional.of(quote(USER_ID, "QUOTE-NEW")), ErrorCode.QUOTE_NOT_CURRENT),
+                Arguments.of("소유권과 견적 ID가 모두 불일치", Optional.of(quote(999L, "QUOTE-NEW")), ErrorCode.NO_AUTHORITY)
+        );
     }
 
     private static Stream<List<GetUserAddressResponse>> addressesWithoutDefault() {

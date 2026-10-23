@@ -180,7 +180,8 @@ class OrderConfirmationControllerTest {
 
     @ParameterizedTest
     @EnumSource(value = ErrorCode.class, names = {
-            "CHAT_ROOM_NOT_FOUND", "CHAT_ROOM_ACCESS_DENIED", "NO_AUTHORITY", "INVALID_INPUT"
+            "CHAT_ROOM_NOT_FOUND", "CHAT_ROOM_ACCESS_DENIED", "NO_AUTHORITY", "INVALID_INPUT",
+            "QUOTE_EXPIRED", "QUOTE_NOT_CURRENT"
     })
     void 검증_실패는_해당_비즈니스_예외의_상태와_코드로_응답한다(ErrorCode code) throws Exception {
         // given

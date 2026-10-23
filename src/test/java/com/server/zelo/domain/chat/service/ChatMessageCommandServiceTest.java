@@ -27,7 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class ChatMessageOrchestratorTest {
+class ChatMessageCommandServiceTest {
 
     @Mock
     private LlmGateway llmGateway;
@@ -36,7 +36,7 @@ class ChatMessageOrchestratorTest {
     private ChatMessageService chatMessageService;
 
     @InjectMocks
-    private ChatMessageOrchestrator chatMessageOrchestrator;
+    private ChatMessageCommandService chatMessageCommandService;
 
     @Test
     void 사용자_메시지_저장_LLM_호출_AI_메시지_저장_순서로_처리하고_AI_메시지를_반환한다() {
@@ -47,7 +47,7 @@ class ChatMessageOrchestratorTest {
                 .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "김치와 밥이 필요해요."));
 
         // when
-        ChatMessageResponse response = chatMessageOrchestrator.sendMessage(10L, 1L, "김치볶음밥 재료");
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료");
 
         // then
         InOrder order = inOrder(chatMessageService, llmGateway);
@@ -67,7 +67,7 @@ class ChatMessageOrchestratorTest {
                 .willReturn(fallbackMessage(10L, "AI_002"));
 
         // when & then
-        assertThatThrownBy(() -> chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT);
                     assertThat(exception.getData()).isInstanceOfSatisfying(ChatMessageResponse.class, data -> {
@@ -87,7 +87,7 @@ class ChatMessageOrchestratorTest {
                 .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
 
         // when & then
-        assertThatThrownBy(() -> chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
                     assertThat(exception.getData()).isNull();
@@ -102,7 +102,7 @@ class ChatMessageOrchestratorTest {
                 .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
 
         // when & then
-        assertThatThrownBy(() -> chatMessageOrchestrator.sendMessage(10L, 2L, "안녕"))
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 2L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
         then(llmGateway).should(never()).explain(any(), any());
@@ -119,7 +119,7 @@ class ChatMessageOrchestratorTest {
                 .willReturn(ChatMessage.of(77L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요."));
 
         // when
-        StartChatResponse response = chatMessageOrchestrator.startChat(1L, "불고기 재료");
+        StartChatResponse response = chatMessageCommandService.startChat(1L, "불고기 재료");
 
         // then
         InOrder order = inOrder(chatMessageService, llmGateway);
@@ -142,7 +142,7 @@ class ChatMessageOrchestratorTest {
                 .willReturn(fallbackMessage(77L, "AI_008"));
 
         // when & then
-        assertThatThrownBy(() -> chatMessageOrchestrator.startChat(1L, "안녕"))
+        assertThatThrownBy(() -> chatMessageCommandService.startChat(1L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class, exception -> {
                     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_CIRCUIT_OPEN);
                     assertThat(exception.getData()).isInstanceOfSatisfying(StartChatResponse.class, data -> {
@@ -160,7 +160,7 @@ class ChatMessageOrchestratorTest {
                 .willThrow(new BusinessException(ErrorCode.INVALID_INPUT));
 
         // when & then
-        assertThatThrownBy(() -> chatMessageOrchestrator.startChat(1L, " "))
+        assertThatThrownBy(() -> chatMessageCommandService.startChat(1L, " "))
                 .isInstanceOf(BusinessException.class);
         then(llmGateway).should(never()).explain(any(), any());
     }

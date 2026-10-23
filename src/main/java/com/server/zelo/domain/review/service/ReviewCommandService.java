@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ReviewSummaryOrchestrator {
+public class ReviewCommandService {
 
     private final LlmGateway llmGateway;
     private final ReviewService reviewService;

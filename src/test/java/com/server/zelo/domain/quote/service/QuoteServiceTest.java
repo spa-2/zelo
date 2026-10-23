@@ -29,6 +29,19 @@ class QuoteServiceTest {
     private final Quote quote = new Quote("q-1", 1L, 5L, "김치볶음밥", List.of(), List.of(), 0L,
             LocalDateTime.now(), LocalDateTime.now().plusMinutes(10));
 
+
+    @Test
+    void 방의_현재_견적을_찾는다() {
+        // given
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(quote));
+
+        // when
+        Optional<Quote> result = quoteService.findQuote(5L);
+
+        // then
+        assertThat(result).contains(quote);
+    }
+
     @Test
     void 견적이_그대로면_견적을_돌려준다() {
         // given
@@ -64,13 +77,13 @@ class QuoteServiceTest {
     }
 
     @Test
-    void 견적이_수정돼서_id가_다르면_만료_예외가_발생한다() {
+    void 견적이_수정돼서_id가_다르면_예외가_발생한다() {
         // given
         given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(quote));
 
         // when & then
         assertThatThrownBy(() -> quoteService.validateForOrder(5L, 1L, "q-old"))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.QUOTE_EXPIRED);
+                .extracting("errorCode").isEqualTo(ErrorCode.QUOTE_NOT_CURRENT);
     }
 }

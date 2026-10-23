@@ -35,7 +35,8 @@ public enum ErrorCode {
 
     // Quote
     QUOTE_EXPIRED(HttpStatus.CONFLICT, "QUOTE_001", "견적이 만료되었습니다. 견적을 다시 받아 주세요."),
-    PRICE_CHANGED(HttpStatus.CONFLICT, "QUOTE_002", "견적 이후 상품 가격이 바뀌었습니다. 견적을 다시 받아 주세요."),
+    QUOTE_NOT_CURRENT(HttpStatus.CONFLICT, "QUOTE_002", "견적이 수정되었습니다. 최신 견적을 확인해 주세요."),
+    PRICE_CHANGED(HttpStatus.CONFLICT, "QUOTE_003", "견적 이후 상품 가격이 바뀌었습니다. 견적을 다시 받아 주세요."),
 
     // Cart
     CART_EMPTY(HttpStatus.BAD_REQUEST, "CART_001", "장바구니가 비어있습니다."),

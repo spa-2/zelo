@@ -226,6 +226,21 @@ class QuoteCommandServiceTest {
     }
 
     @Test
+    void 합친_수량이_재고보다_많으면_기존_수량을_두고_품절로_돌려준다() {
+        // given
+        givenQuote(List.of(item(1L, 5900L, 1)), List.of());
+        givenProducts(List.of(product(1L, kimchi, "포기김치 500g", 5900L, 500, 100)), Map.of(1L, 2), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "김치", 1000, BaseUnit.G);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::quantity).containsExactly(1);
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("김치", "OUT_OF_STOCK"));
+    }
+
+    @Test
     void 못_담는_재료는_제외_목록에_넣어서_돌려준다() {
         // given
         givenQuote(List.of(item(1L, 5900L, 1)), List.of());

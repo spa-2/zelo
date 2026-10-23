@@ -81,18 +81,24 @@ public class QuoteCommandService {
         Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), Set.of());
 
         List<QuoteItem> items = new ArrayList<>(quote.items());
-        for (QuoteItem added : selection.items()) {
-            QuoteItem same = items.stream().filter(item -> item.productId().equals(added.productId())).findFirst().orElse(null);
-            if (same == null) {
-                items.add(added);
-            } else {
-                items.set(items.indexOf(same), withQuantity(same, same.quantity() + added.quantity()));
-            }
-        }
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems().stream()
                 .filter(excluded -> !excluded.name().equals(ingredientName))
                 .toList());
         excludedItems.addAll(selection.excludedItems());
+        for (QuoteItem added : selection.items()) {
+            QuoteItem same = items.stream().filter(item -> item.productId().equals(added.productId())).findFirst().orElse(null);
+            if (same == null) {
+                items.add(added);
+                continue;
+            }
+            // select()는 이번에 더할 수량만 재고랑 비교해서 합친 수량으로 한 번 더 확인
+            int quantity = same.quantity() + added.quantity();
+            if (inventoryService.findAvailableQuantities(List.of(same.productId())).getOrDefault(same.productId(), 0) < quantity) {
+                excludedItems.add(new ExcludedItem(ingredientName, "OUT_OF_STOCK"));
+            } else {
+                items.set(items.indexOf(same), withQuantity(same, quantity));
+            }
+        }
         return save(userId, roomId, quote.menuName(), items, excludedItems);
     }
 

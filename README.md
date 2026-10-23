@@ -111,14 +111,11 @@ sequenceDiagram
 
 | 문서 | 내용 |
 |---|---|
-| [서비스 시나리오](https://github.com/spa-2/zelo/wiki/서비스-시나리오) | 기본 흐름, 수정 요청, 가격 변동 · 품절, 결제 실패 · 환불, LLM 장애 |
-| [아키텍처](https://github.com/spa-2/zelo/wiki/아키텍처) | 도메인 구성, 계층별 책임, 트랜잭션 · 락 경계 |
+| [기획서](https://github.com/spa-2/zelo/wiki/기획서) | 서비스 목표와 주요 기능, 기획 내용 |
 | [ERD](https://github.com/spa-2/zelo/wiki/ERD) | 테이블 구조와 관계 |
-| [API 명세](https://github.com/spa-2/zelo/wiki/API-명세) | 요청 · 응답 · 에러 코드 |
-| [견적 생성](https://github.com/spa-2/zelo/wiki/견적-생성) | LLM 견적 요청 → 상품 매칭 → 가격 계산 |
-| [주문 · 결제 멱등성](https://github.com/spa-2/zelo/wiki/주문-결제-멱등성) | 두 번 눌러도 한 번만 결제되는 이유 |
-| [재고 동시성](https://github.com/spa-2/zelo/wiki/재고-동시성) | 분산 락과 재고 선점 |
-| [LLM 장애 대응](https://github.com/spa-2/zelo/wiki/LLM-장애-대응) | 시간 제한 · 재시도 · 서킷 브레이커, 실패 응답 |
-| [개발 컨벤션](https://github.com/spa-2/zelo/wiki/개발-컨벤션) | 브랜치 · 커밋 · 코드 규칙 |
-| [트러블슈팅](https://github.com/spa-2/zelo/wiki/트러블슈팅) | 개발하며 만난 문제와 해결 |
-
+| [기술 선택 근거](https://github.com/spa-2/zelo/wiki/기술-선택-근거) | 기술·설계 대안 비교와 선택 이유 |
+| [회원 · 인프라 블로그](https://github.com/spa-2/zelo/wiki/회원-인프라) | 회원·인증과 인프라 개발 기록 |
+| [상품 · 견적 블로그](https://github.com/spa-2/zelo/wiki/상품-견적) | 상품 관리와 견적 개발 기록 |
+| [재고 · 주문 블로그](https://github.com/spa-2/zelo/wiki/재고-주문) | 재고 처리와 주문 개발 기록 |
+| [결제 · 배송 블로그](https://github.com/spa-2/zelo/wiki/결제-배송) | 결제·환불·배송 개발 기록 |
+| [AI · 채팅 · 리뷰 블로그](https://github.com/spa-2/zelo/wiki/AI-채팅-리뷰) | AI 연동과 채팅·리뷰 개발 기록 |

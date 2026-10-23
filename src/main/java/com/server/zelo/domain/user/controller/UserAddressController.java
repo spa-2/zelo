@@ -48,5 +48,11 @@ public class UserAddressController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @DeleteMapping("/{addressId}")
+    public ResponseEntity<Void> deleteUserAddress(@Auth AuthUser authUser, @PathVariable Long addressId) {
+        userFacade.deleteUserAddress(authUser.id(), addressId);
+        return ResponseEntity.noContent().build();
+    }
+
 
 }

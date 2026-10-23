@@ -58,6 +58,14 @@ public class UserAddressService {
         return UpdateUserAddressResponse.from(userAddress);
     }
 
+    @Transactional
+    public void deleteUserAddress(Long userId, Long addressId) {
+        UserAddress userAddress = userAddressRepository.findActiveByIdAndUserId(addressId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_ADDRESS_NOT_FOUND));
+        userAddress.validateDeletable();
+        userAddressRepository.delete(userAddress);
+    }
+
     public void validatePlaceNotDuplicated(Long userId, String place) {
         if (userAddressRepository.existsByUserIdAndPlace(userId, place)) {
             throw new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE);

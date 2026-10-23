@@ -37,4 +37,9 @@ public class UserFacade {
                 () -> userAddressService.updateUserAddress(userId, addressId, request));
     }
 
+    public void deleteUserAddress(Long userId, Long addressId) {
+        lockDistributeService.execute(LockKey.deleteUserAddress(userId),
+                () -> userAddressService.deleteUserAddress(userId, addressId));
+    }
+
 }

@@ -1,5 +1,7 @@
 package com.server.zelo.domain.delivery.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.entity.Delivery;
 import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
@@ -42,7 +44,30 @@ public class DeliveryService {
         return deliveries.size();
     }
 
+    // 환불하는 사이 스케줄러가 출고하지 않도록 포트원 환불 전에 배송을 보류한다
+    public void holdForRefund(Long orderId) {
+        getDelivery(orderId).hold();
+    }
+
+    // 부분 환불이 끝났거나 환불이 실패하면 배송은 취소하지 않고 보류만 풀어 원래대로 출고되게 한다
+    public void releaseHold(Long orderId) {
+        getDelivery(orderId).release();
+    }
+
+    // 전액 환불이 끝나면 보낼 상품이 없으므로 배송을 취소한다
+    public void cancelDelivery(Long orderId) {
+        Delivery delivery = getDelivery(orderId);
+        delivery.release();
+        delivery.cancel(LocalDateTime.now());
+    }
+
+    private Delivery getDelivery(Long orderId) {
+        return deliveryRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DELIVERY_NOT_FOUND));
+    }
+
     private List<Delivery> findProgressTargets(DeliveryStatus status, LocalDateTime before) {
-        return deliveryRepository.findByStatusAndUpdatedAtBeforeOrderByIdAsc(status, before, Limit.of(BATCH_SIZE));
+        return deliveryRepository.findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(
+                status, before, Limit.of(BATCH_SIZE));
     }
 }

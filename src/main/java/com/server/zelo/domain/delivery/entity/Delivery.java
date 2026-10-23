@@ -54,6 +54,9 @@ public class Delivery extends BaseTimeEntity {
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
 
+    @Column(name = "on_hold", nullable = false, columnDefinition = "boolean default false")
+    private boolean onHold;
+
     private Delivery(Long orderId, String recipientName, String recipientPhone,
                      String zipCode, String address, String addressDetail) {
         if (orderId == null || isBlank(recipientName) || isBlank(recipientPhone)
@@ -93,6 +96,24 @@ public class Delivery extends BaseTimeEntity {
         validateTime(canceledAt);
         changeStatus(DeliveryStatus.CANCELED);
         this.canceledAt = canceledAt;
+    }
+
+    // 출고 전 배송만 환불할 수 있고, 같은 배송에 환불이 겹치지 않게 한 번만 보류한다
+    public void hold() {
+        if (!isCancelable()) {
+            throw new BusinessException(ErrorCode.DELIVERY_NOT_REFUNDABLE);
+        }
+        if (onHold) {
+            throw new BusinessException(ErrorCode.INVALID_DELIVERY_STATUS);
+        }
+        this.onHold = true;
+    }
+
+    public void release() {
+        if (!onHold) {
+            throw new BusinessException(ErrorCode.INVALID_DELIVERY_STATUS);
+        }
+        this.onHold = false;
     }
 
 

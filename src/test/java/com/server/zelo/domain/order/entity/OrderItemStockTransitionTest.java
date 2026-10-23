@@ -67,7 +67,7 @@ class OrderItemStockTransitionTest {
     }
 
     private OrderItem createItem(StockState state) {
-        Order order = Order.of(user, "QUOTE-STOCK-TRANSITION", "사과 주문", ActorType.USER, null, 3_000L);
+        Order order = Order.of(user, "QUOTE-STOCK-TRANSITION", "사과 주문", ActorType.USER, null, 3_000L, shippingAddress());
         OrderItem item = OrderItem.of(order, product, "사과", "1개", 1_000L, 3, 3_000L);
         switch (state) {
             case RESERVED -> { }
@@ -88,5 +88,9 @@ class OrderItemStockTransitionTest {
             case "restore" -> item.restore();
             default -> throw new IllegalArgumentException(operation);
         }
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

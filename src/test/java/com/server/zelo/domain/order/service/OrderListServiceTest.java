@@ -5,6 +5,7 @@ import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.user.entity.User;
@@ -157,7 +158,7 @@ class OrderListServiceTest {
     }
 
     private Order order(Long id, String name, Long totalAmount, LocalDateTime createdAt, OrderStatus status) {
-        Order order = Order.of(user, "QUOTE-" + id, name, ActorType.USER, null, totalAmount);
+        Order order = Order.of(user, "QUOTE-" + id, name, ActorType.USER, null, totalAmount, shippingAddress());
         switch (status) {
             case PAYMENT_PENDING -> { }
             case PAID -> order.pay();
@@ -168,5 +169,9 @@ class OrderListServiceTest {
         ReflectionTestUtils.setField(order, "id", id);
         ReflectionTestUtils.setField(order, "createdAt", createdAt);
         return order;
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

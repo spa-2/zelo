@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.product.entity.Product;
@@ -43,7 +44,7 @@ class OrderServiceTest {
     void 주문_상품을_포함한_조회_결과를_반환한다() {
         // given
         Long orderId = 101L;
-        Order order = Order.of(user, "QUOTE-LOOKUP", "사과 주문", ActorType.USER, null, 3_000L);
+        Order order = Order.of(user, "QUOTE-LOOKUP", "사과 주문", ActorType.USER, null, 3_000L, shippingAddress());
         OrderItem item = OrderItem.of(order, product, "사과", "1개", 1_000L, 3, 3_000L);
         given(orderRepository.findWithOrderItemsById(orderId)).willReturn(Optional.of(order));
 
@@ -73,7 +74,7 @@ class OrderServiceTest {
     void 주문_잠금_조회_후_상품을_함께_조회해_반환한다() {
         // given
         Long orderId = 101L;
-        Order order = Order.of(user, "QUOTE-LOCK-LOOKUP", "사과 주문", ActorType.USER, null, 3_000L);
+        Order order = Order.of(user, "QUOTE-LOCK-LOOKUP", "사과 주문", ActorType.USER, null, 3_000L, shippingAddress());
         OrderItem item = OrderItem.of(order, product, "사과", "1개", 1_000L, 3, 3_000L);
         given(orderRepository.findForUpdateById(orderId)).willReturn(Optional.of(order));
         given(orderRepository.findWithOrderItemsById(orderId)).willReturn(Optional.of(order));
@@ -101,5 +102,9 @@ class OrderServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ORDER_NOT_FOUND));
         then(orderRepository).should(never()).findWithOrderItemsById(orderId);
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

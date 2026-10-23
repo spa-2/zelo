@@ -9,7 +9,7 @@ import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
 import com.server.zelo.domain.review.repository.ReviewRepository;
-import com.server.zelo.domain.review.service.ReviewSummaryOrchestrator;
+import com.server.zelo.domain.review.service.ReviewCommandService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
@@ -52,7 +52,7 @@ public class ReviewSeedLoader {
     private final ReviewRepository reviewRepository;
     private final ProductRepository productRepository;
     private final TransactionTemplate transactionTemplate;
-    private final ReviewSummaryOrchestrator reviewSummaryOrchestrator;
+    private final ReviewCommandService reviewCommandService;
     private final ProductReviewKeywordRepository productReviewKeywordRepository;
     private final ProductReviewSummaryRepository productReviewSummaryRepository;
 
@@ -62,7 +62,7 @@ public class ReviewSeedLoader {
             ReviewRepository reviewRepository,
             ProductRepository productRepository,
             TransactionTemplate transactionTemplate,
-            ReviewSummaryOrchestrator reviewSummaryOrchestrator,
+            ReviewCommandService reviewCommandService,
             ProductReviewKeywordRepository productReviewKeywordRepository,
             ProductReviewSummaryRepository productReviewSummaryRepository) {
         this.llmMode = llmMode;
@@ -70,7 +70,7 @@ public class ReviewSeedLoader {
         this.reviewRepository = reviewRepository;
         this.productRepository = productRepository;
         this.transactionTemplate = transactionTemplate;
-        this.reviewSummaryOrchestrator = reviewSummaryOrchestrator;
+        this.reviewCommandService = reviewCommandService;
         this.productReviewKeywordRepository = productReviewKeywordRepository;
         this.productReviewSummaryRepository = productReviewSummaryRepository;
     }
@@ -88,7 +88,7 @@ public class ReviewSeedLoader {
         // 요약은 리뷰를 처음 넣을 때 한 번만 만든다. LLM을 부르므로 저장이 커밋된 뒤 트랜잭션 밖에서 하고,
         // fake 모드의 고정 문구가 실제 요약처럼 DB에 남지 않도록 real 모드에서만 만든다
         if (REAL_LLM_MODE.equals(llmMode)) {
-            reviewSummaryOrchestrator.createSummaries();
+            reviewCommandService.createSummaries();
         } else {
             log.info("LLM이 real 모드가 아니라 리뷰 요약은 만들지 않음 mode={}", llmMode);
         }

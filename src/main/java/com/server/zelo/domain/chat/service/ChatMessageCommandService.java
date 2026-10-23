@@ -139,12 +139,14 @@ public class ChatMessageCommandService {
                 edited = applyEdit(userId, roomId, edit);
                 appliedEdits.add(edit);
             } catch (BusinessException e) {
-                String reply = EDIT_FAILURE_REPLIES.get(e.getErrorCode());
-                if (reply == null) {
-                    throw e;
-                }
-                // 고친 것이 없으면 정해진 문장으로 답하고, 앞의 수정이 이미 저장됐으면 그 견적을 보여 주며 못 한 수정을 알린다
+                // 고친 것이 없으면 정해진 문장으로 답하거나(안내할 수 없는 오류는 그대로 던진다),
+                // 앞의 수정이 이미 저장됐으면 오류 종류와 관계없이 그 견적을 보여 주며 못 한 수정을 알린다.
+                // 그래야 채팅에 남는 카드가 저장된 견적(새 견적 ID)과 어긋나지 않는다
                 if (appliedEdits.isEmpty()) {
+                    String reply = EDIT_FAILURE_REPLIES.get(e.getErrorCode());
+                    if (reply == null) {
+                        throw e;
+                    }
                     return chatMessageService.createAssistantMessage(roomId, userId, reply);
                 }
                 String editedText = quoteExplainPrompt.editedText(quote, edited, appliedEdits, edit, e.getErrorCode());

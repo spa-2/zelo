@@ -622,6 +622,34 @@ class ChatMessageCommandServiceTest {
     }
 
     @Test
+    void 앞의_수정이_저장된_뒤_안내할_수_없는_오류가_나도_그_견적으로_카드를_만든다() {
+        // given: 김치 빼기는 이미 새 견적으로 저장돼, 오류를 그대로 던지면 채팅에는 옛 견적 ID의 카드만 남는다
+        Quote current = quote(List.of(KIMCHI_ITEM, EGG_ITEM), List.of());
+        Quote removed = quote("quote-2", List.of(EGG_ITEM));
+        givenEditRequest(current, QuoteEditPlan.of(List.of(remove(1L), changeQuantity(2L, 3)), ""));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willReturn(removed);
+        given(quoteCommandService.changeQuantity(1L, 10L, 2L, 3))
+                .willThrow(new BusinessException(ErrorCode.SERVICE_UNAVAILABLE));
+        given(llmGateway.explain(eq(quoteExplainPrompt.systemPrompt()), eq(List.of()), anyString()))
+                .willReturn(LlmReply.of("김치는 뺐지만 계란 수량은 바꾸지 못했어요.", "gpt-test", 1, 1));
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "김치는 뺐지만 계란 수량은 바꾸지 못했어요.",
+                QuoteCardPayload.from(removed)))
+                .willReturn(cardMessage("김치는 뺐지만 계란 수량은 바꾸지 못했어요."));
+        ArgumentCaptor<String> editedText = ArgumentCaptor.forClass(String.class);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼고 계란 3개로");
+
+        // then: 안내할 문장이 없는 오류는 오류 문구를 이유로 적는다
+        assertThat(response.payload()).contains("QUOTE_CARD");
+        then(llmGateway).should().explain(anyString(), anyList(), editedText.capture());
+        assertThat(editedText.getValue())
+                .contains("수정한 내용:\n- 백김치 (1kg) 빼기")
+                .contains("하지 못한 수정:\n- 계란 (10구) 3개로 바꾸기: " + ErrorCode.SERVICE_UNAVAILABLE.getMessage());
+        then(chatMessageService).should(never()).createFallbackMessage(anyLong(), anyLong(), any());
+    }
+
+    @Test
     void 모든_상품을_빼면_카드_없이_안내만_한다() {
         // given
         givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));

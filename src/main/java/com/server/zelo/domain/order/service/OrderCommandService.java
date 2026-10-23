@@ -8,8 +8,8 @@ import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.quote.mock.service.MockQuoteService;
 import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OrderCommandService {
     private final OrderService orderService;
-    private final MockQuoteService quoteService;
+    private final QuoteService quoteService;
     private final ChatRoomService chatRoomService;
     private final InventoryService inventoryService;
     private final UserAddressService userAddressService;

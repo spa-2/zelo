@@ -14,7 +14,7 @@ import com.server.zelo.domain.order.entity.StockState;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.quote.mock.service.MockQuoteService;
+import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.service.UserAddressService;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,7 +61,7 @@ class OrderCommandServiceTest {
     private InventoryRepository inventoryRepository;
 
     @Mock
-    private MockQuoteService quoteService;
+    private QuoteService quoteService;
 
     @Mock
     private ChatRoomService chatRoomService;

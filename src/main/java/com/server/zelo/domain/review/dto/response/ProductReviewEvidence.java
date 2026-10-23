@@ -12,16 +12,18 @@ public record ProductReviewEvidence(
         BigDecimal avgRating,
         Integer reviewCount,
         // 요청한 조건 키워드만 담고, 언급이 없으면 0
-        Map<Keyword, Integer> keywordMentions
+        Map<Keyword, Integer> keywordMentions,
+        // AI가 리뷰를 한 줄로 줄인 문장. 리뷰가 적거나 아직 만들지 않았으면 null
+        String summary
 ) {
 
     public static ProductReviewEvidence of(Long productId, BigDecimal avgRating, Integer reviewCount,
-                                           Map<Keyword, Integer> keywordMentions) {
-        return new ProductReviewEvidence(productId, avgRating, reviewCount, keywordMentions);
+                                           Map<Keyword, Integer> keywordMentions, String summary) {
+        return new ProductReviewEvidence(productId, avgRating, reviewCount, keywordMentions, summary);
     }
 
     public static ProductReviewEvidence from(ProductReviewSummary summary, Map<Keyword, Integer> keywordMentions) {
         return new ProductReviewEvidence(summary.getProductId(), summary.getAvgRating(), summary.getReviewCount(),
-                keywordMentions);
+                keywordMentions, summary.getContent());
     }
 }

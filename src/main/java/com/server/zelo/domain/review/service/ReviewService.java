@@ -6,8 +6,10 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.entity.ProductReviewKeyword;
 import com.server.zelo.domain.review.entity.ProductReviewSummary;
+import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
+import com.server.zelo.domain.review.repository.ReviewRepository;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -19,6 +21,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +30,16 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ReviewService {
 
+    // 리뷰가 너무 적으면 한두 명의 의견이 요약 전체가 되어 버려서, 이만큼 쌓인 상품만 요약한다
+    private static final int MIN_REVIEW_COUNT_FOR_SUMMARY = 5;
+    // 요약에 보내는 리뷰 수 상한. 리뷰가 많아져도 프롬프트 길이와 비용이 끝없이 늘지 않게 최근 리뷰만 보낸다
+    private static final int MAX_REVIEWS_FOR_SUMMARY = 30;
+
+    private final ReviewRepository reviewRepository;
     private final ProductReviewKeywordRepository productReviewKeywordRepository;
     private final ProductReviewSummaryRepository productReviewSummaryRepository;
 
-    // 요청한 상품은 리뷰가 없어도 모두 결과에 넣어, 호출하는 쪽이 "없음"을 따로 처리하지 않게 한다
+    // 요청한 상품은 리뷰가 없어도 모두 결과에 넣어, 호출하는 쪽이 "없음"을 따로 처리하지 않도록 설계
     @Transactional(readOnly = true)
     public Map<Long, ProductReviewEvidence> findReviewEvidences(List<Long> productIds, Set<Keyword> keywords) {
         validateEvidenceRequest(productIds, keywords);
@@ -46,11 +55,30 @@ public class ReviewService {
             Map<Keyword, Integer> keywordMentions = toKeywordMentions(keywords, mentions.get(productId));
             ProductReviewSummary summary = summaries.get(productId);
             ProductReviewEvidence evidence = summary == null
-                    ? ProductReviewEvidence.of(productId, null, 0, keywordMentions)
+                    ? ProductReviewEvidence.of(productId, null, 0, keywordMentions, null)
                     : ProductReviewEvidence.from(summary, keywordMentions);
             evidences.putIfAbsent(productId, evidence);
         }
         return evidences;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> findSummaryTargetProductIds() {
+        return productReviewSummaryRepository
+                .findAllByContentIsNullAndReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY).stream()
+                .map(ProductReviewSummary::getProductId)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Review> findRecentReviews(Long productId) {
+        return reviewRepository.findByProductIdOrderByIdDesc(productId, Limit.of(MAX_REVIEWS_FOR_SUMMARY));
+    }
+
+    public void updateSummaryContent(Long productId, String content) {
+        ProductReviewSummary summary = productReviewSummaryRepository.findById(productId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_SUMMARY_NOT_FOUND));
+        summary.updateContent(content);
     }
 
     // 다른 도메인(견적)이 부르는 메서드라 잘못된 입력은 공통 오류로 바로 알린다.

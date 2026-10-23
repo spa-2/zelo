@@ -1,5 +1,6 @@
 package com.server.zelo.domain.user.repository;
 
+import com.server.zelo.common.util.HashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,7 +44,7 @@ class RefreshTokenRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        refreshTokenRepository = new RefreshTokenRepository(stringRedisTemplate, REFRESH_EXPIRATION);
+        refreshTokenRepository = new RefreshTokenRepository(stringRedisTemplate, REFRESH_EXPIRATION, new HashUtil("SHA-256"));
     }
 
     // superseded 기록 같은 저장 동작 자체는 Lua 스크립트라 mock으로 확인할 수 없어서 RefreshTokenRepositoryRedisTest에서 실제 Redis로 검증함

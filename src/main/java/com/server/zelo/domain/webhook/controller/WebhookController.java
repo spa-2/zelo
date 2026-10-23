@@ -1,7 +1,7 @@
 package com.server.zelo.domain.webhook.controller;
 
 import com.server.zelo.common.api.ApiResponse;
-import com.server.zelo.domain.payment.facade.PaymentFacade;
+import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
 import lombok.RequiredArgsConstructor;

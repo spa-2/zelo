@@ -6,39 +6,39 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-// 메뉴 계획용 system 프롬프트를 만든다. 파일의 자리 표시를 재료 목록과 조건 키워드 목록으로 채운다.
+// 메뉴 계획용 system 프롬프트를 만든다. 파일의 자리 표시를 재료 목록, 조건 키워드 목록, 현재 견적 메뉴로 채운다.
 // Spring AI의 템플릿 기능({변수})을 쓰지 않고 직접 바꾸는 이유: 프롬프트에 중괄호가 들어가면 템플릿 해석이 깨질 수 있다
 @Component
 public class MenuPlanPrompt {
 
-    // TODO(상품 담당 재료 시드 확정 후): ingredients 테이블에서 읽도록 교체. 그전까지 시연 메뉴 위주의 임시 목록
-    public static final Map<String, BaseUnit> INGREDIENT_UNITS = temporaryIngredientUnits();
-
-    private static final String INGREDIENTS_PLACEHOLDER = "{{INGREDIENTS}}";
+    private static final String NO_CURRENT_MENU = "없음";
     private static final String KEYWORDS_PLACEHOLDER = "{{KEYWORDS}}";
+    private static final String INGREDIENTS_PLACEHOLDER = "{{INGREDIENTS}}";
+    private static final String CURRENT_MENU_PLACEHOLDER = "{{CURRENT_MENU}}";
 
-    private final String systemPrompt;
+    private final String template;
 
     public MenuPlanPrompt(@Value("classpath:prompts/menu-plan.md") Resource template) {
-        this.systemPrompt = readTemplate(template)
-                .replace(INGREDIENTS_PLACEHOLDER, ingredientLines())
-                .replace(KEYWORDS_PLACEHOLDER, keywordLines());
+        this.template = readTemplate(template).replace(KEYWORDS_PLACEHOLDER, keywordLines());
     }
 
-    public String systemPrompt() {
-        return systemPrompt;
+    // 재료 목록은 상품 시드가 들어간 뒤의 재료 테이블 값을 써야 해서, 앱 시작 때가 아니라 요청마다 채운다.
+    // 현재 견적 메뉴는 "4인분으로"처럼 메뉴를 말하지 않은 수정 요청과 새 메뉴 요청을 구분하는 데 쓴다
+    public String systemPrompt(Map<String, BaseUnit> ingredientUnits, String currentMenuName) {
+        return template
+                .replace(INGREDIENTS_PLACEHOLDER, ingredientLines(ingredientUnits))
+                .replace(CURRENT_MENU_PLACEHOLDER, StringUtils.hasText(currentMenuName) ? currentMenuName : NO_CURRENT_MENU);
     }
 
-    private static String ingredientLines() {
-        return INGREDIENT_UNITS.entrySet().stream()
+    private static String ingredientLines(Map<String, BaseUnit> ingredientUnits) {
+        return ingredientUnits.entrySet().stream()
                 .map(entry -> "- " + entry.getKey() + ": " + entry.getValue())
                 .collect(Collectors.joining("\n"));
     }
@@ -56,24 +56,5 @@ public class MenuPlanPrompt {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    // 프롬프트에 매번 같은 순서로 들어가도록 순서를 지키는 Map을 쓴다
-    private static Map<String, BaseUnit> temporaryIngredientUnits() {
-        Map<String, BaseUnit> units = new LinkedHashMap<>();
-        units.put("김치", BaseUnit.G);
-        units.put("밥", BaseUnit.G);
-        units.put("계란", BaseUnit.EA);
-        units.put("대파", BaseUnit.BUNCH);
-        units.put("양파", BaseUnit.EA);
-        units.put("햄", BaseUnit.G);
-        units.put("돼지고기", BaseUnit.G);
-        units.put("두부", BaseUnit.EA);
-        units.put("식용유", BaseUnit.ML);
-        units.put("간장", BaseUnit.ML);
-        units.put("참기름", BaseUnit.ML);
-        units.put("고추장", BaseUnit.G);
-        units.put("소주", BaseUnit.ML);
-        return Collections.unmodifiableMap(units);
     }
 }

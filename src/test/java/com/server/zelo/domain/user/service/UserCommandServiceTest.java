@@ -178,6 +178,21 @@ class UserCommandServiceTest {
         then(userAddressService).should(never()).releaseDefaultAddress(anyLong());
     }
 
+    @Test
+    void 같은_이름의_배송지가_있으면_저장하지_않는다() {
+        // given
+        given(userService.getUser(1L)).willReturn(mock(User.class));
+        willThrow(new BusinessException(ErrorCode.DUPLICATE_ADDRESS_PLACE))
+                .given(userAddressService).validatePlaceNotDuplicated(1L, "회사");
+
+        // when
+        // then
+        assertThatThrownBy(() -> userCommandService.createUserAddress(1L, addressRequest(true)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_ADDRESS_PLACE));
+        then(userAddressService).should(never()).releaseDefaultAddress(anyLong());
+    }
+
     private CreateUserAddressRequest addressRequest(boolean isDefault) {
         return new CreateUserAddressRequest("회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", isDefault);
     }

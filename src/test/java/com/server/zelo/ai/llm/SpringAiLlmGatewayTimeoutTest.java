@@ -10,6 +10,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
@@ -79,7 +80,7 @@ class SpringAiLlmGatewayTimeoutTest {
         long start = System.nanoTime();
 
         // when & then
-        assertThatThrownBy(() -> llmGateway.explain("system", "질문")).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> llmGateway.explain("system", List.of(), "질문")).isInstanceOf(RuntimeException.class);
         Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
         assertThat(elapsed).isGreaterThanOrEqualTo(TIMEOUT.minusMillis(100)).isLessThan(Duration.ofMillis(2_500));
     }
@@ -87,13 +88,13 @@ class SpringAiLlmGatewayTimeoutTest {
     @Test
     void 응답이_제때_오면_답을_반환하고_설정한_타임아웃과_모델로_요청한다() {
         // when
-        LlmReply reply = llmGateway.explain("system", "질문");
+        LlmReply reply = llmGateway.explain("system", List.of(), "질문");
 
         // then
         assertThat(reply.text()).isEqualTo("빠른 답변");
         assertThat(lastTimeoutHeader).isEqualTo(String.valueOf(TIMEOUT.toSeconds()));
-        // 요청 옵션을 직접 넣어도 application.yaml의 모델 설정이 유지되는지 확인한다
-        assertThat(lastRequestBody).contains("\"model\":\"gpt-5-mini\"");
+        // 요청 옵션을 직접 넣어도 application.yaml의 모델·추론 강도 설정이 유지되는지 확인한다
+        assertThat(lastRequestBody).contains("\"model\":\"gpt-6-luna\"", "\"reasoning_effort\":\"low\"");
     }
 
     @Test
@@ -102,7 +103,7 @@ class SpringAiLlmGatewayTimeoutTest {
         responseStatus = 500;
 
         // when & then
-        assertThatThrownBy(() -> llmGateway.explain("system", "질문")).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> llmGateway.explain("system", List.of(), "질문")).isInstanceOf(RuntimeException.class);
         assertThat(requestCount.get()).isEqualTo(1);
     }
 

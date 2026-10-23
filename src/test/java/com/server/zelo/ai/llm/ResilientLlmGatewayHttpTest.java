@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
@@ -131,7 +132,7 @@ class ResilientLlmGatewayHttpTest {
         responseStatus = -503;
 
         // when
-        LlmReply reply = llmGateway.explain("system", "질문");
+        LlmReply reply = llmGateway.explain("system", List.of(), "질문");
 
         // then
         assertThat(reply.text()).isEqualTo("빠른 답변");
@@ -139,7 +140,7 @@ class ResilientLlmGatewayHttpTest {
     }
 
     private void assertUnavailable(ErrorCode expected) {
-        assertThatThrownBy(() -> llmGateway.explain("system", "질문"))
+        assertThatThrownBy(() -> llmGateway.explain("system", List.of(), "질문"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
     }

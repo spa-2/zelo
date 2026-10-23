@@ -1,0 +1,95 @@
+package com.server.zelo.ai.llm;
+
+import com.server.zelo.domain.product.entity.Keyword;
+import com.server.zelo.domain.quote.model.ExcludedItem;
+import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.model.QuoteItem;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Component;
+
+// 견적 안내 문장용 프롬프트. 견적 내용은 서버가 글로 만들어 보내, 상품·가격·합계가 LLM이 아니라 서버 견적에서만 오게 한다
+@Component
+public class QuoteExplainPrompt {
+
+    // 견적 담당의 ExcludedItem.reason 코드. 모르는 코드가 오면 코드 그대로 보낸다
+    private static final Map<String, String> EXCLUDED_REASONS = Map.of(
+            "CATEGORY_NOT_ALLOWED", "AI가 대신 살 수 없는 품목(주류 등)",
+            "PRODUCT_NOT_FOUND", "판매하는 상품이 없음",
+            "OUT_OF_STOCK", "재고 부족");
+
+    private final String systemPrompt;
+
+    public QuoteExplainPrompt(@Value("classpath:prompts/quote-explain.md") Resource template) {
+        this.systemPrompt = readTemplate(template);
+    }
+
+    public String systemPrompt() {
+        return systemPrompt;
+    }
+
+    // 예산 초과 여부도 서버가 계산해서 적는다. LLM에게 숫자 비교를 맡기지 않는다
+    public String userText(MenuPlan menuPlan, Quote quote) {
+        List<String> lines = new ArrayList<>();
+        lines.add("메뉴: " + quote.menuName() + " (" + menuPlan.servings() + "인분)");
+        if (menuPlan.budget() != null) {
+            lines.add("예산: " + won(menuPlan.budget()) + budgetResult(menuPlan.budget(), quote.totalAmount()));
+        }
+        if (!menuPlan.conditions().isEmpty()) {
+            List<String> conditionNames = menuPlan.conditions().stream().map(QuoteExplainPrompt::conditionName).toList();
+            lines.add("조건: " + String.join(", ", conditionNames));
+        }
+        if (!menuPlan.unmatchedConditions().isEmpty()) {
+            lines.add("상품 조건으로 반영하지 못한 요청: " + String.join(", ", menuPlan.unmatchedConditions()));
+        }
+        lines.add("담은 상품:" + (quote.items().isEmpty() ? " 없음" : ""));
+        for (QuoteItem item : quote.items()) {
+            lines.add("- " + productLabel(item) + " " + item.quantity() + "개, " + won(item.lineAmount()));
+        }
+        if (!quote.excludedItems().isEmpty()) {
+            lines.add("빠진 재료:");
+            for (ExcludedItem excludedItem : quote.excludedItems()) {
+                lines.add("- " + excludedItem.name() + ": "
+                        + EXCLUDED_REASONS.getOrDefault(excludedItem.reason(), excludedItem.reason()));
+            }
+        }
+        lines.add("합계: " + won(quote.totalAmount()));
+        return String.join("\n", lines);
+    }
+
+    // 상품명에 단위가 이미 들어 있으면(ex: "백김치 1kg") 같은 말을 두 번 쓰지 않는다
+    private static String productLabel(QuoteItem item) {
+        return item.productName().contains(item.productUnit())
+                ? item.productName()
+                : item.productName() + " (" + item.productUnit() + ")";
+    }
+
+    private static String budgetResult(Long budget, Long totalAmount) {
+        return totalAmount > budget ? " (예산을 " + won(totalAmount - budget) + " 넘음)" : " (예산 안)";
+    }
+
+    // 키워드 설명의 괄호 안은 사용자 말 예시라 빼고 이름만 쓴다 (예: "맵지 않은 (예: 안 맵게, …)" → "맵지 않은")
+    private static String conditionName(Keyword keyword) {
+        String description = keyword.getDescription();
+        int exampleStart = description.indexOf(" (");
+        return exampleStart < 0 ? description : description.substring(0, exampleStart);
+    }
+
+    private static String won(Long amount) {
+        return String.format("%,d원", amount);
+    }
+
+    private static String readTemplate(Resource template) {
+        try {
+            return template.getContentAsString(StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+}

@@ -1,9 +1,8 @@
-package com.server.zelo.domain.payment.facade;
+package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
-import com.server.zelo.domain.payment.service.PaymentCommandService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

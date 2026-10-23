@@ -26,3 +26,9 @@ zelo:
     google:
       client-id: test-client-id
       client-secret: test-client-secret
+
+
+  delivery:
+    scheduler:
+      # 테스트 중 스케줄러가 배송 데이터를 바꾸지 않도록 끈다
+      enabled: false

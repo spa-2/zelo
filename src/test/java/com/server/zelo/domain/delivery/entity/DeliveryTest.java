@@ -141,6 +141,31 @@ class DeliveryTest {
         assertThat(canceled.isCancelable()).isFalse();
     }
 
+    @Test
+    void 이미_보류된_배송은_다시_보류할_수_없다() {
+        // given
+        Delivery delivery = Delivery.of(10L, "홍길동", "010-1234-5678", "12345", "서울시", null);
+        delivery.hold();
+
+        // when
+        // then
+        assertThatThrownBy(delivery::hold)
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_DELIVERY_STATUS));
+    }
+
+    @Test
+    void 보류되지_않은_배송은_보류를_풀_수_없다() {
+        // given
+        Delivery delivery = Delivery.of(10L, "홍길동", "010-1234-5678", "12345", "서울시", null);
+
+        // when
+        // then
+        assertThatThrownBy(delivery::release)
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_DELIVERY_STATUS));
+    }
+
     private Delivery createDelivery() {
         return Delivery.of(1L, "홍길동", "010-1234-5678", "06234", "서울시 강남구 테헤란로 1", "101동 101호");
     }

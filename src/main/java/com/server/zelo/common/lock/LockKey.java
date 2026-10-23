@@ -19,4 +19,7 @@ public class LockKey {
     }
 
     public static String createUserAddress(Long userId) { return USER_ADDRESS + userId;}
+
+    // 등록과 같은 키를 써서 같은 사용자의 등록·수정이 동시에 기본 배송지를 바꾸지 못하게 함
+    public static String updateUserAddress(Long userId) {return USER_ADDRESS + userId;}
 }

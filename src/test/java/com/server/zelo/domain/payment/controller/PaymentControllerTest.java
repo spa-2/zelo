@@ -5,7 +5,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
-import com.server.zelo.domain.payment.facade.PaymentFacade;
+import com.server.zelo.domain.payment.service.PaymentFacade;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

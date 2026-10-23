@@ -5,8 +5,10 @@ import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
+import com.server.zelo.domain.user.dto.request.UpdateUserAddressRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserFacade;
 import jakarta.validation.Valid;
@@ -35,6 +37,14 @@ public class UserAddressController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<GetUserAddressResponse>>> getUserAddresses(@Auth AuthUser authUser) {
         List<GetUserAddressResponse> response = userAddressService.getUserAddresses(authUser.id());
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @RequestMapping(path = "/{addressId}", method = {RequestMethod.PUT, RequestMethod.PATCH})
+    public ResponseEntity<ApiResponse<UpdateUserAddressResponse>> updateUserAddress(
+            @Auth AuthUser authUser, @PathVariable Long addressId,
+            @Valid @RequestBody UpdateUserAddressRequest request) {
+        UpdateUserAddressResponse response = userFacade.updateUserAddress(authUser.id(), addressId, request);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

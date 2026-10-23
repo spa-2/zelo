@@ -8,6 +8,7 @@ import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.StockState;
@@ -361,7 +362,7 @@ class OrderCommandServiceTest {
     }
 
     private Fixture createFixture() {
-        Order order = Order.of(user, "QUOTE-COMMAND", "사과와 배", ActorType.USER, null, 7_000L);
+        Order order = Order.of(user, "QUOTE-COMMAND", "사과와 배", ActorType.USER, null, 7_000L, shippingAddress());
         OrderItem firstItem = OrderItem.of(order, firstProduct, "사과", "1개", 1_000L, 3, 3_000L);
         OrderItem secondItem = OrderItem.of(order, secondProduct, "배", "1개", 2_000L, 2, 4_000L);
         Inventory firstInventory = Inventory.of(firstProduct, 10);
@@ -431,5 +432,9 @@ class OrderCommandServiceTest {
 
     private record Fixture(Order order, OrderItem firstItem, OrderItem secondItem,
                            Inventory firstInventory, Inventory secondInventory) {
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

@@ -27,8 +27,8 @@ class OrderItemOwnershipTest {
     @Test
     void 다른_주문에_속한_상품을_추가하면_예외가_발생하고_관계가_유지된다() {
         // given
-        Order originalOrder = Order.of(user, "QUOTE-OWNER-001", "원래 주문", ActorType.USER, null, 8_900L);
-        Order otherOrder = Order.of(user, "QUOTE-OWNER-002", "다른 주문", ActorType.USER, null, 8_900L);
+        Order originalOrder = Order.of(user, "QUOTE-OWNER-001", "원래 주문", ActorType.USER, null, 8_900L, shippingAddress());
+        Order otherOrder = Order.of(user, "QUOTE-OWNER-002", "다른 주문", ActorType.USER, null, 8_900L, shippingAddress());
         OrderItem item = OrderItem.of(originalOrder, product, "백김치", "1kg", 8_900L, 1, 8_900L);
 
         // when
@@ -47,7 +47,7 @@ class OrderItemOwnershipTest {
     @Test
     void 상품이_null이면_예외가_발생하고_목록은_변경되지_않는다() {
         // given
-        Order order = Order.of(user, "QUOTE-OWNER-003", "주문", ActorType.USER, null, 8_900L);
+        Order order = Order.of(user, "QUOTE-OWNER-003", "주문", ActorType.USER, null, 8_900L, shippingAddress());
 
         // when
         // then
@@ -55,5 +55,9 @@ class OrderItemOwnershipTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         assertThat(order.getOrderItems()).isEmpty();
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

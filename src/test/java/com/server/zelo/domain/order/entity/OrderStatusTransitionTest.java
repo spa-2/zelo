@@ -62,7 +62,7 @@ class OrderStatusTransitionTest {
     }
 
     private Order createOrder(OrderStatus status) {
-        Order order = Order.of(user, "QUOTE-TRANSITION", "사과 주문", ActorType.USER, null, 3_000L);
+        Order order = Order.of(user, "QUOTE-TRANSITION", "사과 주문", ActorType.USER, null, 3_000L, shippingAddress());
         switch (status) {
             case PAYMENT_PENDING -> { }
             case PAID -> order.pay();
@@ -79,5 +79,9 @@ class OrderStatusTransitionTest {
             case "cancel" -> order.cancel();
             default -> throw new IllegalArgumentException(operation);
         }
+    }
+
+    private ShippingAddress shippingAddress() {
+        return ShippingAddress.of("홍길동", "010-1234-5678", "06236", "서울특별시 강남구 테헤란로 123");
     }
 }

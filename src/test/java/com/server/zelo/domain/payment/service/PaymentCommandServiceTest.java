@@ -263,6 +263,24 @@ class PaymentCommandServiceTest {
         then(deliveryService).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 포트원은_취소됐고_주문도_이미_취소됐으면_결제만_취소로_맞춘다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
+        givenOrderStatus(OrderStatus.CANCELED);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
+        then(orderCommandService).shouldHaveNoInteractions();
+        then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
+    }
+
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
     // 결제 반영 전에 주문이 결제 대기인지 확인하므로 주문 상태를 준비한다
     private Order givenOrderStatus(OrderStatus status) {

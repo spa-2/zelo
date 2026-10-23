@@ -12,10 +12,13 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
+import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
+import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.model.QuoteItem;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -246,6 +249,26 @@ class ChatMessageServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         then(chatMessageRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 견적_카드_메시지는_카드를_JSON_payload로_저장한다() {
+        // given
+        ChatRoom chatRoom = ChatRoom.of(1L);
+        given(chatRoomService.getOwnedChatRoom(10L, 1L)).willReturn(chatRoom);
+        given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+        LocalDateTime now = LocalDateTime.of(2026, 10, 23, 12, 0);
+        QuoteCardPayload card = QuoteCardPayload.from(new Quote("quote-1", 1L, 10L, "김치볶음밥",
+                List.of(new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L)), List.of(),
+                12_000L, now, now.plusMinutes(10)));
+
+        // when
+        ChatMessage result = chatMessageService.createQuoteCardMessage(10L, 1L, "견적을 준비했어요.", card);
+
+        // then
+        assertThat(result.getSender()).isEqualTo(ChatSender.ASSISTANT);
+        assertThat(result.getContent()).isEqualTo("견적을 준비했어요.");
+        assertThat(result.getPayload()).contains("\"type\":\"QUOTE_CARD\"").contains("\"quoteId\":\"quote-1\"");
     }
 
     @Test

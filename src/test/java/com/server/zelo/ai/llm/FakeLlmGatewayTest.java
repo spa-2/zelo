@@ -92,13 +92,40 @@ class FakeLlmGatewayTest {
     }
 
     @Test
-    void 메뉴_계획은_검증을_통과하는_고정_메모를_돌려준다() {
-        // when
+    void 메뉴_계획은_기본으로_일반_질문을_돌려준다() {
+        // when: 채팅이 기본으로는 지금처럼 답변만 하도록
         LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
 
         // then
         assertThat(result.model()).isEqualTo(FakeLlmGateway.MODEL);
+        assertThat(result.content().intent()).isEqualTo(MenuPlanIntent.GENERAL_QUESTION);
+        assertThatCode(() -> result.content().validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 장보기_요청으로_바꾸면_검증을_통과하는_고정_메모를_돌려준다() {
+        // given
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.SHOPPING_REQUEST);
+
+        // when
+        LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
+
+        // then
         assertThat(result.content().intent()).isEqualTo(MenuPlanIntent.SHOPPING_REQUEST);
+        assertThat(result.content().ingredients()).isNotEmpty();
+        assertThatCode(() -> result.content().validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 견적_수정으로_바꾸면_빈_칸의_견적_수정_메모를_돌려준다() {
+        // given
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.QUOTE_EDIT);
+
+        // when
+        LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", List.of(), "계란 빼줘", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.content().intent()).isEqualTo(MenuPlanIntent.QUOTE_EDIT);
         assertThatCode(() -> result.content().validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
     }
 

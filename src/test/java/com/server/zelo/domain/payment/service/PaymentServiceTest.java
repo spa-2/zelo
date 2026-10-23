@@ -97,4 +97,29 @@ class PaymentServiceTest {
         // then
         assertThat(result.getStatus()).isEqualTo(PaymentStatus.PAID);
     }
+
+    @Test
+    void 주문의_가장_최근_결제를_돌려준다() {
+        // given
+        Payment payment = Payment.of(10L, "payment-uuid-1", 32_000L);
+        given(paymentRepository.findTopByOrderIdOrderByIdDesc(10L)).willReturn(Optional.of(payment));
+
+        // when
+        Optional<Payment> result = paymentService.findLatestPayment(10L);
+
+        // then
+        assertThat(result).containsSame(payment);
+    }
+
+    @Test
+    void 주문에_결제가_없으면_빈_Optional을_돌려준다() {
+        // given
+        given(paymentRepository.findTopByOrderIdOrderByIdDesc(10L)).willReturn(Optional.empty());
+
+        // when
+        Optional<Payment> result = paymentService.findLatestPayment(10L);
+
+        // then
+        assertThat(result).isEmpty();
+    }
 }

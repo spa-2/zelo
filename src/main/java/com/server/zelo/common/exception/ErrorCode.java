@@ -79,6 +79,8 @@ public enum ErrorCode {
     TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "AUTH_006", "세션이 만료되었습니다. 다시 로그인하세요."),
     // 같은 토큰의 재발급 요청이 동시에 오거나 응답이 유실되어 재시도된 경우로, 이 토큰으로 다시 시도하라는 뜻이 아님
     TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요."),
+    // 만료되거나 없는 소셜 로그인 티켓
+    INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_008", "인증이 만료 되었습니다. 다시 소셜 로그인을 진행 해주세요"),
 
     //Refund
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),

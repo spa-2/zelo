@@ -226,6 +226,31 @@ class UserAddressServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.USER_ADDRESS_NOT_FOUND));
     }
 
+    @Test
+    void 기본_배송지가_있으면_Optional로_돌려준다() {
+        // given
+        UserAddress address = UserAddress.of(mock(User.class), "집", "홍길동", "010-1234-5678", "12345", "서울시", true);
+        given(userAddressRepository.findDefaultByUserId(1L)).willReturn(Optional.of(address));
+
+        // when
+        Optional<UserAddress> result = userAddressService.findDefaultAddress(1L);
+
+        // then
+        assertThat(result).containsSame(address);
+    }
+
+    @Test
+    void 기본_배송지가_없으면_빈_Optional을_돌려준다() {
+        // given
+        given(userAddressRepository.findDefaultByUserId(1L)).willReturn(Optional.empty());
+
+        // when
+        Optional<UserAddress> result = userAddressService.findDefaultAddress(1L);
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
     private UpdateUserAddressRequest updateRequest(boolean isDefault) {
         return new UpdateUserAddressRequest("회사", "김철수", "010-9876-5432", "54321", "서울시 중구", isDefault);
     }

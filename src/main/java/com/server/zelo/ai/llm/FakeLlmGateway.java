@@ -22,6 +22,7 @@ public class FakeLlmGateway implements LlmGateway {
 
     public static final String MODEL = "fake";
     public static final String REVIEW_SUMMARY = "[FAKE] 리뷰 요약입니다.";
+    public static final String EDIT_QUESTION = "[FAKE] 어떤 상품을 바꿀까요?";
 
     // 실제 OpenAI SDK와 같은 예외를 던져, 재시도 대상 구분까지 실제와 똑같이 확인할 수 있게 한다
     public enum Mode {
@@ -36,6 +37,8 @@ public class FakeLlmGateway implements LlmGateway {
     private volatile Duration delay = Duration.ofSeconds(6);
     // 기본은 일반 질문이라 채팅이 지금처럼 답변만 한다. 견적 흐름을 확인할 때만 테스트에서 바꾼다
     private volatile MenuPlanIntent planIntent = MenuPlanIntent.GENERAL_QUESTION;
+    // 기본은 무엇을 고칠지 되묻는 계획이라 견적을 바꾸지 않는다. 수정 흐름을 확인할 때만 테스트에서 바꾼다
+    private volatile QuoteEditPlan quoteEditPlan = QuoteEditPlan.of(List.of(), EDIT_QUESTION);
 
     @Override
     public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
@@ -66,6 +69,14 @@ public class FakeLlmGateway implements LlmGateway {
         return LlmResult.of(menuPlan, MODEL, 0, 0);
     }
 
+    // 사용자 말·견적과 관계없이 정해 둔 수정 계획을 돌려준다
+    @Override
+    public LlmResult<QuoteEditPlan> planQuoteEdit(String systemPrompt, List<ChatMessage> history, String userText,
+                                                  Map<String, BaseUnit> ingredientUnits) {
+        applyMode();
+        return LlmResult.of(quoteEditPlan, MODEL, 0, 0);
+    }
+
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
         applyMode();
@@ -78,6 +89,10 @@ public class FakeLlmGateway implements LlmGateway {
 
     public void changePlanIntent(MenuPlanIntent planIntent) {
         this.planIntent = planIntent;
+    }
+
+    public void changeQuoteEditPlan(QuoteEditPlan quoteEditPlan) {
+        this.quoteEditPlan = quoteEditPlan;
     }
 
     public void changeDelay(Duration delay) {

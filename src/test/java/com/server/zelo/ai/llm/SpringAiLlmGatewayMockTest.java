@@ -248,6 +248,57 @@ class SpringAiLlmGatewayMockTest {
                         .isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
     }
 
+    @Test
+    void 수정_계획_JSON_응답을_QuoteEditPlan으로_바꾸고_스키마는_요청_옵션으로_보낸다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse(QUOTE_EDIT_PLAN_JSON, "gpt-test", 200, 40));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+
+        // when
+        LlmResult<QuoteEditPlan> result = springAiLlmGateway.planQuoteEdit("수정 계획 프롬프트", List.of(), "김치 빼고 계란 2개 더", INGREDIENT_UNITS);
+
+        // then
+        assertThat(result.content().edits()).containsExactly(
+                QuoteEdit.of(QuoteEditAction.REMOVE, 1L, 0, "", 0, BaseUnit.EA),
+                QuoteEdit.of(QuoteEditAction.ADD, 0L, 0, "계란", 2, BaseUnit.EA));
+        assertThat(result.content().question()).isEmpty();
+        assertThat(result.promptTokens()).isEqualTo(200);
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getUserMessage().getText()).isEqualTo("김치 빼고 계란 2개 더");
+        assertThat(promptCaptor.getValue().getOptions()).isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
+            assertThat(options.getOutputSchema()).contains("\"edits\"").contains("\"CHANGE_QUANTITY\"");
+            assertThat(options.getTimeout()).isEqualTo(TIMEOUT);
+        });
+    }
+
+    @Test
+    void 수정_계획에도_대화_기록을_system과_이번_말_사이에_넣는다() {
+        // given
+        given(chatModel.call(any(Prompt.class))).willReturn(chatResponse(QUOTE_EDIT_PLAN_JSON, "gpt-test", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        List<ChatMessage> history = List.of(ChatMessage.of(10L, ChatSender.ASSISTANT, "백김치로 준비했어요."));
+
+        // when
+        springAiLlmGateway.planQuoteEdit("수정 계획 프롬프트", history, "그거 빼줘", INGREDIENT_UNITS);
+
+        // then
+        then(chatModel).should().call(promptCaptor.capture());
+        assertThat(promptCaptor.getValue().getInstructions())
+                .extracting(Message::getMessageType, Message::getText)
+                .containsExactly(
+                        tuple(MessageType.SYSTEM, "수정 계획 프롬프트"),
+                        tuple(MessageType.ASSISTANT, "백김치로 준비했어요."),
+                        tuple(MessageType.USER, "그거 빼줘"));
+    }
+
+    private static final String QUOTE_EDIT_PLAN_JSON = """
+            {"edits":[
+              {"action":"REMOVE","productId":1,"quantity":0,"ingredientName":"","amount":0,"unit":"EA"},
+              {"action":"ADD","productId":0,"quantity":0,"ingredientName":"계란","amount":2,"unit":"EA"}],
+             "question":""}
+            """;
+
     private static final String MENU_PLAN_JSON = """
             {"intent":"SHOPPING_REQUEST","menuName":"김치볶음밥","servings":4,"budget":0,
              "ingredients":[{"name":"김치","amount":400,"unit":"G"},{"name":"계란","amount":4,"unit":"EA"}],

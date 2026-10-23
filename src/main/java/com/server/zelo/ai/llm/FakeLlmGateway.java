@@ -3,10 +3,12 @@ package com.server.zelo.ai.llm;
 import com.openai.core.http.Headers;
 import com.openai.errors.BadRequestException;
 import com.openai.errors.InternalServerException;
+import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -34,14 +36,15 @@ public class FakeLlmGateway implements LlmGateway {
     private volatile Duration delay = Duration.ofSeconds(6);
 
     @Override
-    public LlmReply explain(String systemPrompt, String userText) {
+    public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
         applyMode();
         return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);
     }
 
-    // 사용자 말과 관계없이 항상 같은 메모를 돌려준다. 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
+    // 사용자 말·대화 기록과 관계없이 항상 같은 메모를 돌려준다. 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
     @Override
-    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
+                                        Map<String, BaseUnit> ingredientUnits) {
         applyMode();
         MenuPlan menuPlan = MenuPlan.of(
                 MenuPlanIntent.SHOPPING_REQUEST,

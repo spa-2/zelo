@@ -44,6 +44,15 @@ class MenuPlanTest {
     }
 
     @Test
+    void 견적_수정_요청은_메뉴와_재료가_비어_있어도_검증을_통과한다() {
+        // given: 무엇을 바꿀지는 견적 수정 도구가 정한다
+        MenuPlan menuPlan = MenuPlan.of(MenuPlanIntent.QUOTE_EDIT, "", 0, 0L, List.of(), List.of(), List.of());
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
     void 예산_0은_예산을_말하지_않은_것으로_보고_null로_바꾼다() {
         // when
         MenuPlan menuPlan = shopping(4, 0L, INGREDIENTS);

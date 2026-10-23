@@ -24,12 +24,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.AdditionalAnswers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Limit;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class ChatMessageServiceTest {
+
+    // 고정 문구 메시지를 payload JSON으로 가려내는 것을 실제 파싱으로 확인하려고 진짜 객체를 쓴다
+    @Spy
+    private JsonMapper jsonMapper = JsonMapper.builder().build();
 
     @Mock
     private ChatRoomService chatRoomService;
@@ -240,6 +246,67 @@ class ChatMessageServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         then(chatMessageRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 대화_기록은_이번_메시지_앞의_최근_10개를_오래된_순으로_돌려준다() {
+        // given: 저장소는 최신 메시지부터 준다
+        ChatMessage answer = ChatMessage.of(10L, ChatSender.ASSISTANT, "김치, 밥, 계란이 필요해요.");
+        ChatMessage question = ChatMessage.of(10L, ChatSender.USER, "김치볶음밥 재료 알려 줘");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(answer, question));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(question, answer);
+    }
+
+    @Test
+    void 대화_기록에서_고정_문구_메시지는_뺀다() {
+        // given: DB(jsonb)는 키 순서와 공백을 바꿔 돌려준다
+        ChatMessage fallback = ChatMessage.of(10L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.",
+                "{\"code\": \"AI_002\", \"type\": \"FALLBACK\"}");
+        ChatMessage question = ChatMessage.of(10L, ChatSender.USER, "김치볶음밥 재료 알려 줘");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(fallback, question));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(question);
+    }
+
+    @Test
+    void 고정_문구가_아닌_payload가_있는_메시지는_대화_기록에_남긴다() {
+        // given: 견적 카드처럼 다른 종류의 payload
+        ChatMessage card = ChatMessage.of(10L, ChatSender.ASSISTANT, "견적을 준비했어요.", "{\"type\": \"QUOTE_CARD\"}");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(card));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(card);
+    }
+
+    @Test
+    void 대화_기록이_2000자를_넘으면_오래된_메시지부터_뺀다() {
+        // given: 최신부터 900자, 900자, 900자 → 앞의 두 개(1800자)까지만 들어간다
+        ChatMessage newest = ChatMessage.of(10L, ChatSender.USER, "가".repeat(900));
+        ChatMessage middle = ChatMessage.of(10L, ChatSender.ASSISTANT, "나".repeat(900));
+        ChatMessage oldest = ChatMessage.of(10L, ChatSender.USER, "다".repeat(900));
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(newest, middle, oldest));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(middle, newest);
     }
 
     private List<ChatMessage> messagesWithIds(Long... ids) {

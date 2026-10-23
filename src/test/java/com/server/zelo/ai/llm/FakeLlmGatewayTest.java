@@ -6,10 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openai.errors.BadRequestException;
 import com.openai.errors.InternalServerException;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class FakeLlmGatewayTest {
+
+    // 테스트에서 쓰는 재료만 담은 재료 목록 (실제로는 재료 테이블에서 읽는다)
+    private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of(
+            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.BUNCH);
 
     private final FakeLlmGateway fakeLlmGateway = new FakeLlmGateway();
 
@@ -19,7 +26,7 @@ class FakeLlmGatewayTest {
         String userText = "김치볶음밥 재료";
 
         // when
-        LlmReply reply = fakeLlmGateway.explain("system", userText);
+        LlmReply reply = fakeLlmGateway.explain("system", List.of(), userText);
 
         // then
         assertThat(reply.text()).isEqualTo("[FAKE] 김치볶음밥 재료에 대한 답변입니다.");
@@ -52,7 +59,7 @@ class FakeLlmGatewayTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when & then
-        assertThatThrownBy(() -> fakeLlmGateway.explain("system", "질문"))
+        assertThatThrownBy(() -> fakeLlmGateway.explain("system", List.of(), "질문"))
                 .isInstanceOfSatisfying(InternalServerException.class,
                         exception -> assertThat(exception.statusCode()).isEqualTo(500))
                 .satisfies(exception -> assertThat(LlmErrorClassifier.isRetryable(exception)).isTrue());
@@ -64,7 +71,7 @@ class FakeLlmGatewayTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.REJECT);
 
         // when & then
-        assertThatThrownBy(() -> fakeLlmGateway.explain("system", "질문"))
+        assertThatThrownBy(() -> fakeLlmGateway.explain("system", List.of(), "질문"))
                 .isInstanceOf(BadRequestException.class)
                 .satisfies(exception -> assertThat(LlmErrorClassifier.isRetryable(exception)).isFalse());
     }
@@ -77,7 +84,7 @@ class FakeLlmGatewayTest {
         long start = System.nanoTime();
 
         // when
-        LlmReply reply = fakeLlmGateway.explain("system", "질문");
+        LlmReply reply = fakeLlmGateway.explain("system", List.of(), "질문");
 
         // then
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(300));
@@ -87,12 +94,12 @@ class FakeLlmGatewayTest {
     @Test
     void 메뉴_계획은_검증을_통과하는_고정_메모를_돌려준다() {
         // when
-        LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", "김치볶음밥 재료");
+        LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
 
         // then
         assertThat(result.model()).isEqualTo(FakeLlmGateway.MODEL);
         assertThat(result.content().intent()).isEqualTo(MenuPlanIntent.SHOPPING_REQUEST);
-        assertThatCode(() -> result.content().validate(MenuPlanPrompt.INGREDIENT_UNITS)).doesNotThrowAnyException();
+        assertThatCode(() -> result.content().validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
     }
 
     @Test
@@ -101,7 +108,7 @@ class FakeLlmGatewayTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when & then
-        assertThatThrownBy(() -> fakeLlmGateway.planMenu("system", "질문"))
+        assertThatThrownBy(() -> fakeLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS))
                 .isInstanceOf(InternalServerException.class);
     }
 }

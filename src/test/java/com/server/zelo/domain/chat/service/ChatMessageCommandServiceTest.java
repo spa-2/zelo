@@ -3,6 +3,7 @@ package com.server.zelo.domain.chat.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,6 +12,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
+import com.server.zelo.ai.llm.ChatPrompt;
 import com.server.zelo.ai.llm.LlmGateway;
 import com.server.zelo.ai.llm.LlmReply;
 import com.server.zelo.common.exception.BusinessException;
@@ -19,12 +21,16 @@ import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatSender;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ChatMessageCommandServiceTest {
@@ -35,13 +41,19 @@ class ChatMessageCommandServiceTest {
     @Mock
     private ChatMessageService chatMessageService;
 
+    // 실제 프롬프트 파일이 system으로 가는지 보려고 진짜 객체를 쓴다
+    @Spy
+    private ChatPrompt chatPrompt = new ChatPrompt(new ClassPathResource("prompts/chat.md"));
+
     @InjectMocks
     private ChatMessageCommandService chatMessageCommandService;
 
     @Test
     void 사용자_메시지_저장_LLM_호출_AI_메시지_저장_순서로_처리하고_AI_메시지를_반환한다() {
         // given
-        given(llmGateway.explain(anyString(), eq("김치볶음밥 재료")))
+        given(chatMessageService.createUserMessage(10L, 1L, "김치볶음밥 재료"))
+                .willReturn(userMessage(10L, 5L, "김치볶음밥 재료"));
+        given(llmGateway.explain(anyString(), anyList(), eq("김치볶음밥 재료")))
                 .willReturn(LlmReply.of("김치와 밥이 필요해요.", "gpt-test", 10, 5));
         given(chatMessageService.createAssistantMessage(10L, 1L, "김치와 밥이 필요해요."))
                 .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "김치와 밥이 필요해요."));
@@ -52,7 +64,7 @@ class ChatMessageCommandServiceTest {
         // then
         InOrder order = inOrder(chatMessageService, llmGateway);
         order.verify(chatMessageService).createUserMessage(10L, 1L, "김치볶음밥 재료");
-        order.verify(llmGateway).explain(anyString(), eq("김치볶음밥 재료"));
+        order.verify(llmGateway).explain(anyString(), anyList(), eq("김치볶음밥 재료"));
         order.verify(chatMessageService).createAssistantMessage(10L, 1L, "김치와 밥이 필요해요.");
         assertThat(response.sender()).isEqualTo(ChatSender.ASSISTANT);
         assertThat(response.content()).isEqualTo("김치와 밥이 필요해요.");
@@ -61,7 +73,8 @@ class ChatMessageCommandServiceTest {
     @Test
     void LLM을_쓸_수_없으면_고정_문구를_저장하고_그_실패_코드와_고정_문구_메시지를_담아_예외를_던진다() {
         // given
-        given(llmGateway.explain(anyString(), anyString()))
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
+        given(llmGateway.explain(anyString(), anyList(), anyString()))
                 .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT));
         given(chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT))
                 .willReturn(fallbackMessage(10L, "AI_002"));
@@ -82,7 +95,8 @@ class ChatMessageCommandServiceTest {
     @Test
     void LLM_답을_저장하다_실패하면_고정_문구로_바꾸지_않고_그_오류를_그대로_던진다() {
         // given: LLM은 성공했지만 답을 저장하기 직전에 방 권한이 없어진 경우
-        given(llmGateway.explain(anyString(), anyString())).willReturn(LlmReply.of("답변", "gpt-test", 10, 5));
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
+        given(llmGateway.explain(anyString(), anyList(), anyString())).willReturn(LlmReply.of("답변", "gpt-test", 10, 5));
         given(chatMessageService.createAssistantMessage(10L, 1L, "답변"))
                 .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
 
@@ -105,7 +119,7 @@ class ChatMessageCommandServiceTest {
         assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 2L, "안녕"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
-        then(llmGateway).should(never()).explain(any(), any());
+        then(llmGateway).should(never()).explain(any(), any(), any());
     }
 
     @Test
@@ -113,7 +127,7 @@ class ChatMessageCommandServiceTest {
         // given
         given(chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료"))
                 .willReturn(ChatMessage.of(77L, ChatSender.USER, "불고기 재료"));
-        given(llmGateway.explain(anyString(), eq("불고기 재료")))
+        given(llmGateway.explain(anyString(), anyList(), eq("불고기 재료")))
                 .willReturn(LlmReply.of("소고기와 간장이 필요해요.", "gpt-test", 10, 5));
         given(chatMessageService.createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요."))
                 .willReturn(ChatMessage.of(77L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요."));
@@ -124,7 +138,7 @@ class ChatMessageCommandServiceTest {
         // then
         InOrder order = inOrder(chatMessageService, llmGateway);
         order.verify(chatMessageService).createRoomWithFirstMessage(1L, "불고기 재료");
-        order.verify(llmGateway).explain(anyString(), eq("불고기 재료"));
+        order.verify(llmGateway).explain(anyString(), anyList(), eq("불고기 재료"));
         order.verify(chatMessageService).createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요.");
         assertThat(response.roomId()).isEqualTo(77L);
         assertThat(response.message().sender()).isEqualTo(ChatSender.ASSISTANT);
@@ -136,7 +150,7 @@ class ChatMessageCommandServiceTest {
         // given
         given(chatMessageService.createRoomWithFirstMessage(1L, "안녕"))
                 .willReturn(ChatMessage.of(77L, ChatSender.USER, "안녕"));
-        given(llmGateway.explain(anyString(), anyString()))
+        given(llmGateway.explain(anyString(), anyList(), anyString()))
                 .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN));
         given(chatMessageService.createFallbackMessage(77L, 1L, ErrorCode.AI_CIRCUIT_OPEN))
                 .willReturn(fallbackMessage(77L, "AI_008"));
@@ -162,7 +176,52 @@ class ChatMessageCommandServiceTest {
         // when & then
         assertThatThrownBy(() -> chatMessageCommandService.startChat(1L, " "))
                 .isInstanceOf(BusinessException.class);
-        then(llmGateway).should(never()).explain(any(), any());
+        then(llmGateway).should(never()).explain(any(), any(), any());
+    }
+
+    @Test
+    void 메시지를_보내면_방금_저장한_메시지_앞의_대화와_채팅_프롬프트를_LLM에_함께_보낸다() {
+        // given
+        List<ChatMessage> history = List.of(
+                ChatMessage.of(10L, ChatSender.USER, "초등학생 둘이랑 셋이 김치볶음밥"),
+                ChatMessage.of(10L, ChatSender.ASSISTANT, "김치, 밥, 계란이 필요해요."));
+        given(chatMessageService.createUserMessage(10L, 1L, "그거 맵지 않게 해 줘"))
+                .willReturn(userMessage(10L, 5L, "그거 맵지 않게 해 줘"));
+        given(chatMessageService.findHistory(10L, 5L)).willReturn(history);
+        given(llmGateway.explain(chatPrompt.systemPrompt(), history, "그거 맵지 않게 해 줘"))
+                .willReturn(LlmReply.of("백김치로 준비할게요.", "gpt-test", 10, 5));
+        given(chatMessageService.createAssistantMessage(10L, 1L, "백김치로 준비할게요."))
+                .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "백김치로 준비할게요."));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "그거 맵지 않게 해 줘");
+
+        // then
+        assertThat(response.content()).isEqualTo("백김치로 준비할게요.");
+        assertThat(chatPrompt.systemPrompt()).contains("[예] 버튼");
+    }
+
+    @Test
+    void 새_대화는_앞_대화가_없어_기록을_조회하지_않고_빈_기록으로_보낸다() {
+        // given
+        given(chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료"))
+                .willReturn(userMessage(77L, 1L, "불고기 재료"));
+        given(llmGateway.explain(chatPrompt.systemPrompt(), List.of(), "불고기 재료"))
+                .willReturn(LlmReply.of("소고기와 간장이 필요해요.", "gpt-test", 10, 5));
+        given(chatMessageService.createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요."))
+                .willReturn(ChatMessage.of(77L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요."));
+
+        // when
+        chatMessageCommandService.startChat(1L, "불고기 재료");
+
+        // then
+        then(chatMessageService).should(never()).findHistory(anyLong(), anyLong());
+    }
+
+    private ChatMessage userMessage(Long roomId, Long messageId, String text) {
+        ChatMessage message = ChatMessage.of(roomId, ChatSender.USER, text);
+        ReflectionTestUtils.setField(message, "id", messageId);
+        return message;
     }
 
     private ChatMessage fallbackMessage(Long roomId, String code) {

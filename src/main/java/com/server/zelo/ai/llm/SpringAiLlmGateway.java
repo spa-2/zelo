@@ -1,9 +1,17 @@
 package com.server.zelo.ai.llm;
 
+import com.server.zelo.domain.chat.entity.ChatMessage;
+import com.server.zelo.domain.chat.entity.ChatSender;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ResponseEntity;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -42,8 +50,8 @@ public class SpringAiLlmGateway implements LlmGateway {
     }
 
     @Override
-    public LlmReply explain(String systemPrompt, String userText) {
-        return reply(chatClient.prompt(), systemPrompt, userText);
+    public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
+        return reply(chatClient.prompt().messages(toMessages(history)), systemPrompt, userText);
     }
 
     // 리뷰 요약도 문장 하나를 받는 호출이라 채팅 답변과 같은 방식으로 보내고, 리뷰 전용 system 프롬프트와 모델만 다르다.
@@ -73,12 +81,15 @@ public class SpringAiLlmGateway implements LlmGateway {
                 usage.getCompletionTokens());
     }
 
+    // ingredientUnits는 프롬프트에 이미 들어가 있어 여기서는 쓰지 않는다. 검증은 ResilientLlmGateway가 한다
     @Override
-    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
+                                        Map<String, BaseUnit> ingredientUnits) {
         // useProviderStructuredOutput: JSON 스키마를 프롬프트 글이 아니라 OpenAI 요청 옵션(엄격 모드)으로 보내,
         // 정해진 칸과 키워드·단위 목록 밖의 값이 오지 않게 한다. 객체로 바꾸지 못하면 JacksonException이 난다
         ResponseEntity<ChatResponse, MenuPlan> response = chatClient.prompt()
                 .system(systemPrompt)
+                .messages(toMessages(history))
                 .user(userText)
                 .call()
                 .responseEntity(MenuPlan.class, ChatClient.EntityParamSpec::useProviderStructuredOutput);
@@ -89,5 +100,15 @@ public class SpringAiLlmGateway implements LlmGateway {
                 metadata.getModel(),
                 metadata.getUsage().getPromptTokens(),
                 metadata.getUsage().getCompletionTokens());
+    }
+
+    // Spring AI는 system → 이 기록 → 이번 user 메시지 순서로 요청을 만든다.
+    // 사용자가 아닌 메시지(AI 답변, 결제 결과 같은 알림)는 모두 서비스 쪽이 한 말이라 AI 메시지로 보낸다
+    private static List<Message> toMessages(List<ChatMessage> history) {
+        return history.stream()
+                .map(chatMessage -> chatMessage.getSender() == ChatSender.USER
+                        ? (Message) new UserMessage(chatMessage.getContent())
+                        : new AssistantMessage(chatMessage.getContent()))
+                .toList();
     }
 }

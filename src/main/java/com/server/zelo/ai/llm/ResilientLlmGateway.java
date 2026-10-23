@@ -2,9 +2,13 @@ package com.server.zelo.ai.llm;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.entity.ChatMessage;
+import com.server.zelo.domain.product.entity.BaseUnit;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -54,13 +58,15 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     @Override
-    public LlmReply explain(String systemPrompt, String userText) {
-        return call(model, () -> withUsage(requireText(llmGateway.explain(systemPrompt, userText)))).content();
+    public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
+        return call(model, () -> withUsage(requireText(llmGateway.explain(systemPrompt, history, userText)))).content();
     }
 
     @Override
-    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
-        return call(model, () -> requireValidPlan(llmGateway.planMenu(systemPrompt, userText)));
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
+                                        Map<String, BaseUnit> ingredientUnits) {
+        return call(model, () -> requireValidPlan(
+                llmGateway.planMenu(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
     }
 
     @Override
@@ -131,12 +137,12 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     // LLM이 준 값은 믿지 않는다. 시도 안에서 검증해야 검증 실패도 형식 오류처럼 한 번 더 물어볼 수 있다
-    private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result) {
+    private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result, Map<String, BaseUnit> ingredientUnits) {
         if (result == null || result.content() == null) {
             // 응답 본문이 비어 객체를 만들지 못한 경우. 문장 응답의 빈 답과 같게 본다
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
         }
-        result.content().validate(MenuPlanPrompt.INGREDIENT_UNITS);
+        result.content().validate(ingredientUnits);
         return result;
     }
 

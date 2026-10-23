@@ -71,9 +71,9 @@ zelo:
     read-timeout: 5s
     time-zone: Asia/Seoul
 
-    delivery:
-      scheduler:
-        enabled:true
+  delivery:
+    scheduler:
+      enabled: true
       fixed-delay: 60000
     ship-after: 10m
     complete-after: 30m

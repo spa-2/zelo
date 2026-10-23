@@ -2,6 +2,7 @@ package com.server.zelo.domain.order.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
@@ -11,8 +12,11 @@ import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.StockState;
 import com.server.zelo.domain.order.repository.OrderRepository;
+import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.quote.mock.service.MockQuoteService;
 import com.server.zelo.domain.user.entity.User;
+import com.server.zelo.domain.user.service.UserAddressService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,14 +60,27 @@ class OrderCommandServiceTest {
     @Mock
     private InventoryRepository inventoryRepository;
 
+    @Mock
+    private MockQuoteService quoteService;
+
+    @Mock
+    private ChatRoomService chatRoomService;
+
+    @Mock
+    private UserAddressService userAddressService;
+
+    @Mock
+    private OrderConfirmationRepository orderConfirmationRepository;
+
     private OrderCommandService orderCommandService;
 
     @BeforeEach
     void setUp() {
         // 수량 변경까지 검증하기 위해 Service와 엔티티는 실제 객체를 사용한다.
-        OrderService orderService = new OrderService(orderRepository);
+        OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         InventoryService inventoryService = new InventoryService(inventoryRepository);
-        orderCommandService = new OrderCommandService(orderService, inventoryService);
+        orderCommandService = new OrderCommandService(
+                orderService, quoteService, chatRoomService, inventoryService, userAddressService);
     }
 
     @Test

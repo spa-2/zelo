@@ -8,6 +8,7 @@ import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.OrderStatus;
+import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +50,9 @@ class OrderControllerTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private OrderCommandService orderCommandService;
+
     @Captor
     private ArgumentCaptor<SearchOrderCondition> conditionCaptor;
 
@@ -57,7 +61,7 @@ class OrderControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService, orderCommandService))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

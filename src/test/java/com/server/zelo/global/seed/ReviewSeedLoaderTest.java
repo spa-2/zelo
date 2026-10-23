@@ -20,7 +20,7 @@ import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
 import com.server.zelo.domain.review.repository.ReviewRepository;
-import com.server.zelo.domain.review.service.ReviewSummaryOrchestrator;
+import com.server.zelo.domain.review.service.ReviewCommandService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.Predicate;
@@ -51,7 +51,7 @@ class ReviewSeedLoaderTest {
     private TransactionTemplate transactionTemplate;
 
     @Mock
-    private ReviewSummaryOrchestrator reviewSummaryOrchestrator;
+    private ReviewCommandService reviewCommandService;
 
     @Mock
     private ProductReviewKeywordRepository productReviewKeywordRepository;
@@ -69,7 +69,7 @@ class ReviewSeedLoaderTest {
 
         // then
         then(reviewRepository).should(never()).saveAll(any());
-        then(reviewSummaryOrchestrator).shouldHaveNoInteractions();
+        then(reviewCommandService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -145,7 +145,7 @@ class ReviewSeedLoaderTest {
         loader("real").load();
 
         // then
-        then(reviewSummaryOrchestrator).should().createSummaries();
+        then(reviewCommandService).should().createSummaries();
     }
 
     @Test
@@ -158,7 +158,7 @@ class ReviewSeedLoaderTest {
 
         // then
         then(reviewRepository).should().saveAll(any());
-        then(reviewSummaryOrchestrator).shouldHaveNoInteractions();
+        then(reviewCommandService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -175,12 +175,12 @@ class ReviewSeedLoaderTest {
         assertThatThrownBy(() -> loader("real").load())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("SID-0008");
-        then(reviewSummaryOrchestrator).shouldHaveNoInteractions();
+        then(reviewCommandService).shouldHaveNoInteractions();
     }
 
     private ReviewSeedLoader loader(String llmMode) {
         return new ReviewSeedLoader(llmMode, JsonMapper.builder().build(), reviewRepository, productRepository,
-                transactionTemplate, reviewSummaryOrchestrator, productReviewKeywordRepository,
+                transactionTemplate, reviewCommandService, productReviewKeywordRepository,
                 productReviewSummaryRepository);
     }
 

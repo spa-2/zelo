@@ -9,19 +9,29 @@ import java.util.Optional;
 
 @Repository
 public interface UserAddressRepository extends JpaRepository<UserAddress, Long> {
-    Optional<UserAddress> findByUserIdAndIsDefaultTrueAndDeleteAtIsNull(Long userId);
 
-    // 삭제되지 않은 기본 배송지를 찾는다
+    Optional<UserAddress> findByUserIdAndIsDefaultTrue(Long userId);
+
+    List<UserAddress> findAllByUserIdOrderByIsDefaultDescIdDesc(Long userId);
+
+    Optional<UserAddress> findByIdAndUserId(Long id, Long userId);
+
+    boolean existsByUserIdAndPlace(Long userId, String place);
+
+    boolean existsByUserIdAndPlaceAndIdNot(Long userId, String place, Long id);
+
+    // 기본 배송지를 찾는다
     default Optional<UserAddress> findDefaultByUserId(Long userId) {
-        return findByUserIdAndIsDefaultTrueAndDeleteAtIsNull(userId);
+        return findByUserIdAndIsDefaultTrue(userId);
     }
 
-    List<UserAddress> findAllByUserIdAndDeleteAtIsNullOrderByIsDefaultDescIdDesc(Long userId);
-
-    // 삭제되지 않은 배송지를 기본 배송지 먼저, 나머지는 최근 등록 순으로 찾는다
+    // 기본 배송지 먼저, 나머지는 최근 등록 순으로 찾는다
     default List<UserAddress> findAllActiveByUserId(Long userId) {
-        return findAllByUserIdAndDeleteAtIsNullOrderByIsDefaultDescIdDesc(userId);
+        return findAllByUserIdOrderByIsDefaultDescIdDesc(userId);
     }
 
-
+    // 본인의 배송지를 찾는다
+    default Optional<UserAddress> findActiveByIdAndUserId(Long id, Long userId) {
+        return findByIdAndUserId(id, userId);
+    }
 }

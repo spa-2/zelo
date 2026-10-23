@@ -3,7 +3,7 @@ package com.server.zelo.domain.webhook.controller;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
-import com.server.zelo.domain.payment.facade.PaymentFacade;
+import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
 import org.junit.jupiter.api.BeforeEach;

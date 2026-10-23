@@ -4,8 +4,11 @@ import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
+import com.server.zelo.domain.user.dto.request.UpdateUserAddressRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
+import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.Test;
@@ -20,8 +23,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserFacadeTest {
@@ -34,6 +36,9 @@ class UserFacadeTest {
 
     @Mock
     private LockDistributeService lockDistributeService;
+
+    @Mock
+    private UserAddressService userAddressService;
 
     @Test
     @SuppressWarnings("unchecked")
@@ -76,5 +81,40 @@ class UserFacadeTest {
         // then
         assertThat(result).isEqualTo(response);
         then(userCommandService).should().createUserAddress(1L, request);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 등록과_같은_사용자_단위_락_안에서_배송지를_수정한다() {
+        // given
+        UpdateUserAddressRequest request =
+                new UpdateUserAddressRequest("회사", "김철수", "010-9876-5432", "54321", "서울시 중구", true);
+        UpdateUserAddressResponse response =
+                new UpdateUserAddressResponse(2L, "회사", "김철수", "010-9876-5432", "54321", "서울시 중구", true);
+        given(userAddressService.updateUserAddress(1L, 2L, request)).willReturn(response);
+        given(lockDistributeService.execute(eq(LockKey.createUserAddress(1L)), any(Supplier.class)))
+                .willAnswer(invocation -> ((Supplier<Object>) invocation.getArgument(1)).get());
+
+        // when
+        UpdateUserAddressResponse result = userFacade.updateUserAddress(1L, 2L, request);
+
+        // then
+        assertThat(result).isEqualTo(response);
+    }
+
+    @Test
+    void 등록과_같은_사용자_단위_락_안에서_배송지를_삭제한다() {
+        // given
+        // 락을 실제로 잡지 않고 넘겨받은 로직만 실행
+        willAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(1)).run();
+            return null;
+        }).given(lockDistributeService).execute(eq(LockKey.createUserAddress(1L)), any(Runnable.class));
+
+        // when
+        userFacade.deleteUserAddress(1L, 2L);
+
+        // then
+        then(userAddressService).should().deleteUserAddress(1L, 2L);
     }
 }

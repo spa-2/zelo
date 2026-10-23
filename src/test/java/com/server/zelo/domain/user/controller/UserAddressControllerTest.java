@@ -2,10 +2,12 @@ package com.server.zelo.domain.user.controller;
 
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.dto.response.UpdateUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserFacade;
 import org.junit.jupiter.api.AfterEach;
@@ -27,11 +29,9 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.never;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -135,8 +135,65 @@ class UserAddressControllerTest {
         then(userAddressService).should(never()).getUserAddresses(anyLong());
     }
 
+    @Test
+    void 배송지를_수정하면_200과_수정한_배송지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(userFacade.updateUserAddress(eq(1L), eq(2L), any())).willReturn(
+                new UpdateUserAddressResponse(2L, "회사", "김철수", "010-9876-5432", "54321", "서울시 중구", true));
+
+        // when // then
+        mockMvc.perform(put("/api/users/me/addresses/{addressId}", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.addressId").value(2))
+                .andExpect(jsonPath("$.data.place").value("회사"));
+    }
+
+    @Test
+    void 수정할_때_필수값이_없으면_400을_반환하고_수정하지_않는다() throws Exception {
+        // given
+        authenticate(1L);
+        String body = """
+                {"place":"","recipientName":"김철수","recipientPhone":"010-9876-5432",
+                 "zipCode":"54321","address":"서울시 중구","isDefault":true}""";
+
+        // when // then
+        mockMvc.perform(put("/api/users/me/addresses/{addressId}", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
+        then(userFacade).should(never()).updateUserAddress(anyLong(), anyLong(), any());
+    }
+
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+    }
+
+    @Test
+    void 배송지를_삭제하면_204를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when // then
+        mockMvc.perform(delete("/api/users/me/addresses/{addressId}", 2L))
+                .andExpect(status().isNoContent());
+        then(userFacade).should().deleteUserAddress(1L, 2L);
+    }
+
+    @Test
+    void 기본_배송지를_삭제하면_400과_DEFAULT_ADDRESS_REQUIRED를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        willThrow(new BusinessException(ErrorCode.DEFAULT_ADDRESS_REQUIRED))
+                .given(userFacade).deleteUserAddress(1L, 2L);
+
+        // when // then
+        mockMvc.perform(delete("/api/users/me/addresses/{addressId}", 2L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.DEFAULT_ADDRESS_REQUIRED.getCode()));
     }
 }

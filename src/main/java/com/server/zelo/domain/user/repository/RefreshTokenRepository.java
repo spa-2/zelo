@@ -1,21 +1,19 @@
 package com.server.zelo.domain.user.repository;
 
+import com.server.zelo.common.util.HashUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Repository;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.HexFormat;
 import java.util.List;
 
 @Repository
 public class RefreshTokenRepository {
 
+    private final HashUtil hashUtil;
     private final Duration refreshTokenTtl;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -59,9 +57,12 @@ public class RefreshTokenRepository {
 
     // TTL을 토큰 만료 시간과 맞춰야 만료된 토큰이 Redis에 남지 않음
     public RefreshTokenRepository(StringRedisTemplate stringRedisTemplate,
-                                  @Value("${jwt.refresh-expiration}") long refreshExpiration) {
+                                  @Value("${jwt.refresh-expiration}") long refreshExpiration,
+                                  HashUtil hashUtil
+                                  ) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.refreshTokenTtl = Duration.ofMillis(refreshExpiration);
+        this.hashUtil = hashUtil;
     }
 
     // 유저당 하나만 두어서 다시 로그인하면 이전 리프레시 토큰은 덮어써짐
@@ -72,7 +73,7 @@ public class RefreshTokenRepository {
         stringRedisTemplate.execute(
                 SAVE_SCRIPT,
                 List.of(key(userId)),
-                hash(refreshToken),
+                hashUtil.hash(refreshToken),
                 String.valueOf(refreshTokenTtl.toMillis()),
                 SUPERSEDED_KEY_PREFIX);
     }
@@ -85,7 +86,7 @@ public class RefreshTokenRepository {
     // 확인과 교체 사이에 로그인, 로그아웃, 다른 재발급이 끼어들 수 없도록 Redis 안에서 한 번에 처리함
     // 로그인과 달리 superseded에는 기록하지 않음 (나중에 재사용되면 다른 기기 로그인이 아니라 탈취로 판단해야 하기 때문)
     public boolean rotateIfMatches(Long userId, String receivedRefreshToken, String newRefreshToken) {
-        String presentedHash = hash(receivedRefreshToken);
+        String presentedHash = hashUtil.hash(receivedRefreshToken);
 
         // 일치 확인, 교체, rotated 기록은 모두 이 스크립트(ROTATE_SCRIPT) 안에서 한 번에 처리됨
         // 반환값 1은 교체되고 rotated로 기록된 것이고, 0은 아무것도 바뀌지 않은 것
@@ -93,7 +94,7 @@ public class RefreshTokenRepository {
                 ROTATE_SCRIPT,
                 List.of(key(userId), rotatedKey(presentedHash)),
                 presentedHash,
-                hash(newRefreshToken),
+                hashUtil.hash(newRefreshToken),
                 String.valueOf(refreshTokenTtl.toMillis()),
                 String.valueOf(ROTATED_MARKER_TTL.toMillis()));
 
@@ -106,12 +107,12 @@ public class RefreshTokenRepository {
 
     // 다른 기기 로그인으로 낡아진 토큰인지 확인
     public boolean isSuperseded(String refreshToken) {
-        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(supersededKey(hash(refreshToken))));
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(supersededKey(hashUtil.hash(refreshToken))));
     }
 
     // 방금 재발급으로 교체된 토큰인지 확인 (동시 요청이나 응답 유실 후 재시도로 들어온 경우)
     public boolean isRotated(String refreshToken) {
-        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(rotatedKey(hash(refreshToken))));
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(rotatedKey(hashUtil.hash(refreshToken))));
     }
 
     private String key(Long userId) {
@@ -127,14 +128,4 @@ public class RefreshTokenRepository {
         return SUPERSEDED_KEY_PREFIX + hashedRefreshToken;
     }
 
-    // 토큰 원문은 저장하지 않고 해시 처리하여서 redis가 유출 되어도 토큰 탈취가 되지 않음
-    private String hash(String refreshToken) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(refreshToken.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256은 모든 JVM이 지원해야 하는 알고리즘이라 여기 올 수 없지만 언체크라서 예외를 잡긴 해야됨
-            throw new IllegalStateException(e);
-        }
-    }
 }

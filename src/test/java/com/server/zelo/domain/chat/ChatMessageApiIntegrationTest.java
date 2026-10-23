@@ -9,12 +9,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.server.zelo.ai.llm.FakeLlmGateway;
 import com.server.zelo.common.auth.JwtUtil;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
+import com.server.zelo.domain.chat.service.ChatMessageService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +63,12 @@ class ChatMessageApiIntegrationTest {
 
     @Autowired
     private CircuitBreaker llmCircuitBreaker;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Autowired
+    private ChatMessageService chatMessageService;
 
     // 스프링 컨텍스트는 테스트 클래스끼리 공유되므로, 바꾼 Fake 모드와 쌓인 서킷 브레이커 기록을 반드시 되돌린다
     @AfterEach
@@ -259,6 +268,27 @@ class ChatMessageApiIntegrationTest {
         mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
+    }
+
+    @Test
+    void 대화_기록은_DB에서_읽은_고정_문구를_빼고_이번_메시지_앞의_대화를_오래된_순으로_준다() {
+        // given
+        Long roomId = createRoom(OWNER_ID);
+        chatMessageService.createUserMessage(roomId, OWNER_ID, "김치볶음밥 재료 알려 줘");
+        chatMessageService.createFallbackMessage(roomId, OWNER_ID, ErrorCode.AI_TIMEOUT);
+        chatMessageService.createUserMessage(roomId, OWNER_ID, "다시 알려 줘");
+        chatMessageService.createAssistantMessage(roomId, OWNER_ID, "김치, 밥, 계란이 필요해요.");
+        ChatMessage current = chatMessageService.createUserMessage(roomId, OWNER_ID, "그거 맵지 않게 해 줘");
+        // 저장한 객체가 아니라 DB(jsonb)가 다시 만든 payload를 읽도록 영속성 컨텍스트를 비운다
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(roomId, current.getId());
+
+        // then
+        assertThat(history).extracting(ChatMessage::getContent)
+                .containsExactly("김치볶음밥 재료 알려 줘", "다시 알려 줘", "김치, 밥, 계란이 필요해요.");
     }
 
     private Long createRoom(Long userId) {

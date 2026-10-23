@@ -3,10 +3,12 @@ package com.server.zelo.ai.llm;
 import com.openai.core.http.Headers;
 import com.openai.errors.BadRequestException;
 import com.openai.errors.InternalServerException;
+import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Component;
 public class FakeLlmGateway implements LlmGateway {
 
     public static final String MODEL = "fake";
+    public static final String REVIEW_SUMMARY = "[FAKE] 리뷰 요약입니다.";
 
     // 실제 OpenAI SDK와 같은 예외를 던져, 재시도 대상 구분까지 실제와 똑같이 확인할 수 있게 한다
     public enum Mode {
@@ -31,34 +34,50 @@ public class FakeLlmGateway implements LlmGateway {
     // 테스트 스레드에서 바꾼 모드를 요청 스레드가 바로 보도록 volatile
     private volatile Mode mode = Mode.NORMAL;
     private volatile Duration delay = Duration.ofSeconds(6);
+    // 기본은 일반 질문이라 채팅이 지금처럼 답변만 한다. 견적 흐름을 확인할 때만 테스트에서 바꾼다
+    private volatile MenuPlanIntent planIntent = MenuPlanIntent.GENERAL_QUESTION;
 
     @Override
-    public LlmReply explain(String systemPrompt, String userText) {
+    public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
         applyMode();
         return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);
     }
 
-    // 사용자 말과 관계없이 항상 같은 메모를 돌려준다. 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
+    // 사용자 말·대화 기록과 관계없이 정해 둔 판단(planIntent)대로 같은 메모를 돌려준다.
+    // 판단과 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
     @Override
-    public LlmResult<MenuPlan> planMenu(String systemPrompt, String userText) {
+    public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
+                                        Map<String, BaseUnit> ingredientUnits) {
         applyMode();
-        MenuPlan menuPlan = MenuPlan.of(
-                MenuPlanIntent.SHOPPING_REQUEST,
-                "김치볶음밥",
-                4,
-                null,
-                List.of(
-                        MenuPlanIngredient.of("김치", 400, BaseUnit.G),
-                        MenuPlanIngredient.of("밥", 800, BaseUnit.G),
-                        MenuPlanIngredient.of("계란", 4, BaseUnit.EA),
-                        MenuPlanIngredient.of("대파", 1, BaseUnit.BUNCH)),
-                List.of(Keyword.NOT_SPICY),
-                List.of());
+        MenuPlan menuPlan = planIntent == MenuPlanIntent.SHOPPING_REQUEST
+                ? MenuPlan.of(
+                        MenuPlanIntent.SHOPPING_REQUEST,
+                        "김치볶음밥",
+                        4,
+                        null,
+                        List.of(
+                                MenuPlanIngredient.of("김치", 400, BaseUnit.G),
+                                MenuPlanIngredient.of("밥", 800, BaseUnit.G),
+                                MenuPlanIngredient.of("계란", 4, BaseUnit.EA),
+                                MenuPlanIngredient.of("대파", 1, BaseUnit.BUNCH)),
+                        List.of(Keyword.NOT_SPICY),
+                        List.of())
+                : MenuPlan.of(planIntent, "", 0, 0L, List.of(), List.of(), List.of());
         return LlmResult.of(menuPlan, MODEL, 0, 0);
+    }
+
+    @Override
+    public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
+        applyMode();
+        return LlmReply.of(REVIEW_SUMMARY, MODEL, 0, 0);
     }
 
     public void changeMode(Mode mode) {
         this.mode = mode;
+    }
+
+    public void changePlanIntent(MenuPlanIntent planIntent) {
+        this.planIntent = planIntent;
     }
 
     public void changeDelay(Duration delay) {

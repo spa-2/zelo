@@ -20,7 +20,7 @@ import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatSender;
-import com.server.zelo.domain.chat.service.ChatMessageOrchestrator;
+import com.server.zelo.domain.chat.service.ChatMessageCommandService;
 import com.server.zelo.domain.chat.service.ChatMessageService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,7 +48,7 @@ class ChatMessageControllerTest {
     private ChatMessageService chatMessageService;
 
     @Mock
-    private ChatMessageOrchestrator chatMessageOrchestrator;
+    private ChatMessageCommandService chatMessageCommandService;
 
     @InjectMocks
     private ChatMessageController chatMessageController;
@@ -73,7 +73,7 @@ class ChatMessageControllerTest {
     void 메시지를_보내면_201과_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageOrchestrator.sendMessage(10L, 1L, "김치볶음밥 재료"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료"))
                 .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "김치와 밥이 필요해요.", null, LocalDateTime.now()));
 
         // when & then
@@ -93,7 +93,7 @@ class ChatMessageControllerTest {
     void payload가_있으면_문자열이_아닌_JSON_객체로_내보낸다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageOrchestrator.sendMessage(10L, 1L, "견적"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "견적"))
                 .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "견적이에요.",
                         "{\"type\":\"QUOTE_CARD\",\"totalAmount\":28900}", LocalDateTime.now()));
 
@@ -117,7 +117,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"   \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageOrchestrator).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
     }
 
     @Test
@@ -132,7 +132,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"" + tooLong + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageOrchestrator).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
     }
 
     @Test
@@ -154,7 +154,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"안녕\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
-        then(chatMessageOrchestrator).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
     }
 
     @Test
@@ -232,7 +232,7 @@ class ChatMessageControllerTest {
     void 새_대화를_시작하면_201과_새_방_ID와_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageOrchestrator.startChat(1L, "불고기 재료"))
+        given(chatMessageCommandService.startChat(1L, "불고기 재료"))
                 .willReturn(StartChatResponse.of(77L,
                         new ChatMessageResponse(102L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요.", null, LocalDateTime.now())));
 
@@ -259,7 +259,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"  \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
     }
 
     @Test
@@ -273,7 +273,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"" + "가".repeat(1001) + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
     }
 
     @Test
@@ -284,7 +284,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"안녕\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
-        then(chatMessageOrchestrator).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
     }
 
     @Test
@@ -293,7 +293,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
                 102L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}", LocalDateTime.now());
-        given(chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
                 .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT, ErrorCode.AI_TIMEOUT.getMessage(), fallback));
 
         // when & then
@@ -314,7 +314,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
                 103L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_008\"}", LocalDateTime.now());
-        given(chatMessageOrchestrator.startChat(1L, "안녕"))
+        given(chatMessageCommandService.startChat(1L, "안녕"))
                 .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN, ErrorCode.AI_CIRCUIT_OPEN.getMessage(),
                         StartChatResponse.of(77L, fallback)));
 
@@ -332,7 +332,7 @@ class ChatMessageControllerTest {
     void data가_없는_비즈니스_예외는_기존처럼_data가_null이다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageOrchestrator.sendMessage(10L, 1L, "안녕"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
                 .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
 
         // when & then

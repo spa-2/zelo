@@ -1,5 +1,6 @@
 package com.server.zelo.domain.user.repository;
 
+import com.server.zelo.common.util.HashUtil;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,13 +29,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 // Redis가 없으면 이 테스트만 건너뜀 (Redis 없이도 나머지 단위 테스트는 돌아가야 해서)
 class RefreshTokenRepositoryRedisTest {
 
+    private Long userId;
     private static final long REFRESH_EXPIRATION = 60_000L;
 
     private static LettuceConnectionFactory connectionFactory;
     private static StringRedisTemplate redisTemplate;
 
     private RefreshTokenRepository refreshTokenRepository;
-    private Long userId;
     private final List<String> createdKeys = new ArrayList<>();
 
     @BeforeAll
@@ -62,7 +63,7 @@ class RefreshTokenRepositoryRedisTest {
 
     @BeforeEach
     void setUp() {
-        refreshTokenRepository = new RefreshTokenRepository(redisTemplate, REFRESH_EXPIRATION);
+        refreshTokenRepository = new RefreshTokenRepository(redisTemplate, REFRESH_EXPIRATION, new HashUtil("SHA-256"));
         // 개발 데이터나 다른 테스트와 키가 겹치지 않게 아주 큰 임의의 userId를 씀
         userId = ThreadLocalRandom.current().nextLong(1_000_000_000_000L, Long.MAX_VALUE);
     }

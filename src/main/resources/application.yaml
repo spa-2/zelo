@@ -32,13 +32,20 @@ spring:
       # 실제 요청 타임아웃은 SpringAiLlmGateway가 zelo.llm.timeout으로 요청마다 넣는다. 클라이언트 기본값도 같은 값으로 맞춘다
       timeout: ${zelo.llm.timeout}
       chat:
-        model: gpt-5-mini
+        # 메뉴 계획 실측에서 정확도·속도·비용이 가장 좋았던 조합. 단 gpt-6-luna는 Chat Completions에서 툴 호출을 추론 none일 때만 지원한다
+        model: gpt-6-luna
+        reasoning-effort: low
 
 zelo:
   llm:
     mode: real
-    # LLM 요청 하나를 기다리는 최대 시간. 실제 gpt-5-mini 응답이 약 10초 걸려 여유를 두었다 (팀 합의 후 조정)
-    timeout: 5s
+    # LLM 요청 하나를 기다리는 최대 시간. 실측에서 gpt-6-luna(low) 메뉴 계획 p95가 7.5초라 1.5배로 두었다 (팀 합의 후 조정)
+    timeout: 12s
+    # 리뷰 요약만 다른 모델로 보낸다. 지금 프롬프트("소수 의견은 빼라")를 gpt-6-luna는 잘 지키지 못해서(원문 재채점 68% vs 88%) 기존 모델을 유지한다.
+    # 위 spring.ai.openai.chat.reasoning-effort(low)가 모든 요청에 섞이므로 gpt-5-mini의 기본값(medium)을 직접 적는다
+    review-summary:
+      model: gpt-5-mini
+      reasoning-effort: medium
     retry:
      # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
      max-attempts: 2
@@ -53,9 +60,12 @@ zelo:
     # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
       permitted-number-of-calls-in-half-open-state: 3
 
+  hash:
+    algorithm: SHA-256 # redis 와 같은 값 저장 시 사용 할 해쉬값
+
   portone:
     # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
-    mode: real
+    mode: ${PORTONE_MODE:fake}
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET:}
     store-id: ${PORTONE_STORE_ID:}

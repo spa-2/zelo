@@ -59,7 +59,7 @@ public class PaymentService {
     }
 
     public Payment getLatestPayment(Long orderId) {
-        return findLatestPayment(orderId)
+        return paymentRepository.findTopByOrderIdOrderByIdDesc(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 }

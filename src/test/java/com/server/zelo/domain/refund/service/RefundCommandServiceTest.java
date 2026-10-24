@@ -76,7 +76,7 @@ class RefundCommandServiceTest {
     void 포트원_취소가_거절되면_환불_실패로_두고_배송_보류를_푼다() {
         // given
         givenRefundable();
-        willThrow(new BusinessException(ErrorCode.PG_REQUEST_FAILED))
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED))
                 .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
 
         // when
@@ -130,6 +130,22 @@ class RefundCommandServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.REFUND_IN_PROGRESS);
         then(deliveryService).shouldHaveNoInteractions();
         then(portOneClient).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 포트원_서버_오류면_환불_요청과_배송_보류를_유지한다() {
+        // given
+        givenRefundable();
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_FAILED))
+                .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+
+        // when
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON);
+
+        // then
+        assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
+        then(refundService).should(never()).fail(any());
+        then(deliveryService).should(never()).releaseHold(any());
     }
 
     private void givenRefundable() {

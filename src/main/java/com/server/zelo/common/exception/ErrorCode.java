@@ -58,6 +58,7 @@ public enum ErrorCode {
     PG_REQUEST_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_006", "결제사 요청에 실패했습니다."),
     PG_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PAYMENT_007", "결제사 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."),
     PAYMENT_NOT_REFUNDABLE(HttpStatus.CONFLICT, "PAYMENT_008", "결제가 완료된 주문만 환불할 수 있습니다."),
+    PG_REQUEST_REJECTED(HttpStatus.BAD_GATEWAY, "PAYMENT_009", "결제사가 요청을 거절했습니다."),
 
     // Refund
     REFUND_IN_PROGRESS(HttpStatus.CONFLICT, "REFUND_003", "이미 진행 중인 환불이 있습니다."),

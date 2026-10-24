@@ -166,7 +166,7 @@ class HttpPortOneClientTest {
     }
 
     @Test
-    void 취소가_거절되면_PG_REQUEST_FAILED_예외가_발생한다() {
+    void 취소가_거절되면_PG_REQUEST_REJECTED_예외가_발생한다() {
         // given
         server.expect(requestTo(CANCEL_URL))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST)
@@ -179,7 +179,7 @@ class HttpPortOneClientTest {
         assertThatThrownBy(() -> portOneClient.cancelPayment(PORTONE_ID, CANCEL_REASON))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+                .isEqualTo(ErrorCode.PG_REQUEST_REJECTED);
     }
 
     @Test
@@ -244,7 +244,7 @@ class HttpPortOneClientTest {
     }
 
     @Test
-    void 금액을_지정한_취소에서_이미_취소된_결제면_PG_REQUEST_FAILED_예외가_발생한다() {
+    void 금액을_지정한_취소에서_이미_취소된_결제면_PG_REQUEST_REJECTED_예외가_발생한다() {
         // given
         server.expect(requestTo(CANCEL_URL))
                 .andRespond(withStatus(HttpStatus.CONFLICT)
@@ -257,7 +257,7 @@ class HttpPortOneClientTest {
         assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
                 PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
                 .isInstanceOfSatisfying(BusinessException.class,
-                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_FAILED));
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_REJECTED));
     }
 
     @ParameterizedTest

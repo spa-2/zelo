@@ -14,13 +14,14 @@ import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundItem;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
-import com.server.zelo.domain.refund.service.RefundService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
-
 import java.time.LocalDateTime;
+import java.util.Objects;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RefundCommandService {
@@ -37,14 +38,15 @@ public class RefundCommandService {
 
     // 포트원 취소는 외부 HTTP 호출이라 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
     public CreateRefundResponse createRefund(Long userId, Long orderId, String reason) {
-        RefundTarget target = transactionOperations.execute(status -> requestRefund(userId, orderId, reason));
+        RefundTarget target = Objects.requireNonNull(
+                transactionOperations.execute(status -> requestRefund(userId, orderId, reason)));
 
         try {
             portOneClient.cancelPaymentWithAmount(target.portoneId(), CANCEL_KEY_PREFIX + target.refundId(),
                     target.amount(), target.amount(), reason);
         } catch (BusinessException e) {
-            if (e.getErrorCode() == ErrorCode.PG_TIMEOUT) {
-                // 포트원에서 취소됐는지 알 수 없어 REQUESTED와 배송 보류를 그대로 둔다. 취소 웹훅(R7)이 마무리한다
+            if (!isRejected(e)) {
+                log.warn("환불 결과 불명확 refundId={}, errorCode={}", target.refundId(), e.getErrorCode());
                 return CreateRefundResponse.of(target.refundId(), RefundStatus.REQUESTED);
             }
             transactionOperations.executeWithoutResult(status -> {
@@ -81,5 +83,12 @@ public class RefundCommandService {
     }
 
     private record RefundTarget(Long refundId, String portoneId, Long amount) {
+    }
+
+    private boolean isRejected(BusinessException e) {
+        ErrorCode errorCode = e.getErrorCode();
+        return errorCode == ErrorCode.PG_REQUEST_REJECTED
+                || errorCode == ErrorCode.PAYMENT_NOT_FOUND
+                || errorCode == ErrorCode.INVALID_INPUT;
     }
 }

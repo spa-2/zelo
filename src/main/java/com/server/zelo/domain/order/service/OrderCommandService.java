@@ -8,11 +8,13 @@ import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
+import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -91,7 +94,7 @@ public class OrderCommandService {
         }
     }
 
-    public CreateOrderConfirmationResponse createOrder(Long userId, CreateOrderConfirmationRequest request) {
+    public CreateOrderConfirmationResponse createConfirmation(Long userId, CreateOrderConfirmationRequest request) {
         // 본인 명의 채팅방 소유 확인
         chatRoomService.getOwnedChatRoom(request.roomId(), userId);
 
@@ -114,6 +117,26 @@ public class OrderCommandService {
         orderService.createConfirmation(confirmationId, userId, request.roomId(), request.quoteId(), expiresAt);
 
         return CreateOrderConfirmationResponse.of(confirmationId, quote, addrSummary, expiresAt);
+    }
+
+    // 주문 잠금 후 PAYMENT_FAILED로 바꿀 수 있을 때만 결제 실패 처리, 아니면 건너뜀
+    public void failPaymentIfPossible(Long orderId) {
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        if (order.getStatus().isTransitionAllowed(OrderStatus.PAYMENT_FAILED)) {
+            failPayment(orderId);
+        } else {
+            log.info("결제 실패 반영 건너뜀 orderId={}, status={}", orderId, order.getStatus());
+        }
+    }
+
+    // 주문 잠금 후 CANCELED로 바꿀 수 있을 때만 취소 처리, 아니면 건너뜀
+    public void cancelIfPossible(Long orderId) {
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        if (order.getStatus().isTransitionAllowed(OrderStatus.CANCELED)) {
+            cancel(orderId);
+        } else {
+            log.info("취소 반영 건너뜀 orderId={}, status={}", orderId, order.getStatus());
+        }
     }
 
     private List<OrderItem> getItemsInProductOrder(Order order) {

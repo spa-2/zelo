@@ -46,6 +46,6 @@ public class OrderController {
     ) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(orderCommandService.createOrder(authUser.id(), request)));
+                .body(ApiResponse.ok(orderCommandService.createConfirmation(authUser.id(), request)));
     }
 }

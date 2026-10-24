@@ -97,7 +97,7 @@ class OrderConfirmationCommandServiceTest {
                 address("집", "서울특별시 강남구 테헤란로 123", true)));
 
         // when
-        CreateOrderConfirmationResponse result = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse result = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(UUID.fromString(result.confirmationId()).toString()).isEqualTo(result.confirmationId());
@@ -122,8 +122,8 @@ class OrderConfirmationCommandServiceTest {
         stubQuoteAndAddresses(List.of(address("집", "서울특별시 강남구 테헤란로 123", true)));
 
         // when
-        CreateOrderConfirmationResponse first = orderCommandService.createOrder(USER_ID, REQUEST);
-        CreateOrderConfirmationResponse second = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse first = orderCommandService.createConfirmation(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse second = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(first.confirmationId()).isNotEqualTo(second.confirmationId());
@@ -144,7 +144,7 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST))
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         verifyNoInteractions(orderConfirmationRepository, orderRepository, inventoryService);
@@ -159,7 +159,7 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST)).isSameAs(failure);
         then(chatRoomService).should().getOwnedChatRoom(ROOM_ID, USER_ID);
         verifyNoInteractions(quoteRepository, userAddressService, orderConfirmationRepository, orderRepository, inventoryService);
     }
@@ -174,7 +174,7 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST))
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(expectedCode));
         InOrder calls = inOrder(chatRoomService, quoteRepository);
@@ -194,7 +194,7 @@ class OrderConfirmationCommandServiceTest {
         stubQuoteAndAddresses(List.of(address("집", address, true)));
 
         // when
-        CreateOrderConfirmationResponse result = orderCommandService.createOrder(USER_ID, REQUEST);
+        CreateOrderConfirmationResponse result = orderCommandService.createConfirmation(USER_ID, REQUEST);
 
         // then
         assertThat(result.addressSummary()).isEqualTo(expectedSummary);
@@ -210,7 +210,7 @@ class OrderConfirmationCommandServiceTest {
 
         // when
         // then
-        assertThatThrownBy(() -> orderCommandService.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST)).isSameAs(failure);
         verifyNoInteractions(orderRepository, inventoryService);
     }
 

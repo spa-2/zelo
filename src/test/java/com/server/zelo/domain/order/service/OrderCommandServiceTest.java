@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -33,9 +32,12 @@ import org.springframework.http.HttpStatus;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -179,9 +181,14 @@ class OrderCommandServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StockState.class, names = {"RELEASED", "RESTORED"})
+    @CsvSource({
+            "RELEASED, cancel",
+            "RESTORED, cancel",
+            "RELEASED, cancelIfPossible",
+            "RESTORED, cancelIfPossible"
+    })
     void 이미_해제되거나_복원된_품목은_취소_예외를_던지고_재고를_변경하지_않는다(
-            StockState initialState) {
+            StockState initialState, String operation) {
         // given
         Fixture fixture = createFixture();
         if (initialState == StockState.RELEASED) {
@@ -197,7 +204,7 @@ class OrderCommandServiceTest {
         stubProductIds();
 
         // when
-        assertThatThrownBy(() -> orderCommandService.cancel(ORDER_ID))
+        assertThatThrownBy(() -> execute(operation))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ORDER_STATUS));
 
@@ -264,7 +271,7 @@ class OrderCommandServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"completePayment", "failPayment", "cancel"})
+    @ValueSource(strings = {"completePayment", "failPayment", "cancel", "failPaymentIfPossible", "cancelIfPossible"})
     void 주문이_없으면_예외를_전달하고_재고는_조회하지_않는다(String operation) {
         // given
         given(orderRepository.findForUpdateById(ORDER_ID)).willReturn(Optional.empty());
@@ -316,7 +323,7 @@ class OrderCommandServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"completePayment", "failPayment", "cancel"})
+    @ValueSource(strings = {"completePayment", "failPayment", "cancel", "failPaymentIfPossible", "cancelIfPossible"})
     void 재고_조회_실패를_삼키지_않고_호출자에게_전달한다(String operation) {
         // given
         Fixture fixture = createFixture();
@@ -336,7 +343,7 @@ class OrderCommandServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"completePayment", "failPayment", "cancel"})
+    @ValueSource(strings = {"completePayment", "failPayment", "cancel", "failPaymentIfPossible", "cancelIfPossible"})
     void 주문을_먼저_잠그고_역순인_품목도_상품_ID_오름차순으로_처리한다(String operation) {
         // given
         Fixture fixture = createFixture();
@@ -359,6 +366,110 @@ class OrderCommandServiceTest {
         queryOrder.verify(inventoryRepository).findInventoryByProduct_Id(7L);
         queryOrder.verify(inventoryRepository).findInventoryByProduct_Id(9L);
         assertThat(fixture.order().getOrderItems()).containsExactly(fixture.firstItem(), fixture.secondItem());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PAYMENT_PENDING, failPaymentIfPossible, PAYMENT_FAILED, RELEASED",
+            "PAYMENT_PENDING, cancelIfPossible, CANCELED, RELEASED",
+            "PAID, cancelIfPossible, CANCELED, RESTORED"
+    })
+    void 조건부_처리가_가능하면_주문을_잠그고_상태와_재고를_변경한다(
+            OrderStatus initialStatus, String operation, OrderStatus expectedStatus, StockState expectedStockState) {
+        // given
+        Fixture fixture = createFixture();
+        prepareStatus(fixture, initialStatus);
+        stubOrder(fixture);
+        stubInventories(fixture);
+
+        // when
+        execute(operation);
+
+        // then
+        assertThat(fixture.order().getStatus()).isEqualTo(expectedStatus);
+        assertThat(fixture.order().getOrderItems()).extracting(OrderItem::getStockState)
+                .containsExactly(expectedStockState, expectedStockState);
+        assertQuantities(fixture.firstInventory(), 10, 1, 9);
+        assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        then(orderRepository).should(atLeastOnce()).findForUpdateById(ORDER_ID);
+        then(orderRepository).should(atLeastOnce()).findWithOrderItemsById(ORDER_ID);
+        then(orderRepository).shouldHaveNoMoreInteractions();
+        then(inventoryRepository).should().findInventoryByProduct_Id(7L);
+        then(inventoryRepository).should().findInventoryByProduct_Id(9L);
+        then(inventoryRepository).shouldHaveNoMoreInteractions();
+        verifyNoInteractions(quoteService, chatRoomService, userAddressService, orderConfirmationRepository);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PAID, failPaymentIfPossible",
+            "PAYMENT_FAILED, failPaymentIfPossible",
+            "CANCELED, failPaymentIfPossible",
+            "PAYMENT_FAILED, cancelIfPossible",
+            "CANCELED, cancelIfPossible"
+    })
+    void 조건부_처리가_불가능하면_예외_없이_건너뛰고_품목과_재고를_유지한다(
+            OrderStatus initialStatus, String operation) {
+        // given
+        Fixture fixture = createFixture();
+        prepareStatus(fixture, initialStatus);
+        stubOrder(fixture);
+        StockState previousStockState = fixture.firstItem().getStockState();
+
+        // when
+        assertThatCode(() -> execute(operation)).doesNotThrowAnyException();
+
+        // then
+        assertThat(fixture.order().getStatus()).isEqualTo(initialStatus);
+        assertThat(fixture.order().getOrderItems()).extracting(OrderItem::getStockState)
+                .containsExactly(previousStockState, previousStockState);
+        if (initialStatus == OrderStatus.PAID) {
+            assertQuantities(fixture.firstInventory(), 7, 1, 6);
+            assertQuantities(fixture.secondInventory(), 18, 1, 17);
+        } else {
+            assertQuantities(fixture.firstInventory(), 10, 1, 9);
+            assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        }
+        then(orderRepository).should().findForUpdateById(ORDER_ID);
+        then(orderRepository).should().findWithOrderItemsById(ORDER_ID);
+        then(orderRepository).shouldHaveNoMoreInteractions();
+        verifyNoInteractions(inventoryRepository, firstProduct, secondProduct,
+                quoteService, chatRoomService, userAddressService, orderConfirmationRepository);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PAYMENT_PENDING, failPaymentIfPossible, PAYMENT_FAILED, RELEASED",
+            "PAYMENT_PENDING, cancelIfPossible, CANCELED, RELEASED",
+            "PAID, cancelIfPossible, CANCELED, RESTORED"
+    })
+    void 조건부_처리를_반복하면_두_번째는_건너뛰고_재고를_중복_변경하지_않는다(
+            OrderStatus initialStatus, String operation, OrderStatus expectedStatus, StockState expectedStockState) {
+        // given
+        Fixture fixture = createFixture();
+        prepareStatus(fixture, initialStatus);
+        stubOrder(fixture);
+        stubInventories(fixture);
+        execute(operation);
+
+        // 두 번째 요청에서도 잠금 조회를 수행하는지 첫 번째 요청과 구분해 확인한다.
+        clearInvocations(orderRepository);
+
+        // when
+        assertThatCode(() -> execute(operation)).doesNotThrowAnyException();
+
+        // then
+        assertThat(fixture.order().getStatus()).isEqualTo(expectedStatus);
+        assertThat(fixture.order().getOrderItems()).extracting(OrderItem::getStockState)
+                .containsExactly(expectedStockState, expectedStockState);
+        assertQuantities(fixture.firstInventory(), 10, 1, 9);
+        assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        then(orderRepository).should().findForUpdateById(ORDER_ID);
+        then(orderRepository).should().findWithOrderItemsById(ORDER_ID);
+        then(orderRepository).shouldHaveNoMoreInteractions();
+        then(inventoryRepository).should().findInventoryByProduct_Id(7L);
+        then(inventoryRepository).should().findInventoryByProduct_Id(9L);
+        then(inventoryRepository).shouldHaveNoMoreInteractions();
     }
 
     private Fixture createFixture() {
@@ -391,6 +502,7 @@ class OrderCommandServiceTest {
 
     private void prepareStatus(Fixture fixture, OrderStatus status) {
         switch (status) {
+            case PAYMENT_PENDING -> { }
             case PAID -> {
                 fixture.order().pay();
                 fixture.firstItem().deduct();
@@ -418,6 +530,8 @@ class OrderCommandServiceTest {
             case "completePayment" -> orderCommandService.completePayment(ORDER_ID);
             case "failPayment" -> orderCommandService.failPayment(ORDER_ID);
             case "cancel" -> orderCommandService.cancel(ORDER_ID);
+            case "failPaymentIfPossible" -> orderCommandService.failPaymentIfPossible(ORDER_ID);
+            case "cancelIfPossible" -> orderCommandService.cancelIfPossible(ORDER_ID);
             default -> throw new IllegalArgumentException(operation);
         }
     }

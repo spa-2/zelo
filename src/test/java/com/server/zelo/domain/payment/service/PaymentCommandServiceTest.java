@@ -2,6 +2,8 @@ package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.entity.ChatRoom;
+import com.server.zelo.domain.chat.service.ChatMessageService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderStatus;
@@ -26,9 +28,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -62,13 +62,17 @@ class PaymentCommandServiceTest {
     @Mock
     private OrderCommandService orderCommandService;
 
+    @Mock
+    private ChatMessageService chatMessageService;
+
     private PaymentCommandService paymentCommandService;
 
     // 트랜잭션 없이 콜백만 바로 실행해서 결제 확인 흐름만 검증한다
     @BeforeEach
     void setUp() {
         paymentCommandService = new PaymentCommandService(orderService, portOneClient, paymentService,
-                deliveryService, userAddressService, orderCommandService, TransactionOperations.withoutTransaction());
+                deliveryService, chatMessageService, userAddressService, orderCommandService,
+                TransactionOperations.withoutTransaction());
     }
 
     @Test
@@ -302,6 +306,52 @@ class PaymentCommandServiceTest {
         then(orderCommandService).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 결제가_완료되면_채팅방에_결제_카드를_남긴다() {
+        // given
+        givenPaid();
+        Order order = givenOrderedByWithAddress();
+        givenChatRoom(order, 5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(chatMessageService).should().createPaymentCardMessage(eq(5L), eq(USER_ID), any());
+    }
+
+    @Test
+    void 채팅방_없이_들어온_주문은_결제_카드를_남기지_않는다() {
+        // given
+        givenPaid();
+        givenOrderedByWithAddress();
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(chatMessageService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 결제_카드_저장이_실패해도_결제_완료를_반환한다() {
+        // given
+        givenPaid();
+        Order order = givenOrderedByWithAddress();
+        givenChatRoom(order, 5L);
+        willThrow(new BusinessException(ErrorCode.INVALID_INPUT))
+                .given(chatMessageService).createPaymentCardMessage(anyLong(), anyLong(), any());
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
+    }
+
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
     // 결제 반영 전에 주문이 결제 대기인지 확인하므로 주문 상태를 준비한다
     private Order givenOrderStatus(OrderStatus status) {
@@ -317,5 +367,27 @@ class PaymentCommandServiceTest {
         User user = mock(User.class);
         given(order.getUser()).willReturn(user);
         given(user.getId()).willReturn(userId);
+    }
+
+    private void givenPaid() {
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
+    }
+
+    // 배송 생성과 결제 카드가 같은 주문에서 사용자·채팅방을 꺼내므로 주문을 돌려줘 채팅방을 더 준비할 수 있게 한다
+    private Order givenOrderedByWithAddress() {
+        Order order = givenOrderStatus(OrderStatus.PAYMENT_PENDING);
+        User user = mock(User.class);
+        given(order.getUser()).willReturn(user);
+        given(user.getId()).willReturn(USER_ID);
+        given(userAddressService.getDefaultAddress(USER_ID)).willReturn(mock(UserAddress.class));
+        return order;
+    }
+
+    private void givenChatRoom(Order order, Long roomId) {
+        ChatRoom chatRoom = mock(ChatRoom.class);
+        given(order.getChatRoom()).willReturn(chatRoom);
+        given(chatRoom.getId()).willReturn(roomId);
     }
 }

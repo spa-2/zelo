@@ -26,8 +26,6 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class RefundCommandService {
 
-    private static final String CANCEL_KEY_PREFIX = "refund-";
-
     private final OrderService orderService;
     private final PortOneClient portOneClient;
     private final RefundService refundService;
@@ -35,6 +33,7 @@ public class RefundCommandService {
     private final DeliveryService deliveryService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
+    private static final String CANCEL_KEY_PREFIX = "refund-cancel-";
 
     // 포트원 취소는 외부 HTTP 호출이라 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
     public CreateRefundResponse createRefund(Long userId, Long orderId, String reason) {
@@ -42,7 +41,7 @@ public class RefundCommandService {
                 transactionOperations.execute(status -> requestRefund(userId, orderId, reason)));
 
         try {
-            portOneClient.cancelPaymentWithAmount(target.portoneId(), CANCEL_KEY_PREFIX + target.refundId(),
+            portOneClient.cancelPaymentWithAmount(target.portoneId(),String.format("%s%012d", CANCEL_KEY_PREFIX, target.refundId()),
                     target.amount(), target.amount(), reason);
         } catch (BusinessException e) {
             if (!isRejected(e)) {

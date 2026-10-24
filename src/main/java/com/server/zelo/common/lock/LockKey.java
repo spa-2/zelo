@@ -8,6 +8,7 @@ public class LockKey {
     private static final String USER_CREATE = "lock:user:create:";
     private static final String PAYMENT_CONFIRM = "lock:payment:confirm:";
     private static final String USER_ADDRESS = "lock:user:address:";
+    private static final String REFUND = "lock:refund:";
 
     // 같은 이메일로 동시에 가입해도 중복 검사를 같이 통과하지 못하게 이메일 단위로 락을 잡음
     public static String createUser(String email) {
@@ -24,6 +25,8 @@ public class LockKey {
     public static String updateUserAddress(Long userId) {return USER_ADDRESS + userId;}
 
     // 등록·수정과 같은 키를 써서 삭제 도중 기본 배송지가 바뀌지 않게 함
-    public static String deleteUserAddress(Long userId) {return USER_ADDRESS + userId;
-    }
+    public static String deleteUserAddress(Long userId) {return USER_ADDRESS + userId;}
+
+    // 같은 주문의 환불 요청이 겹쳐 포트원 취소가 두 번 나가지 않도록 주문 단위로 락을 잡음
+    public static String refund(Long orderId) {return REFUND + orderId;}
 }

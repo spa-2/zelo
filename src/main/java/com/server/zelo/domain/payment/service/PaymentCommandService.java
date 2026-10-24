@@ -1,6 +1,9 @@
 package com.server.zelo.domain.payment.service;
 
+import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
+import com.server.zelo.domain.chat.service.ChatMessageService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
@@ -10,9 +13,11 @@ import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentCommandService {
@@ -24,9 +29,11 @@ public class PaymentCommandService {
     private final PortOneClient portOneClient;
     private final PaymentService paymentService;
     private final DeliveryService deliveryService;
+    private final ChatMessageService chatMessageService;
     private final UserAddressService userAddressService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
+
 
     public PaymentStatus confirmPayment(Long userId, String portoneId) {
         Payment payment = paymentService.getPayment(portoneId);
@@ -58,6 +65,7 @@ public class PaymentCommandService {
                 orderCommandService.completePayment(orderId);
                 createDelivery(orderId);
             });
+            createPaymentCard(orderId, pgPayment);
             return PaymentStatus.PAID;
         }
 
@@ -113,6 +121,22 @@ public class PaymentCommandService {
     private void failOrderIfPossible(Long orderId) {
         if (orderService.getOrderWithItems(orderId).getStatus().isTransitionAllowed(OrderStatus.PAYMENT_FAILED)) {
             orderCommandService.failPayment(orderId);
+        }
+    }
+
+    // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 성공으로 나가게 한다
+    private void createPaymentCard(Long orderId, PortOnePayment pgPayment) {
+        try {
+            transactionOperations.executeWithoutResult(status -> {
+                Order order = orderService.getOrderWithItems(orderId);
+                if (order.getChatRoom() == null) {
+                    return;
+                }
+                chatMessageService.createPaymentCardMessage(order.getChatRoom().getId(), order.getUser().getId(),
+                        PaymentCardPayload.from(order, pgPayment.amount(), pgPayment.paidAt()));
+            });
+        } catch (RuntimeException e) {
+            log.error("결제 완료 카드 저장 실패 orderId={}", orderId, e);
         }
     }
 

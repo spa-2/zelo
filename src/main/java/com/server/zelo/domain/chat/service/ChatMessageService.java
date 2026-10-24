@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
+import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatRoom;
@@ -29,6 +30,8 @@ public class ChatMessageService {
     private static final String FALLBACK_CONTENT = "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.";
     private static final String FALLBACK_TYPE = "FALLBACK";
     private static final String FALLBACK_PAYLOAD_FORMAT = "{\"type\":\"" + FALLBACK_TYPE + "\",\"code\":\"%s\"}";
+    // 결제 성공 메세지
+    private static final String PAYMENT_COMPLETED_CONTENT = "결제가 완료됐어요.";
     // LLM에 함께 보내는 앞 대화의 상한. 사용자·AI가 다섯 번쯤 주고받은 양이고,
     // 메시지 하나는 1000자 제한이 있어도 기록이 쌓이면 프롬프트가 끝없이 길어지므로 글자 수로도 자른다
     private static final int HISTORY_SIZE = 10;
@@ -112,6 +115,16 @@ public class ChatMessageService {
         }
         Collections.reverse(history);
         return history;
+    }
+
+    // 다른 도메인이 남기는 알림이라 AI 답변과 구분되게 SYSTEM_EVENT로 저장한다
+    @Transactional
+    public ChatMessage createPaymentCardMessage(Long roomId, Long userId, PaymentCardPayload paymentCard) {
+        ChatRoom chatRoom = chatRoomService.getOwnedChatRoom(roomId, userId);
+        ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.SYSTEM_EVENT,
+                PAYMENT_COMPLETED_CONTENT, jsonMapper.writeValueAsString(paymentCard)));
+        chatRoom.updateLastMessageAt(LocalDateTime.now());
+        return chatMessage;
     }
 
     // DB(jsonb)가 키 순서·공백을 바꿔 돌려주므로 문자열 비교가 아니라 JSON의 type 값으로 본다

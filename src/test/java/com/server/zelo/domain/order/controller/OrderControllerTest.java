@@ -10,6 +10,7 @@ import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
+import com.server.zelo.domain.order.service.OrderFacade;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,12 +57,15 @@ class OrderControllerTest {
     @Captor
     private ArgumentCaptor<SearchOrderCondition> conditionCaptor;
 
+    @Mock
+    private OrderFacade orderFacade;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService, orderCommandService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade, orderService, orderCommandService))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

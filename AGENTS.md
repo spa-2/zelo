@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 docker compose up -d --wait           # start local Postgres 16 (db: zelotest, port 5432) and Redis 7 (port 6379), waits until both are healthy
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
 export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64-encoded; decodes to at least 32 bytes), startup fails without it
+export GOOGLE_CLIENT_ID=...           # required: application.yaml reads ${GOOGLE_CLIENT_ID} (Google OAuth client ID), startup fails without it
+export GOOGLE_CLIENT_SECRET=...       # required: application.yaml reads ${GOOGLE_CLIENT_SECRET}, startup fails without it
+export KAKAO_CLIENT_ID=...            # required: application.yaml reads ${KAKAO_CLIENT_ID} (Kakao REST API key), startup fails without it
+export KAKAO_CLIENT_SECRET=...        # required: application.yaml reads ${KAKAO_CLIENT_SECRET}, startup fails without it
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
@@ -15,7 +19,7 @@ export JWT_SECRET=...                 # required: application.yaml reads ${jwt_s
 ./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, Redis (Redisson connects at startup), `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need none of them.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, Redis (Redisson connects at startup), `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need none of them. The social login keys above are not needed for tests that use the `test` profile (`zelo.social.mode: fake`); they are only read when the app runs in the default `real` mode.
 
 ## Configuration notes
 

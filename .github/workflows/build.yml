@@ -76,6 +76,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'dummy-key-for-ci' }}
           # application.yaml의 ${jwt_secret}에 매핑됨 (Base64, 32바이트 이상)
           JWT_SECRET: ${{ secrets.JWT_SECRET || 'Y2ktZHVtbXktand0LXNlY3JldC1rZXktMzJieXRlcy1sb25nISE=' }}
+          # 소셜 로그인 키: real 모드로 컨텍스트가 뜨는 테스트에서 비어 있으면 기동이 실패하므로 가짜 값을 넣어줌 (테스트 프로필은 fake 모드라 실제로는 쓰이지 않음)
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || 'dummy-google-client-id-for-ci' }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || 'dummy-google-client-secret-for-ci' }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID || 'dummy-kakao-client-id-for-ci' }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET || 'dummy-kakao-client-secret-for-ci' }}
           # 추후에 추가할 예정
           PORTONE_API_SECRET: ${{ secrets.PORTONE_API_SECRET || 'dummy-portone-secret-for-ci' }}
           PORTONE_STORE_ID: ${{ secrets.PORTONE_STORE_ID || 'store-dummy-for-ci' }}

@@ -379,7 +379,7 @@ class SocialCommandServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"kakao", "unknown", "", " "})
+    @ValueSource(strings = {"facebook", "unknown", "", " "})
     void 지원하지_않는_제공자면_예외가_발생하고_제공자를_호출하지_않는다(String provider) {
         // when & then
         assertThatThrownBy(() -> socialCommandService.login(provider, LOGIN_REQUEST))

@@ -14,11 +14,15 @@ import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.entity.StockState;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.model.OrderConfirmation;
+import com.server.zelo.domain.payment.entity.Payment;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
+import com.server.zelo.domain.payment.repository.PaymentRepository;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.service.UserAddressService;
@@ -67,6 +71,7 @@ class OrderCreationCommandServiceTest {
     private static final Long ROOM_ID = 10L;
     private static final String QUOTE_ID = "QUOTE-161";
     private static final String CONFIRMATION_ID = "confirmation-161";
+    private static final String PORTONE_ID = "payment-existing-161";
     private static final CreateOrderRequest REQUEST = new CreateOrderRequest(QUOTE_ID, CONFIRMATION_ID);
     private static final LocalDateTime NOW = LocalDateTime.of(2030, 1, 2, 12, 0);
 
@@ -74,6 +79,7 @@ class OrderCreationCommandServiceTest {
     @Mock private OrderService orderService;
     @Mock private QuoteService quoteService;
     @Mock private ProductService productService;
+    @Mock private PaymentService paymentService;
     @Mock private ChatRoomService chatRoomService;
     @Mock private InventoryService inventoryService;
     @Mock private UserAddressService userAddressService;
@@ -86,7 +92,7 @@ class OrderCreationCommandServiceTest {
     @BeforeEach
     void setUp() {
         transactionManager = new OrderTestTransactionManager();
-        command = new OrderCommandService(userService, orderService, quoteService, productService,
+        command = new OrderCommandService(userService, orderService, quoteService, productService, paymentService,
                 chatRoomService, inventoryService, userAddressService,
                 new TransactionTemplate(transactionManager));
     }
@@ -98,6 +104,7 @@ class OrderCreationCommandServiceTest {
         stubProducts();
         UserAddress address = stubAddress();
         stubSave();
+        Payment payment = stubPaymentCreation();
 
         // when
         CreateOrderResult result = command.createOrder(USER_ID, REQUEST);
@@ -124,6 +131,10 @@ class OrderCreationCommandServiceTest {
         assertThat(result.response().orderId()).isEqualTo(101L);
         assertThat(result.response().chatRoomId()).isEqualTo(ROOM_ID);
         assertThat(result.response().createdAt()).isEqualTo(NOW);
+        assertThat(result.response().portoneId()).isEqualTo(PORTONE_ID);
+        assertThat(payment.getOrderId()).isEqualTo(101L);
+        assertThat(payment.getAmount()).isEqualTo(7_000L);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
         assertThat(result.response().items()).extracting(item -> item.productName())
                 .containsExactly("견적 배", "견적 사과");
         assertThat(result.response().items()).extracting(item -> item.productUnit())
@@ -131,11 +142,13 @@ class OrderCreationCommandServiceTest {
         assertThat(result.response().items()).extracting(item -> item.quantity()).containsExactly(2, 3);
         assertThat(result.response().items()).extracting(item -> item.lineAmount()).containsExactly(4_000L, 3_000L);
         then(productService).should().findProducts(List.of(20L, 10L));
-        InOrder calls = inOrder(orderService, inventoryService);
+        InOrder calls = inOrder(orderService, inventoryService, paymentService);
         calls.verify(orderService).createOrder(any(Order.class));
         calls.verify(inventoryService).reserve(10L, 3);
         calls.verify(inventoryService).reserve(20L, 2);
+        calls.verify(paymentService).createPayment(101L, 7_000L);
         calls.verify(orderService).deleteConfirmationAfterCommit(CONFIRMATION_ID);
+        then(paymentService).should(never()).getLatestPayment(any());
         assertThat(transactionManager.events).containsExactly("begin", "commit");
     }
 
@@ -143,6 +156,7 @@ class OrderCreationCommandServiceTest {
     void 이미_생성된_주문은_확인정보와_재고를_재처리하지_않고_반환한다() {
         // given
         Order existing = existingOrder();
+        stubExistingPayment();
         given(orderService.findOwnedOrderByQuoteId(USER_ID, QUOTE_ID)).willReturn(Optional.of(existing));
 
         // when
@@ -151,6 +165,9 @@ class OrderCreationCommandServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(result.response().orderId()).isEqualTo(101L);
+        assertThat(result.response().portoneId()).isEqualTo(PORTONE_ID);
+        then(paymentService).should().getLatestPayment(101L);
+        then(paymentService).should(never()).createPayment(any(), any());
         then(orderService).should(never()).validateConfirmation(any(), any(), any());
         then(orderService).should(never()).validateNoPendingOrder(any());
         then(orderService).should(never()).createOrder(any());
@@ -330,6 +347,7 @@ class OrderCreationCommandServiceTest {
         calls.verify(inventoryService).reserve(20L, 2);
         assertThat(transactionManager.events).containsExactly("begin", "rollback");
         then(orderService).should(never()).deleteConfirmationAfterCommit(any());
+        verifyNoInteractions(paymentService);
     }
 
     @Test
@@ -337,6 +355,7 @@ class OrderCreationCommandServiceTest {
         // given
         stubBeforeSave();
         Order existing = existingOrder();
+        stubExistingPayment();
         DataIntegrityViolationException failure = uniqueFailure("23505");
         given(orderService.createOrder(any())).willThrow(failure);
         given(orderService.findOwnedOrderByQuoteId(USER_ID, QUOTE_ID))
@@ -353,6 +372,9 @@ class OrderCreationCommandServiceTest {
         assertThat(result.created()).isFalse();
         assertThat(result.response().orderId()).isEqualTo(101L);
         assertThat(transactionManager.events).containsExactly("begin", "rollback", "begin", "commit");
+        assertThat(result.response().portoneId()).isEqualTo(PORTONE_ID);
+        then(paymentService).should().getLatestPayment(101L);
+        then(paymentService).should(never()).createPayment(any(), any());
         verifyNoInteractions(inventoryService);
         then(orderService).should(never()).deleteConfirmationAfterCommit(any());
     }
@@ -406,6 +428,103 @@ class OrderCreationCommandServiceTest {
         verifyNoInteractions(inventoryService);
     }
 
+    @Test
+    void 결제_생성에_실패하면_트랜잭션을_롤백하고_확인정보를_삭제하지_않는다() {
+        // given
+        stubBeforeSave();
+        stubPersist();
+        DataIntegrityViolationException failure = uniqueFailure("23502");
+        given(paymentService.createPayment(101L, 7_000L)).willThrow(failure);
+
+        // when
+        // then
+        assertThatThrownBy(() -> command.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        InOrder calls = inOrder(inventoryService, paymentService);
+        calls.verify(inventoryService).reserve(10L, 3);
+        calls.verify(inventoryService).reserve(20L, 2);
+        calls.verify(paymentService).createPayment(101L, 7_000L);
+        assertThat(transactionManager.events).containsExactly("begin", "rollback");
+        then(orderService).should(never()).deleteConfirmationAfterCommit(any());
+        then(paymentService).should(never()).getLatestPayment(any());
+    }
+
+    @Test
+    void 기존_주문에_결제가_없으면_새로_발급하지_않고_예외를_반환한다() {
+        // given
+        Order existing = existingOrder();
+        given(orderService.findOwnedOrderByQuoteId(USER_ID, QUOTE_ID)).willReturn(Optional.of(existing));
+        given(paymentService.getLatestPayment(101L)).willThrow(new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+
+        // when
+        // then
+        assertError(ErrorCode.PAYMENT_NOT_FOUND);
+        then(paymentService).should(never()).createPayment(any(), any());
+        then(orderService).should(never()).createOrder(any());
+        verifyNoInteractions(inventoryService, quoteService, userAddressService);
+        assertThat(transactionManager.events).containsExactly("begin", "rollback");
+    }
+
+    @Test
+    void 신규_주문을_재요청해도_결제를_한_번만_생성하고_같은_결제번호를_반환한다() {
+        // given
+        stubBeforeSave();
+        stubSave();
+        Payment payment = stubPaymentCreation();
+
+        // when
+        CreateOrderResult first = command.createOrder(USER_ID, REQUEST);
+        ArgumentCaptor<Order> savedOrder = ArgumentCaptor.forClass(Order.class);
+        then(orderService).should().createOrder(savedOrder.capture());
+        given(orderService.findOwnedOrderByQuoteId(USER_ID, QUOTE_ID))
+                .willReturn(Optional.of(savedOrder.getValue()));
+        given(paymentService.getLatestPayment(101L)).willReturn(payment);
+        CreateOrderResult retry = command.createOrder(USER_ID, REQUEST);
+
+        // then
+        assertThat(first.created()).isTrue();
+        assertThat(retry.created()).isFalse();
+        assertThat(retry.response()).isEqualTo(first.response());
+        then(paymentService).should().createPayment(101L, 7_000L);
+        then(paymentService).should().getLatestPayment(101L);
+        then(inventoryService).should().reserve(10L, 3);
+        then(inventoryService).should().reserve(20L, 2);
+        then(orderService).should().deleteConfirmationAfterCommit(CONFIRMATION_ID);
+        assertThat(transactionManager.events).containsExactly("begin", "commit", "begin", "commit");
+    }
+
+    @Test
+    void 실제_결제서비스로_READY_결제를_저장하고_발급한_UUID_결제번호를_반환한다() {
+        // given
+        stubBeforeSave();
+        stubSave();
+        PaymentRepository paymentRepository = mock(PaymentRepository.class);
+        PaymentService actualPaymentService = new PaymentService(paymentRepository);
+        OrderCommandService actualCommand = new OrderCommandService(userService, orderService, quoteService,
+                productService, actualPaymentService, chatRoomService, inventoryService, userAddressService,
+                new TransactionTemplate(transactionManager));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+            return invocation.getArgument(0);
+        });
+
+        // when
+        CreateOrderResult result = actualCommand.createOrder(USER_ID, REQUEST);
+
+        // then
+        ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+        then(paymentRepository).should().save(paymentCaptor.capture());
+        Payment saved = paymentCaptor.getValue();
+        assertThat(saved.getOrderId()).isEqualTo(101L);
+        assertThat(saved.getAmount()).isEqualTo(7_000L);
+        assertThat(saved.getStatus()).isEqualTo(PaymentStatus.READY);
+        assertThat(saved.getPortoneId()).startsWith("payment-");
+        String uuid = saved.getPortoneId().substring("payment-".length());
+        assertThat(java.util.UUID.fromString(uuid).toString()).isEqualTo(uuid);
+        assertThat(result.response().portoneId()).isEqualTo(saved.getPortoneId());
+        assertThat(transactionManager.events).containsExactly("begin", "commit");
+        verifyNoInteractions(paymentService);
+    }
+
     private void stubBeforeSave() {
         stubStart(quote());
         stubProducts();
@@ -452,6 +571,10 @@ class OrderCreationCommandServiceTest {
 
     private void stubSave() {
         given(chatRoom.getId()).willReturn(ROOM_ID);
+        stubPersist();
+    }
+
+    private void stubPersist() {
         given(orderService.createOrder(any())).willAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
             Order order = invocation.getArgument(0);
@@ -462,11 +585,25 @@ class OrderCreationCommandServiceTest {
     }
 
     private Order existingOrder() {
-        given(chatRoom.getId()).willReturn(ROOM_ID);
         Order order = Order.of(user, QUOTE_ID, "기존 주문", ActorType.USER, chatRoom, 0L,
                 ShippingAddress.of("홍길동", "01012345678", "12345", "서울 주소"));
         ReflectionTestUtils.setField(order, "id", 101L);
         return order;
+    }
+
+    private Payment stubPaymentCreation() {
+        Payment payment = Payment.of(101L, PORTONE_ID, 7_000L);
+        given(paymentService.createPayment(101L, 7_000L)).willAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+            assertThat(transactionManager.events).containsExactly("begin");
+            return payment;
+        });
+        return payment;
+    }
+
+    private void stubExistingPayment() {
+        given(chatRoom.getId()).willReturn(ROOM_ID);
+        given(paymentService.getLatestPayment(101L)).willReturn(Payment.of(101L, PORTONE_ID, 0L));
     }
 
     private void assertError(ErrorCode expected) {

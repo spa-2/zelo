@@ -89,6 +89,7 @@ class OrderCreationControllerTest {
                 .andExpect(jsonPath("$.data.status").value("PAYMENT_PENDING"))
                 .andExpect(jsonPath("$.data.chatRoomId").value(10))
                 .andExpect(jsonPath("$.data.totalAmount").value(3_000))
+                .andExpect(jsonPath("$.data.portoneId").value("payment-existing-161"))
                 .andExpect(jsonPath("$.data.items[0].productId").value(20))
                 .andExpect(jsonPath("$.data.items[0].quantity").value(3))
                 .andExpect(jsonPath("$.data.createdAt").exists())
@@ -182,6 +183,6 @@ class OrderCreationControllerTest {
         return new CreateOrderResponse(101L, quoteId, "사과 주문", ActorType.USER, 10L,
                 OrderStatus.PAYMENT_PENDING,
                 List.of(new CreateOrderResponse.Items(20L, "사과", "1개", 3, 1_000L, 3_000L)),
-                3_000L, LocalDateTime.of(2030, 1, 2, 12, 0));
+                3_000L, "payment-existing-161", LocalDateTime.of(2030, 1, 2, 12, 0));
     }
 }

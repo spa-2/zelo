@@ -85,6 +85,10 @@ public class RefundCommandService {
     // 취소 웹훅을 받으면 포트원에 다시 조회해, 결과를 모른 채 남은 환불이나 포트원에서 직접 취소한 결제를 맞춘다
     public void syncCancellation(Long orderId, String portoneId) {
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
+        if (pgPayment.isPaid()) {
+            failRequestedRefund(orderId, portoneId);
+            return;
+        }
         if (!pgPayment.isCancelled()) {
             log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={}, status={}", portoneId, pgPayment.status());
             return;
@@ -100,8 +104,12 @@ public class RefundCommandService {
                     refund -> refundService.complete(refund.getId(), LocalDateTime.now()),
                     () -> log.warn("환불 요청 없이 포트원에서 취소된 결제 portoneId={}", portoneId));
             paymentService.cancel(portoneId, payment.getPgAmount());
-            orderCommandService.cancelIfPossible(orderId);
-            deliveryService.cancelDeliveryIfPossible(orderId);
+            // 이미 출고된 주문은 상품을 회수하기 전이라 주문 취소와 재고 복원을 하지 않고 운영 회수 절차에 맡긴다
+            if (deliveryService.cancelDeliveryIfPossible(orderId)) {
+                orderCommandService.cancelIfPossible(orderId);
+            } else {
+                log.warn("출고 후 포트원에서 취소된 주문이라 회수가 필요함 orderId={}", orderId);
+            }
         });
     }
 
@@ -113,5 +121,15 @@ public class RefundCommandService {
         return errorCode == ErrorCode.PG_REQUEST_REJECTED
                 || errorCode == ErrorCode.PAYMENT_NOT_FOUND
                 || errorCode == ErrorCode.INVALID_INPUT;
+    }
+
+    private void failRequestedRefund(Long orderId, String portoneId) {
+        transactionOperations.executeWithoutResult(status -> {
+            Payment payment = paymentService.getPayment(portoneId);
+            refundService.findRequestedRefund(payment.getId()).ifPresent(refund -> {
+                refundService.fail(refund.getId());
+                deliveryService.releaseHold(orderId);
+            });
+        });
     }
 }

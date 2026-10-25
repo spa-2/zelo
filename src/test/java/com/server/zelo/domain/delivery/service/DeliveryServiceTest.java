@@ -180,11 +180,12 @@ class DeliveryServiceTest {
         given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.of(delivery));
 
         // when
-        deliveryService.cancelDeliveryIfPossible(10L);
+        boolean result = deliveryService.cancelDeliveryIfPossible(10L);
 
         // then
         assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.CANCELED);
         assertThat(delivery.isOnHold()).isFalse();
+        assertThat(result).isTrue();
     }
 
     @Test
@@ -199,6 +200,15 @@ class DeliveryServiceTest {
 
         // then
         assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.SHIPPING);
+    }
+
+    @Test
+    void 배송이_없으면_취소할_것이_없어_true를_돌려준다() {
+        // given
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(deliveryService.cancelDeliveryIfPossible(10L)).isTrue();
     }
 
     private Delivery readyDelivery() {

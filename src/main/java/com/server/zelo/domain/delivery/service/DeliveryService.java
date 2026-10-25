@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -72,15 +73,21 @@ public class DeliveryService {
                 status, before, Limit.of(BATCH_SIZE));
     }
 
-    // 포트원에서 직접 취소된 결제는 출고 전일 때만 배송을 취소한다. 이미 출고됐으면 운영에서 회수한다
-    public void cancelDeliveryIfPossible(Long orderId) {
-        deliveryRepository.findByOrderId(orderId)
-                .filter(Delivery::isCancelable)
-                .ifPresent(delivery -> {
-                    if (delivery.isOnHold()) {
-                        delivery.release();
-                    }
-                    delivery.cancel(LocalDateTime.now());
-                });
+    // 출고 전이면 배송을 취소하고 true, 이미 출고됐으면 바꾸지 않고 false를 돌려준다.
+    // 배송이 아직 없으면 보낼 상품도 없으므로 true다
+    public boolean cancelDeliveryIfPossible(Long orderId) {
+        Optional<Delivery> found = deliveryRepository.findByOrderId(orderId);
+        if (found.isEmpty()) {
+            return true;
+        }
+        Delivery delivery = found.get();
+        if (!delivery.isCancelable()) {
+            return false;
+        }
+        if (delivery.isOnHold()) {
+            delivery.release();
+        }
+        delivery.cancel(LocalDateTime.now());
+        return true;
     }
 }

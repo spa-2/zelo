@@ -191,10 +191,47 @@ class RefundCommandServiceTest {
     }
 
     @Test
-    void 포트원에서_취소되지_않은_결제면_아무것도_바꾸지_않는다() {
+    void 포트원에서_결제가_그대로_완료_상태면_진행_중_환불을_실패로_확정하고_배송_보류를_푼다() {
         // given
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        Refund refund = Refund.of(1L, RefundType.FULL, REASON);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should().fail(REFUND_ID);
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(paymentService).should(never()).cancel(any(), any());
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 포트원에서_결제가_완료_상태이고_진행_중_환불이_없으면_아무것도_바꾸지_않는다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should(never()).fail(any());
+        then(deliveryService).shouldHaveNoInteractions();
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 포트원에서_취소도_완료도_아닌_결제면_아무것도_바꾸지_않는다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
@@ -221,6 +258,23 @@ class RefundCommandServiceTest {
         then(refundService).shouldHaveNoInteractions();
         then(orderCommandService).shouldHaveNoInteractions();
         then(deliveryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 이미_출고된_주문이면_결제만_취소하고_주문과_재고는_그대로_둔다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+        given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(false);
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(paymentService).should().cancel(PORTONE_ID, 10_000L);
+        then(orderCommandService).shouldHaveNoInteractions();
     }
 
     private void givenRefundable() {

@@ -12,6 +12,7 @@ import org.springframework.ai.chat.client.ResponseEntity;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
@@ -27,8 +28,9 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "zelo.llm.mode", havingValue = "real")
 public class SpringAiLlmGateway implements LlmGateway {
 
-    // chat.md 규칙이 이 표시로 서버가 남긴 결제 결과를 알아본다. 지금 SYSTEM_EVENT는 결제 결과 알림뿐이다
-    private static final String PAYMENT_NOTICE_PREFIX = "[결제 알림] ";
+    // 위조는 system 역할로 막고, 이 이름표는 LLM이 알림을 지시가 아닌 결제 결과로 읽게 한다(chat.md 규칙이 가리킴).
+    // 지금 SYSTEM_EVENT는 결제 결과 알림뿐이다
+    private static final String PAYMENT_NOTICE_LABEL = "결제 알림: ";
 
     private final Duration timeout;
     private final ChatClient chatClient;
@@ -117,15 +119,15 @@ public class SpringAiLlmGateway implements LlmGateway {
                 metadata.getUsage().getCompletionTokens());
     }
 
-    // Spring AI는 system → 이 기록 → 이번 user 메시지 순서로 요청을 만든다.
-    // 사용자가 아닌 메시지는 서비스 쪽이 한 말이라 AI 메시지로 보낸다. 결제 결과 알림(SYSTEM_EVENT)은 LLM이
-    // 자기 말로 착각하지 않게 표시를 붙이고, 사용자가 같은 글자를 써도 user 메시지라 chat.md 규칙으로 구분된다
+    // Spring AI는 system → 이 기록(순서·역할 그대로) → 이번 user 메시지 순서로 요청을 만든다.
+    // 결제 결과 알림(SYSTEM_EVENT)은 그 자리에 system 역할로 보낸다. LLM 답은 항상 ASSISTANT, 사용자 말은 항상 USER로
+    // 저장되므로, 어떤 글자를 써도 system 역할의 결제 알림으로 보이게 만들 수 없다
     private static List<Message> toMessages(List<ChatMessage> history) {
         return history.stream()
                 .map(chatMessage -> switch (chatMessage.getSender()) {
                     case USER -> (Message) new UserMessage(chatMessage.getContent());
                     case ASSISTANT -> new AssistantMessage(chatMessage.getContent());
-                    case SYSTEM_EVENT -> new AssistantMessage(PAYMENT_NOTICE_PREFIX + chatMessage.getContent());
+                    case SYSTEM_EVENT -> new SystemMessage(PAYMENT_NOTICE_LABEL + chatMessage.getContent());
                 })
                 .toList();
     }

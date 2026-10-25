@@ -7,6 +7,8 @@ import com.server.zelo.domain.user.repository.SocialAccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class SocialAccountService {
@@ -14,5 +16,9 @@ public class SocialAccountService {
 
     public void createSocialAccount(User socialUser, SocialProvider provider, String providerId) {
         socialAccountRepository.save(SocialAccount.of(socialUser, provider, providerId));
+    }
+
+    public Optional<SocialAccount> findByProviderAndProviderId(SocialProvider socialProvider, String providerId) {
+       return socialAccountRepository.findByProviderAndProviderId(socialProvider, providerId);
     }
 }

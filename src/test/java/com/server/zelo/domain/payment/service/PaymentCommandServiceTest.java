@@ -161,9 +161,6 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
-        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
-
-
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -171,8 +168,8 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
         then(paymentService).should().fail(PORTONE_ID);
-        then(orderCommandService).should().failPayment(ORDER_ID);
-        then(orderCommandService).should(never()).cancel(anyLong());
+        then(orderCommandService).should().failPaymentIfPossible(ORDER_ID);
+        then(orderCommandService).should(never()).cancelIfPossible(anyLong());
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
     }
@@ -239,7 +236,6 @@ class PaymentCommandServiceTest {
         willThrow(new BusinessException(ErrorCode.ORDER_ACCESS_DENIED))
                 .given(orderService).validateOwner(ORDER_ID, USER_ID);
 
-        // when
         // then
         assertThatThrownBy(() -> paymentCommandService.confirmPayment(USER_ID, PORTONE_ID))
                 .isInstanceOfSatisfying(BusinessException.class,
@@ -256,7 +252,6 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
-        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -264,46 +259,11 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.CANCELED);
         then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
-        then(orderCommandService).should().cancel(ORDER_ID);
-        then(orderCommandService).should(never()).failPayment(anyLong());
+        then(orderCommandService).should().cancelIfPossible(ORDER_ID);
+        then(orderCommandService).should(never()).failPaymentIfPossible(anyLong());
         then(paymentService).should(never()).fail(any());
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
-    }
-
-    @Test
-    void 포트원은_취소됐고_주문도_이미_취소됐으면_결제만_취소로_맞춘다() {
-        // given
-        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
-        given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
-        givenOrderStatus(OrderStatus.CANCELED);
-
-        // when
-        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
-
-        // then
-        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
-        then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
-        then(orderCommandService).shouldHaveNoInteractions();
-        then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
-    }
-
-    @Test
-    void 포트원_결제가_실패했지만_주문이_이미_취소됐으면_결제만_실패로_맞춘다() {
-        // given
-        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
-        given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
-        givenOrderStatus(OrderStatus.CANCELED);
-
-        // when
-        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
-
-        // then
-        assertThat(status).isEqualTo(PaymentStatus.FAILED);
-        then(paymentService).should().fail(PORTONE_ID);
-        then(orderCommandService).shouldHaveNoInteractions();
     }
 
     @Test

@@ -60,12 +60,18 @@ public class WebhookEvent extends BaseCreatedEntity {
     }
 
     public void process(LocalDateTime processedAt) {
+        if (isProcessed()) {
+            return;
+        }
         changeStatus(WebhookStatus.PROCESSED);
         this.processedAt = processedAt;
         this.failureReason = null;
     }
 
     public void fail(String failureReason) {
+        if (isProcessed()) {
+            return;
+        }
         changeStatus(WebhookStatus.FAILED);
         this.failureReason = failureReason;
     }

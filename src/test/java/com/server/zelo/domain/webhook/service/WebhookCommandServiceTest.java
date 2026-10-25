@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -23,6 +24,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class WebhookCommandServiceTest {
@@ -88,6 +90,22 @@ class WebhookCommandServiceTest {
                 .isEqualTo(ErrorCode.PG_TIMEOUT);
         then(webhookEventService).should().fail(eq(1L), any());
         then(webhookEventService).should(never()).process(any(), any());
+    }
+
+    @Test
+    void 같은_웹훅이_동시에_저장돼_중복_키_예외가_나면_다시_조회해_처리한다() {
+        // given
+        given(webhookEventService.receive(WEBHOOK_ID, REQUEST, BODY))
+                .willThrow(new DataIntegrityViolationException("duplicate webhook_id"))
+                .willReturn(receivedEvent());
+
+        // when
+        webhookCommandService.handle(WEBHOOK_ID, REQUEST, BODY);
+
+        // then
+        then(webhookEventService).should(times(2)).receive(WEBHOOK_ID, REQUEST, BODY);
+        then(paymentFacade).should().confirmPayment(PORTONE_ID);
+        then(webhookEventService).should().process(eq(1L), any(LocalDateTime.class));
     }
 
     private WebhookEvent receivedEvent() {

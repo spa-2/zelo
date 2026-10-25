@@ -51,16 +51,31 @@ class WebhookEventTest {
     }
 
     @Test
-    void 처리_완료된_웹훅은_실패로_바꿀_수_없다() {
+    void 이미_처리된_웹훅을_다시_처리해도_처리_시각이_바뀌지_않는다() {
         // given
         WebhookEvent event = newEvent();
         event.process(PROCESSED_AT);
 
-        // when // then
-        assertThatThrownBy(() -> event.fail("실패"))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_INPUT);
+        // when
+        event.process(PROCESSED_AT.plusMinutes(1));
+
+        // then
+        assertThat(event.getStatus()).isEqualTo(WebhookStatus.PROCESSED);
+        assertThat(event.getProcessedAt()).isEqualTo(PROCESSED_AT);
+    }
+
+    @Test
+    void 이미_처리된_웹훅은_실패로_바꾸지_않는다() {
+        // given
+        WebhookEvent event = newEvent();
+        event.process(PROCESSED_AT);
+
+        // when
+        event.fail("실패");
+
+        // then
+        assertThat(event.getStatus()).isEqualTo(WebhookStatus.PROCESSED);
+        assertThat(event.getFailureReason()).isNull();
     }
 
     private WebhookEvent newEvent() {

@@ -6,18 +6,25 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderStatus;
+import com.server.zelo.domain.order.model.OrderConfirmation;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -77,10 +84,76 @@ public class OrderService {
         orderConfirmationRepository.save(confirmationId, userId, roomId, quoteId, expiresAt);
     }
 
+    public OrderConfirmation validateConfirmation(Long userId, String quoteId, String confirmationId) {
+
+        OrderConfirmation confirmation = orderConfirmationRepository
+                .findById(confirmationId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_INPUT,
+                        "구매 확인 정보가 없거나 만료되었습니다."
+                ));
+
+        // 다른 사용자가 발급받은 확인 번호로 주문하지 못하도록 검증
+        if (!userId.equals(confirmation.userId())) {
+            throw new BusinessException(ErrorCode.NO_AUTHORITY);
+        }
+
+        // 구매 확인을 거친 견적과 실제 주문하려는 견적이 같은지 검증
+        if (!quoteId.equals(confirmation.quoteId())) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_INPUT,
+                    "구매 확인 정보와 견적이 일치하지 않습니다."
+            );
+        }
+
+        return confirmation;
+    }
+
     // 주문이 없는 경우도 같은 예외로 응답해 다른 사용자의 주문 존재 여부를 노출하지 않음.
     public void validateOwner(Long orderId, Long userId) {
         if (!orderRepository.existsByIdAndUser_Id(orderId, userId)) {
             throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
         }
+    }
+
+    public Optional<Order> findOwnedOrderByQuoteId(Long userId, String quoteId) {
+        return orderRepository.findByQuoteId(quoteId)
+                .map(order -> {
+                    // 다른 사용자의 주문 정보가 반환되지 않도록 소유권을 확인
+                    if (!userId.equals(order.getUser().getId())) {
+                        throw new BusinessException(ErrorCode.NO_AUTHORITY);
+                    }
+
+                    return order;
+                });
+    }
+
+    // 선점 재고가 여러 결제 대기 주문에 묶이지 않도록 신규 주문 생성을 제한
+    public void validateNoPendingOrder(Long userId) {
+        if (orderRepository.existsByUser_IdAndStatus(userId, OrderStatus.PAYMENT_PENDING)) {
+            throw new BusinessException(ErrorCode.PENDING_ORDER_EXISTS);
+        }
+    }
+
+    @Transactional
+    public Order createOrder(Order order) {
+        return orderRepository.save(order);
+    }
+
+    public void deleteConfirmationAfterCommit(String confirmationId) {
+        // 주문 저장과 재고 선점이 모두 커밋된 경우에만 확인 정보를 삭제한다.
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            orderConfirmationRepository.deleteById(confirmationId);
+                        } catch (RuntimeException exception) {
+                            // 주문은 이미 저장됐으므로 삭제 실패는 기록하고 기존 TTL로 정리한다.
+                            log.warn("주문 생성 후 구매 확인 정보 삭제 실패", exception);
+                        }
+                    }
+                }
+        );
     }
 }

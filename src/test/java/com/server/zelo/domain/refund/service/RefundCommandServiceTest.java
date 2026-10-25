@@ -161,6 +161,8 @@ class RefundCommandServiceTest {
         Refund refund = Refund.of(1L, RefundType.FULL, REASON);
         ReflectionTestUtils.setField(refund, "id", REFUND_ID);
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(true);
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
@@ -179,6 +181,8 @@ class RefundCommandServiceTest {
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+        given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(true);
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);

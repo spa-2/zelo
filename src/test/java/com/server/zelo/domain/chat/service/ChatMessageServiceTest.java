@@ -12,11 +12,13 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
+import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.repository.ChatMessageRepository;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import java.time.LocalDateTime;
@@ -330,6 +332,27 @@ class ChatMessageServiceTest {
 
         // then
         assertThat(history).containsExactly(middle, newest);
+    }
+
+    @Test
+    void 결제_카드를_시스템_알림으로_저장하고_마지막_대화_시각을_갱신한다() {
+        // given
+        ChatRoom chatRoom = ChatRoom.of(1L);
+        LocalDateTime before = chatRoom.getLastMessageAt();
+        given(chatRoomService.getOwnedChatRoom(10L, 1L)).willReturn(chatRoom);
+        given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+        PaymentCardPayload card = new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
+                List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),
+                12_000L, PaymentStatus.PAID, LocalDateTime.of(2026, 10, 24, 12, 0));
+
+        // when
+        ChatMessage result = chatMessageService.createPaymentCardMessage(10L, 1L, card);
+
+        // then
+        assertThat(result.getSender()).isEqualTo(ChatSender.SYSTEM_EVENT);
+        assertThat(result.getContent()).isEqualTo("결제가 완료됐어요.");
+        assertThat(result.getPayload()).contains("\"type\":\"PAYMENT_CARD\"").contains("\"orderId\":3");
+        assertThat(chatRoom.getLastMessageAt()).isAfterOrEqualTo(before);
     }
 
     private List<ChatMessage> messagesWithIds(Long... ids) {

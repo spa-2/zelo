@@ -11,7 +11,6 @@ import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
-import com.server.zelo.domain.user.service.UserAddressService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,6 @@ public class PaymentCommandService {
     private final PaymentService paymentService;
     private final DeliveryService deliveryService;
     private final ChatMessageService chatMessageService;
-    private final UserAddressService userAddressService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
 
@@ -111,11 +109,11 @@ public class PaymentCommandService {
     }
 
 
-        // 결제가 완료된 주문은 주문한 사용자의 기본 배송지로 배송을 접수한다
-        private void createDelivery(Long orderId) {
-            Long userId = orderService.getOrderWithItems(orderId).getUser().getId();
-            deliveryService.createDelivery(orderId, userAddressService.getDefaultAddress(userId));
-        }
+    // 결제가 완료된 주문은 주문할 때 저장한 배송지로 배송을 접수한다
+    private void createDelivery(Long orderId) {
+        Order order = orderService.getOrderWithItems(orderId);
+        deliveryService.createDelivery(orderId, order.getShippingAddress());
+    }
 
     // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 그대로 나가게 한다
     // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다

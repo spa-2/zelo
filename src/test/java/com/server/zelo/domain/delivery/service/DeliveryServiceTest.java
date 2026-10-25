@@ -5,24 +5,21 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.entity.Delivery;
 import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
-import com.server.zelo.domain.user.entity.User;
-import com.server.zelo.domain.user.entity.UserAddress;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Limit;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+
 
 @ExtendWith(MockitoExtension.class)
 class DeliveryServiceTest {
@@ -35,9 +32,9 @@ class DeliveryServiceTest {
     private static final Limit BATCH = Limit.of(DeliveryService.BATCH_SIZE);
 
     @Test
-    void 기본_배송지_정보로_배송_준비_상태의_배송을_만든다() {
+    void 주문_배송지로_배송_준비_상태의_배송을_만든다() {
         // given
-        UserAddress address = UserAddress.of(mock(User.class), "집", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true);
+        ShippingAddress address = ShippingAddress.of("홍길동", "010-1234-5678", "12345", "서울시 강남구");
         given(deliveryRepository.save(any(Delivery.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         // when

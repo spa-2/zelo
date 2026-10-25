@@ -24,6 +24,7 @@ public record PaymentCardPayload(
     // CANCELED 하나로는 사용자에게 다르게 알려야 할 세 경우가 구분되지 않아 사유를 따로 둔다
     public static final String USER_CANCELED = "USER_CANCELED";
     public static final String AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
+    // 결제가 들어왔을 때 주문이 결제 대기가 아니던 경우. 취소뿐 아니라 이미 결제됨·결제 실패도 포함한다
     public static final String ORDER_CLOSED = "ORDER_CLOSED";
 
     public static PaymentCardPayload from(Order order, PaymentStatus status, String reason,

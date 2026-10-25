@@ -363,7 +363,7 @@ class ChatMessageServiceTest {
             "FAILED, , 결제에 실패했어요.",
             "CANCELED, USER_CANCELED, 결제를 취소했어요.",
             "CANCELED, AMOUNT_MISMATCH, 결제 금액이 주문 금액과 달라 결제를 취소하고 환불했어요.",
-            "CANCELED, ORDER_CLOSED, 주문이 이미 취소된 상태라 결제된 금액을 환불했어요.",
+            "CANCELED, ORDER_CLOSED, 이미 처리가 끝난 주문이라 결제된 금액을 환불했어요.",
             "CANCELED, , 결제를 취소했어요."
     })
     void 결제_결과와_취소_사유에_맞는_문장으로_결제_카드를_저장한다(PaymentStatus status, String reason, String content) {

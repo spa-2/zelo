@@ -57,4 +57,9 @@ public class PaymentService {
     public void cancel(String portoneId, Long pgAmount) {
         getPayment(portoneId).cancel(pgAmount);
     }
+
+    public Payment getLatestPayment(Long orderId) {
+        return paymentRepository.findTopByOrderIdOrderByIdDesc(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+    }
 }

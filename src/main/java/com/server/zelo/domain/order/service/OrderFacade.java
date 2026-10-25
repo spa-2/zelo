@@ -3,9 +3,12 @@ package com.server.zelo.domain.order.service;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
+import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -18,6 +21,21 @@ public class OrderFacade {
         return lockDistributeService.execute(
                 LockKey.createOrder(userId),
                 () -> orderCommandService.createOrder(userId, request)
+        );
+    }
+
+    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId) {
+        Optional<String> portoneId = orderCommandService.findPaymentIdForCancellation(userId, orderId);
+
+        // 결제 정보가 없는 기존 주문은 Command의 주문 행 잠금으로 취소
+        if (portoneId.isEmpty()) {
+            return orderCommandService.cancelBeforePayment(userId, orderId);
+        }
+
+        // 결제 확인과 같은 락을 사용하고, 취소 트랜잭션이 끝날 때까지 유지
+        return lockDistributeService.execute(
+                LockKey.confirmPayment(portoneId.get()),
+                () -> orderCommandService.cancelBeforePayment(userId, orderId)
         );
     }
 }

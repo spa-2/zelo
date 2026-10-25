@@ -13,6 +13,7 @@ import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserService;
@@ -88,6 +89,9 @@ class OrderConfirmationCommandServiceTest {
     private ProductService productService;
 
     @Mock
+    private PaymentService paymentService;
+
+    @Mock
     private TransactionTemplate transactionTemplate;
 
     private OrderCommandService orderCommandService;
@@ -98,7 +102,7 @@ class OrderConfirmationCommandServiceTest {
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         QuoteService quoteService = new QuoteService(quoteRepository);
         orderCommandService = new OrderCommandService(
-                userService, orderService, quoteService, productService, chatRoomService,
+                userService, orderService, quoteService, productService, paymentService, chatRoomService,
                 inventoryService, userAddressService, transactionTemplate);
     }
 

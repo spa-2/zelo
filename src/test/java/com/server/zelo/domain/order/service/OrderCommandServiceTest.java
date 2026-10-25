@@ -16,6 +16,7 @@ import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserService;
@@ -85,6 +86,9 @@ class OrderCommandServiceTest {
     private ProductService productService;
 
     @Mock
+    private PaymentService paymentService;
+
+    @Mock
     private TransactionTemplate transactionTemplate;
 
     private OrderCommandService orderCommandService;
@@ -95,7 +99,7 @@ class OrderCommandServiceTest {
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         InventoryService inventoryService = new InventoryService(inventoryRepository);
         orderCommandService = new OrderCommandService(
-                userService, orderService, quoteService, productService, chatRoomService,
+                userService, orderService, quoteService, productService, paymentService, chatRoomService,
                 inventoryService, userAddressService, transactionTemplate);
     }
 

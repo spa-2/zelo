@@ -7,6 +7,7 @@ import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
+import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
 import com.server.zelo.domain.order.entity.ActorType;
@@ -16,6 +17,9 @@ import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.model.OrderConfirmation;
+import com.server.zelo.domain.payment.entity.Payment;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
+import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
@@ -53,6 +57,7 @@ public class OrderCommandService {
     private final OrderService orderService;
     private final QuoteService quoteService;
     private final ProductService productService;
+    private final PaymentService paymentService;
     private final ChatRoomService chatRoomService;
     private final InventoryService inventoryService;
     private final UserAddressService userAddressService;
@@ -186,17 +191,71 @@ public class OrderCommandService {
                                 .orElseThrow(() -> exception);
 
                         // 지연 로딩이 필요한 응답 변환까지 트랜잭션 안에서 완료
-                        return new CreateOrderResult(
-                                CreateOrderResponse.from(existingOrder, existingOrder.getOrderItems()),
-                                false
-                        );
+                        return toExistingOrderResult(existingOrder);
                     })
             );
         }
     }
 
+    /**
+     * 본인의 결제 전 주문을 취소하고 선점 재고를 해제한다.
+     * 결제 확인과의 동시 실행을 막는 Facade의 공통 락 안에서 호출한다.
+     */
+    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId) {
+        // 상태 검증부터 재고 해제까지 주문 행 잠금을 유지
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
+
+        // 없는 주문은 위 조회에서 404, 다른 사용자의 주문은 여기서 403으로 구분
+        if (!userId.equals(order.getUser().getId())) {
+            throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+        }
+
+        // 기존 cancel()은 PAID도 허용하므로 사용자 취소에서는 결제 전 상태로 제한
+        if (order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+
+        paymentService.findLatestPayment(orderId).ifPresent(payment -> {
+            // 결제 확인 중이거나 이미 결제됐다면 사용자 취소로 선점 재고를 풀지 않음
+            if (payment.getStatus() == PaymentStatus.CONFIRM_PENDING
+                    || payment.getStatus() == PaymentStatus.PAID) {
+                throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+            }
+        });
+
+        // 기존 주문 취소와 품목별 재고 처리 로직을 재사용
+        cancel(orderId);
+
+        return CancelOrderResponse.from(order);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<String> findPaymentIdForCancellation(Long userId, Long orderId) {
+        // Redis 락을 기다리는 동안 DB 행 잠금을 잡지 않도록 일반 조회
+        Order order = orderService.getOrderWithItems(orderId);
+
+        if (!userId.equals(order.getUser().getId())) {
+            throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+        }
+
+        if (order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+
+        return paymentService.findLatestPayment(orderId)
+                .map(payment -> {
+                    // 확인 대기인 결제는 락을 기다리기 전에 취소 불가로 응답
+                    if (payment.getStatus() == PaymentStatus.CONFIRM_PENDING
+                            || payment.getStatus() == PaymentStatus.PAID) {
+                        throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+                    }
+
+                    return payment.getPortoneId();
+                });
+    }
+
     private List<OrderItem> getItemsInProductOrder(Order order) {
-        // 여러 상품을 처리하는 모든 요청의 잠금 순서를 맞춰 교착 가능성을 줄인다.
+        // 여러 상품을 처리하는 모든 요청의 잠금 순서를 맞춰 교착 가능성을 줄임
         return order.getOrderItems().stream()
                 .sorted(Comparator.comparing(item ->
                         item.getProduct().getId()))
@@ -216,9 +275,7 @@ public class OrderCommandService {
         Optional<Order> existingOrder = orderService.findOwnedOrderByQuoteId(userId, request.quoteId());
 
         if (existingOrder.isPresent()) {
-            Order order = existingOrder.get();
-
-            return new CreateOrderResult(CreateOrderResponse.from(order, order.getOrderItems()), false);
+            return toExistingOrderResult(existingOrder.get());
         }
 
         // 신규 주문에 대해서만 구매 확인 정보를 검증
@@ -278,12 +335,18 @@ public class OrderCommandService {
             inventoryService.reserve(item.getProduct().getId(), item.getQuantity());
         }
 
+        // 주문·재고와 함께 저장해 결제 준비에 실패하면 전체가 롤백되도록 함
+        Payment payment = paymentService.createPayment(savedOrder.getId(), savedOrder.getTotalAmount());
+
         orderService.deleteConfirmationAfterCommit(request.confirmationId());
 
-        return new CreateOrderResult(CreateOrderResponse.from(savedOrder, savedOrder.getOrderItems()), true);
+        return new CreateOrderResult(CreateOrderResponse.from(
+                savedOrder, savedOrder.getOrderItems(), payment.getPortoneId()),
+                true);
     }
 
     private Map<Long, Product> validateQuoteItems(Quote quote) {
+
         List<QuoteItem> items = quote.items();
 
         if (items == null || items.isEmpty() || quote.totalAmount() == null || quote.totalAmount() < 0) {
@@ -360,5 +423,19 @@ public class OrderCommandService {
         }
 
         return false;
+    }
+
+    private CreateOrderResult toExistingOrderResult(Order order) {
+        // 재요청마다 결제를 새로 만들지 않고 이미 발급된 결제 번호를 반환한다.
+        Payment payment = paymentService.getLatestPayment(order.getId());
+
+        return new CreateOrderResult(
+                CreateOrderResponse.from(
+                        order,
+                        order.getOrderItems(),
+                        payment.getPortoneId()
+                ),
+                false
+        );
     }
 }

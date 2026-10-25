@@ -4,9 +4,11 @@ import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.domain.order.dto.request.CancelOrderRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
+import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
@@ -20,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -63,5 +66,17 @@ public class OrderController {
         return ResponseEntity
                 .status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
                 .body(ApiResponse.ok(result.response()));
+    }
+
+    @PostMapping("/{orderId}/cancellations")
+    public ResponseEntity<ApiResponse<CancelOrderResponse>> cancelOrder(
+            @Auth AuthUser authUser,
+            @PathVariable("orderId") Long orderId,
+            // 취소 사유는 저장하지 않지만, 요청에서 필수 입력과 1~50자 조건을 검증
+            @Valid @RequestBody CancelOrderRequest request
+    ) {
+        CancelOrderResponse response = orderFacade.cancelBeforePayment(authUser.id(), orderId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

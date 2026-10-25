@@ -1,7 +1,6 @@
 package com.server.zelo.ai.llm;
 
 import com.server.zelo.domain.chat.entity.ChatMessage;
-import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import java.time.Duration;
 import java.util.List;
@@ -25,6 +24,9 @@ import org.springframework.stereotype.Component;
 @Qualifier(ResilientLlmGateway.DELEGATE)
 @ConditionalOnProperty(name = "zelo.llm.mode", havingValue = "real")
 public class SpringAiLlmGateway implements LlmGateway {
+
+    // chat.md 규칙이 이 표시로 서버가 남긴 결제 결과를 알아본다. 지금 SYSTEM_EVENT는 결제 결과 알림뿐이다
+    private static final String PAYMENT_NOTICE_PREFIX = "[결제 알림] ";
 
     private final Duration timeout;
     private final ChatClient chatClient;
@@ -114,12 +116,15 @@ public class SpringAiLlmGateway implements LlmGateway {
     }
 
     // Spring AI는 system → 이 기록 → 이번 user 메시지 순서로 요청을 만든다.
-    // 사용자가 아닌 메시지(AI 답변, 결제 결과 같은 알림)는 모두 서비스 쪽이 한 말이라 AI 메시지로 보낸다
+    // 사용자가 아닌 메시지는 서비스 쪽이 한 말이라 AI 메시지로 보낸다. 결제 결과 알림(SYSTEM_EVENT)은 LLM이
+    // 자기 말로 착각하지 않게 표시를 붙이고, 사용자가 같은 글자를 써도 user 메시지라 chat.md 규칙으로 구분된다
     private static List<Message> toMessages(List<ChatMessage> history) {
         return history.stream()
-                .map(chatMessage -> chatMessage.getSender() == ChatSender.USER
-                        ? (Message) new UserMessage(chatMessage.getContent())
-                        : new AssistantMessage(chatMessage.getContent()))
+                .map(chatMessage -> switch (chatMessage.getSender()) {
+                    case USER -> (Message) new UserMessage(chatMessage.getContent());
+                    case ASSISTANT -> new AssistantMessage(chatMessage.getContent());
+                    case SYSTEM_EVENT -> new AssistantMessage(PAYMENT_NOTICE_PREFIX + chatMessage.getContent());
+                })
                 .toList();
     }
 }

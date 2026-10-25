@@ -1,6 +1,6 @@
 package com.server.zelo.global.config;
 
-import com.server.zelo.ai.llm.LlmErrorClassifier;
+import com.server.zelo.ai.gateway.LlmErrorClassifier;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;

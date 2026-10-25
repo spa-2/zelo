@@ -9,9 +9,9 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
-import com.server.zelo.ai.llm.MenuPlan;
-import com.server.zelo.ai.llm.MenuPlanIngredient;
-import com.server.zelo.ai.llm.MenuPlanIntent;
+import com.server.zelo.ai.plan.MenuPlan;
+import com.server.zelo.ai.plan.MenuPlanIngredient;
+import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.inventory.service.InventoryService;

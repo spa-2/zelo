@@ -11,11 +11,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.server.zelo.ai.llm.FakeLlmGateway;
-import com.server.zelo.ai.llm.MenuPlanIntent;
-import com.server.zelo.ai.llm.QuoteEdit;
-import com.server.zelo.ai.llm.QuoteEditAction;
-import com.server.zelo.ai.llm.QuoteEditPlan;
+import com.server.zelo.ai.gateway.FakeLlmGateway;
+import com.server.zelo.ai.plan.MenuPlanIntent;
+import com.server.zelo.ai.plan.QuoteEdit;
+import com.server.zelo.ai.plan.QuoteEditAction;
+import com.server.zelo.ai.plan.QuoteEditPlan;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;

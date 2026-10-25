@@ -1,8 +1,8 @@
 package com.server.zelo.domain.review.service;
 
-import com.server.zelo.ai.llm.LlmGateway;
-import com.server.zelo.ai.llm.LlmReply;
-import com.server.zelo.ai.llm.ReviewSummaryPrompt;
+import com.server.zelo.ai.gateway.LlmGateway;
+import com.server.zelo.ai.gateway.LlmReply;
+import com.server.zelo.ai.prompt.ReviewSummaryPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.review.entity.Review;
 import java.util.List;

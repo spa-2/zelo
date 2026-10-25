@@ -29,8 +29,6 @@ import lombok.NoArgsConstructor;
 })
 public class Product extends BaseTimeEntity {
 
-    private static final String DEFAULT_BRAND = "기타";
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -131,10 +129,4 @@ public class Product extends BaseTimeEntity {
         return new Product(productCode, ingredient, brand, name, description, price, contentAmount, unitLabel);
     }
 
-    // TODO(유림님 리뷰 테스트 수정 후 삭제): 브랜드 추가 전 모양. 리뷰 테스트가 아직 이걸 써서 잠깐 남겨둠
-    @Deprecated
-    public static Product of(String productCode, Ingredient ingredient, String name,
-                             String description, Long price, Integer contentAmount, String unitLabel) {
-        return of(productCode, ingredient, DEFAULT_BRAND, name, description, price, contentAmount, unitLabel);
-    }
 }

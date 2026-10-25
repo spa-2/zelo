@@ -192,6 +192,39 @@ class SocialSignupApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("MEMBER_003"));
     }
 
+    // 이름 보정이 없으면 가입 저장 마지막 단계에서 users.name NOT NULL 위반으로 500이 나는 상황
+    @Test
+    void 구글_이름이_없어도_이메일_앞부분을_이름으로_가입된다() throws Exception {
+        // given
+        String email = uniqueEmail();
+        String ticket = socialSignupTicketService.issue(
+                SocialProfile.of(SocialProvider.GOOGLE, UUID.randomUUID().toString(), email, true, null));
+
+        // when
+        signup(ticket).andExpect(status().isCreated());
+
+        // then
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getName()).isEqualTo(email.substring(0, email.indexOf('@')));
+        redisKeysToClean.add("refresh:" + user.getId());
+    }
+
+    @Test
+    void 구글_이름이_50자를_넘어도_50자로_잘려_가입된다() throws Exception {
+        // given
+        String email = uniqueEmail();
+        String ticket = socialSignupTicketService.issue(
+                SocialProfile.of(SocialProvider.GOOGLE, UUID.randomUUID().toString(), email, true, "가".repeat(80)));
+
+        // when
+        signup(ticket).andExpect(status().isCreated());
+
+        // then
+        User user = userRepository.findByEmail(email).orElseThrow();
+        assertThat(user.getName()).isEqualTo("가".repeat(50));
+        redisKeysToClean.add("refresh:" + user.getId());
+    }
+
     private ResultActions signup(String ticket) throws Exception {
         return mockMvc.perform(post("/api/auth/social/signup")
                 .contentType(MediaType.APPLICATION_JSON)

@@ -5,7 +5,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.entity.Delivery;
 import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
-import com.server.zelo.domain.user.entity.UserAddress;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -25,7 +25,8 @@ public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
 
     // 배송지는 결제 완료 시점의 기본 배송지를 복사해 둔다. 이후 사용자가 배송지를 바꾸거나 지워도 이미 접수된 배송은 바뀌지 않는다
-    public Delivery createDelivery(Long orderId, UserAddress address) {
+    // 주문할 때 복사해 둔 배송지로 배송을 만든다. 주문 후 사용자가 기본 배송지를 바꾸거나 지워도 주문 때 주소로 배송된다
+    public Delivery createDelivery(Long orderId, ShippingAddress address) {
         return deliveryRepository.save(Delivery.of(orderId, address.getRecipientName(),
                 address.getRecipientPhone(), address.getZipCode(), address.getAddress(), null));
     }

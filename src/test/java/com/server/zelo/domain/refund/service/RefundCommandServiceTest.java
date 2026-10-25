@@ -277,7 +277,9 @@ class RefundCommandServiceTest {
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
 
         // then
+        // then
         then(paymentService).should().cancel(PORTONE_ID, 10_000L);
+        then(deliveryService).should().cancelDeliveryIfPossible(ORDER_ID);
         then(orderCommandService).shouldHaveNoInteractions();
     }
 

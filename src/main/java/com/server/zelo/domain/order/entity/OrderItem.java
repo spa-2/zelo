@@ -60,6 +60,10 @@ public class OrderItem extends BaseTimeEntity {
     @Column(name = "stock_state", nullable = false)
     private StockState stockState;
 
+    // 구매 수량은 유지하고 취소한 수량을 별도로 누적
+    @Column(name = "canceled_quantity", nullable = false)
+    private Integer canceledQuantity;
+
     private OrderItem(Order order, Product product, String productName,
                       String productUnit, Long unitPrice, Integer quantity,
                       Long lineAmount) {
@@ -71,6 +75,7 @@ public class OrderItem extends BaseTimeEntity {
         this.productName = productName;
         this.productUnit = productUnit;
         this.stockState = StockState.RESERVED;
+        this.canceledQuantity = 0;
     }
 
     public static OrderItem of(Order order, Product product, String productName,
@@ -95,19 +100,51 @@ public class OrderItem extends BaseTimeEntity {
 
     // 복원
     public void restore() {
-        changeStockState(StockState.RESTORED);
+        // 전체 복원도 이미 취소된 수량을 제외하고 취소 이력에 반영
+        cancelQuantity(getCancelableQuantity());
     }
 
     public boolean isReserved() {
         return this.stockState == StockState.RESERVED;
     }
 
-    // 허용하지 않은 상태 변경을 막아 재고 처리 순서를 지킨다.
+    // 허용하지 않은 상태 변경을 막아 재고 처리 순서를 지킴
     private void changeStockState(StockState nextStatus) {
         if (!this.stockState.isTransitionAllowed(nextStatus)) {
-            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS); // TODO(order): 재고 상태 전용 에러 코드 추가 시 교체
+            throw new BusinessException(ErrorCode.INVALID_STOCK_STATUS);
         }
 
         this.stockState = nextStatus;
+    }
+
+    public Integer getCancelableQuantity() {
+        return this.quantity - this.canceledQuantity;
+    }
+
+    public boolean isFullyCanceled() {
+        return this.quantity.equals(this.canceledQuantity);
+    }
+
+    public void validateCancelQuantity(Integer requestedQuantity) {
+        // 판매가 확정된 품목만 환불에 따른 수량 취소 가능
+        if (this.stockState != StockState.DEDUCTED) {
+            throw new BusinessException(ErrorCode.INVALID_STOCK_STATUS);
+        }
+
+        // 이전에 취소한 수량을 제외하여 구매 수량보다 많이 복원되는 것을 막음
+        if (requestedQuantity == null || requestedQuantity < 1 || requestedQuantity > getCancelableQuantity()) {
+            throw new BusinessException(ErrorCode.INVALID_REFUND_QUANTITY);
+        }
+    }
+
+    public void cancelQuantity(Integer requestedQuantity) {
+        validateCancelQuantity(requestedQuantity);
+
+        this.canceledQuantity += requestedQuantity;
+
+        // 일부만 취소됐다면 DEDUCTED를 유지하고, 전량 취소됐을 때만 RESTORED로 변경
+        if (isFullyCanceled()) {
+            changeStockState(StockState.RESTORED);
+        }
     }
 }

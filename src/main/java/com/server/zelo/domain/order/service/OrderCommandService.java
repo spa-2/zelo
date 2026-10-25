@@ -88,37 +88,50 @@ public class OrderCommandService {
     }
 
     /**
-     * 주문을 취소하고, 품목별 재고 처리 상태에 따라 재고를 되돌린다.
+     * 주문 전체를 취소하고, 품목별 재고 처리 상태에 따라 재고를 되돌린다.
      *
-     * <p>주문 상태는 취소 시점과 관계없이 CANCELED로 바뀌지만,
-     * 재고는 취소 시점까지 진행된 처리에 따라 되돌리는 방법이 다르다.
+     * <p>PAYMENT_PENDING 또는 PAID 주문을 CANCELED로 변경하고,
+     * 각 품목의 재고 상태에 따라 다음과 같이 처리한다.
      * <ul>
-     *   <li>RESERVED (결제 전 취소): 판매되지 않았으므로 선점만 해제한다.</li>
-     *   <li>DEDUCTED (결제 후 환불): 판매가 확정됐으므로 실재고를 복원한다.</li>
+     *   <li>RESERVED: 구매 수량만큼 선점을 해제한다.</li>
+     *   <li>DEDUCTED: 이미 취소된 수량을 제외한 남은 수량만 복원한다.</li>
+     *   <li>RESTORED: 이미 전량 복원된 품목이므로 건너뛴다.</li>
+     *   <li>RELEASED: 허용되지 않은 상태로 판단하여 예외를 발생시킨다.</li>
      * </ul>
      *
-     * <p>재고에 어떤 처리가 이뤄졌는지는 품목이 기록하므로 품목의 재고 상태를 기준으로 분기한다.
-     * 품목 상태 전이 검증이 같은 품목의 중복 해제·복원을 막는다.
+     * <p>주문·품목 상태 변경과 재고 처리는 하나의 트랜잭션으로 수행하며,
+     * 처리 중 예외가 발생하면 전체 변경을 롤백한다.
      *
      * @param orderId 취소할 주문 ID
      * @throws BusinessException 주문이 없으면 ORDER_NOT_FOUND,
-     *         주문이 PAYMENT_PENDING·PAID가 아니거나 품목 상태 전이가 허용되지 않으면 INVALID_ORDER_STATUS
+     *         주문이 PAYMENT_PENDING·PAID가 아니면 INVALID_ORDER_STATUS,
+     *         품목의 재고 상태가 허용되지 않으면 INVALID_STOCK_STATUS
      */
     public void cancel(Long orderId) {
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
-        order.cancel(); // OrderStatus: PAYMENT_PENDING 또는 PAID → CANCELED
+        order.cancel();
 
-        for(OrderItem orderItem : getItemsInProductOrder(order)) {
+        for (OrderItem orderItem : getItemsInProductOrder(order)) {
+            switch (orderItem.getStockState()) {
+                case RESERVED -> {
+                    // 결제 전에는 실재고를 복원하지 않고 선점만 해제
+                    orderItem.release();
+                    inventoryService.release(orderItem.getProduct().getId(), orderItem.getQuantity());
+                }
 
-            // 품목이 RESERVED면 해제
-            if (orderItem.isReserved()) {
-                orderItem.release(); // StockState: RESERVED -> RELEASED
-                inventoryService.release(orderItem.getProduct().getId(), orderItem.getQuantity());
-            }
-            else {
-                // DEDUCTED가 아니면 restore()의 전이 검증에서 예외 발생
-                orderItem.restore();  // StockState: DEDUCTED → RESTORED
-                inventoryService.restore(orderItem.getProduct().getId(), orderItem.getQuantity());
+                case DEDUCTED -> {
+                    // restore() 후에는 남은 수량이 0이 되므로 먼저 보관
+                    Integer remainingQuantity = orderItem.getCancelableQuantity();
+
+                    orderItem.restore();
+                    inventoryService.restore(orderItem.getProduct().getId(), remainingQuantity);
+                }
+
+                case RESTORED -> {
+                    // 부분 환불 과정에서 이미 전량 복원된 품목은 건너뜀
+                }
+
+                case RELEASED -> throw new BusinessException(ErrorCode.INVALID_STOCK_STATUS);
             }
         }
     }
@@ -252,6 +265,72 @@ public class OrderCommandService {
 
                     return payment.getPortoneId();
                 });
+    }
+
+    /**
+     * 환불 완료된 주문 상품의 수량만큼 취소 이력을 반영하고 재고를 복원한다.
+     *
+     * <p>모든 요청 품목을 먼저 검증하고, 상품 ID 오름차순으로 재고를 복원한다.
+     * 일부 수량만 취소되면 주문은 PAID를 유지하고,
+     * 모든 품목이 전량 취소되면 CANCELED로 변경한다.
+     *
+     * @param orderId 대상 주문 ID
+     * @param cancelQuantities 주문 상품 ID별 이번 취소 수량
+     * @throws BusinessException 주문이 없으면 ORDER_NOT_FOUND,
+     *         요청이 비어 있거나 해당 주문의 품목이 아니면 INVALID_INPUT,
+     *         주문이 PAID가 아니면 INVALID_ORDER_STATUS,
+     *         품목이 DEDUCTED가 아니면 INVALID_STOCK_STATUS,
+     *         취소 수량이 올바르지 않으면 INVALID_REFUND_QUANTITY
+     */
+    public void cancelItems(Long orderId, Map<Long, Integer> cancelQuantities) {
+
+        if (cancelQuantities == null || cancelQuantities.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 같은 주문의 취소 처리가 동시에 수량을 변경하지 못하도록 잠금
+        Order order = orderService.getOrderWithItemsForUpdate(orderId);
+
+        if (order.getStatus() != OrderStatus.PAID) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+
+        Map<Long, OrderItem> itemsById = order.getOrderItems().stream()
+                .collect(Collectors.toMap(OrderItem::getId, item -> item));
+
+        // 일부 품목을 변경한 뒤 다른 품목의 입력 오류가 발견되지 않도록 먼저 검증
+        for (Map.Entry<Long, Integer> entry : cancelQuantities.entrySet()) {
+            Long orderItemId = entry.getKey();
+
+            if (orderItemId == null || orderItemId < 1) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT);
+            }
+
+            OrderItem orderItem = itemsById.get(orderItemId);
+
+            if (orderItem == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "해당 주문에 속한 주문 상품만 취소할 수 있습니다.");
+            }
+
+            orderItem.validateCancelQuantity(entry.getValue());
+        }
+
+        // 다른 재고 변경 작업과 잠금 순서를 맞춤
+        for (OrderItem orderItem : getItemsInProductOrder(order)) {
+            if (!cancelQuantities.containsKey(orderItem.getId())) {
+                continue;
+            }
+
+            Integer requestedQuantity = cancelQuantities.get(orderItem.getId());
+
+            orderItem.cancelQuantity(requestedQuantity);
+            inventoryService.restore(orderItem.getProduct().getId(), requestedQuantity);
+        }
+
+        // 재고 복원이 끝났으므로 주문 상태만 변경
+        if (order.isFullyCanceled()) {
+            order.cancel();
+        }
     }
 
     private List<OrderItem> getItemsInProductOrder(Order order) {

@@ -138,12 +138,17 @@ public class Order extends BaseTimeEntity {
         changeStatus(OrderStatus.CANCELED);
     }
 
-    // 허용하지 않은 상태 변경을 막아 주문 처리 순서를 지킨다.
+    // 허용하지 않은 상태 변경을 막아 주문 처리 순서를 지킴
     private void changeStatus(OrderStatus nextStatus) {
         if (!this.status.isTransitionAllowed(nextStatus)) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
 
         this.status = nextStatus;
+    }
+
+    public boolean isFullyCanceled() {
+        // 품목이 없는 주문을 전체 취소 완료로 판단하지 않음
+        return !this.orderItems.isEmpty() && this.orderItems.stream().allMatch(OrderItem::isFullyCanceled);
     }
 }

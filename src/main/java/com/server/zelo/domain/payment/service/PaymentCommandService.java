@@ -86,7 +86,7 @@ public class PaymentCommandService {
         if (pgPayment.isFailed()) {
             transactionOperations.executeWithoutResult(status -> {
                 paymentService.fail(portoneId);
-                failOrderIfPossible(orderId);
+                orderCommandService.failPaymentIfPossible(orderId);
             });
             createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
             return PaymentStatus.FAILED;
@@ -96,7 +96,7 @@ public class PaymentCommandService {
         if (pgPayment.isCancelled()) {
             transactionOperations.executeWithoutResult(status -> {
                 paymentService.cancel(portoneId, pgPayment.amount());
-                cancelOrderIfPossible(orderId);
+                orderCommandService.cancelIfPossible(orderId);
             });
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED, null, null);
             return PaymentStatus.CANCELED;
@@ -116,19 +116,6 @@ public class PaymentCommandService {
             Long userId = orderService.getOrderWithItems(orderId).getUser().getId();
             deliveryService.createDelivery(orderId, userAddressService.getDefaultAddress(userId));
         }
-
-    // 이미 취소된 주문을 다시 취소하면 상태 전이 예외가 나서 결제가 확인 대기에 갇히므로, 취소할 수 있을 때만 취소한다
-    private void cancelOrderIfPossible(Long orderId) {
-        if (orderService.getOrderWithItems(orderId).getStatus().isTransitionAllowed(OrderStatus.CANCELED)) {
-            orderCommandService.cancel(orderId);
-        }
-    }
-
-    private void failOrderIfPossible(Long orderId) {
-        if (orderService.getOrderWithItems(orderId).getStatus().isTransitionAllowed(OrderStatus.PAYMENT_FAILED)) {
-            orderCommandService.failPayment(orderId);
-        }
-    }
 
     // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 그대로 나가게 한다
     // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다

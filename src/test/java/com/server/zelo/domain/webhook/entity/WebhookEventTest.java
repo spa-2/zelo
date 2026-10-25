@@ -78,6 +78,19 @@ class WebhookEventTest {
         assertThat(event.getFailureReason()).isNull();
     }
 
+    @Test
+    void 무시한_웹훅은_처리가_끝난_것으로_본다() {
+        // given
+        WebhookEvent event = newEvent();
+
+        // when
+        event.ignore();
+
+        // then
+        assertThat(event.getStatus()).isEqualTo(WebhookStatus.IGNORED);
+        assertThat(event.isProcessed()).isTrue();
+    }
+
     private WebhookEvent newEvent() {
         return WebhookEvent.of("wh-1", "payment-uuid-1", "Transaction.Paid", "{}");
     }

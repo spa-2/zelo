@@ -92,4 +92,15 @@ class RefundServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.REFUND_NOT_FOUND);
     }
+
+    @Test
+    void 진행_중인_환불을_찾는다() {
+        // given
+        Refund refund = Refund.of(PAYMENT_ID, RefundType.FULL, "단순 변심");
+        given(refundRepository.findByPaymentIdAndStatus(PAYMENT_ID, RefundStatus.REQUESTED))
+                .willReturn(Optional.of(refund));
+
+        // when // then
+        assertThat(refundService.findRequestedRefund(PAYMENT_ID)).containsSame(refund);
+    }
 }

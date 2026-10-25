@@ -9,9 +9,12 @@ import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
+import com.server.zelo.domain.refund.entity.RefundType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +26,7 @@ import com.server.zelo.domain.order.entity.Order;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -146,6 +150,77 @@ class RefundCommandServiceTest {
         assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
         then(refundService).should(never()).fail(any());
         then(deliveryService).should(never()).releaseHold(any());
+    }
+
+    @Test
+    void 포트원에서_취소된_결제에_진행_중_환불이_있으면_환불을_완료하고_주문과_배송을_취소한다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        Refund refund = Refund.of(1L, RefundType.FULL, REASON);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should().complete(eq(REFUND_ID), any());
+        then(paymentService).should().cancel(PORTONE_ID, 10_000L);
+        then(orderCommandService).should().cancelIfPossible(ORDER_ID);
+        then(deliveryService).should().cancelDeliveryIfPossible(ORDER_ID);
+    }
+
+    @Test
+    void 환불_요청_없이_포트원에서_취소된_결제도_주문과_배송을_취소한다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should(never()).complete(any(), any());
+        then(paymentService).should().cancel(PORTONE_ID, 10_000L);
+        then(orderCommandService).should().cancelIfPossible(ORDER_ID);
+        then(deliveryService).should().cancelDeliveryIfPossible(ORDER_ID);
+    }
+
+    @Test
+    void 포트원에서_취소되지_않은_결제면_아무것도_바꾸지_않는다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 10_000L, null));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(paymentService).shouldHaveNoInteractions();
+        then(orderCommandService).shouldHaveNoInteractions();
+        then(deliveryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 이미_취소까지_반영된_결제면_다시_바꾸지_않는다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
+        Payment payment = paidPayment();
+        payment.cancel(10_000L);
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(payment);
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).shouldHaveNoInteractions();
+        then(orderCommandService).shouldHaveNoInteractions();
+        then(deliveryService).shouldHaveNoInteractions();
     }
 
     private void givenRefundable() {

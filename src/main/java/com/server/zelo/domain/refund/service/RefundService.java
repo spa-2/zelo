@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -20,7 +21,6 @@ public class RefundService {
         return refundRepository.save(refund);
     }
 
-    // 포트원 응답이 끊겨 REQUESTED로 남은 환불이 있으면 결과를 알 수 없으므로 새 요청을 막는다
     public void validateNotInProgress(Long paymentId) {
         if (refundRepository.existsByPaymentIdAndStatus(paymentId, RefundStatus.REQUESTED)) {
             throw new BusinessException(ErrorCode.REFUND_IN_PROGRESS);
@@ -33,6 +33,10 @@ public class RefundService {
 
     public void fail(Long refundId) {
         getRefund(refundId).fail();
+    }
+
+    public Optional<Refund> findRequestedRefund(Long paymentId) {
+        return refundRepository.findByPaymentIdAndStatus(paymentId, RefundStatus.REQUESTED);
     }
 
     private Refund getRefund(Long refundId) {

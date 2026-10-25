@@ -71,4 +71,16 @@ public class DeliveryService {
         return deliveryRepository.findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(
                 status, before, Limit.of(BATCH_SIZE));
     }
+
+    // 포트원에서 직접 취소된 결제는 출고 전일 때만 배송을 취소한다. 이미 출고됐으면 운영에서 회수한다
+    public void cancelDeliveryIfPossible(Long orderId) {
+        deliveryRepository.findByOrderId(orderId)
+                .filter(Delivery::isCancelable)
+                .ifPresent(delivery -> {
+                    if (delivery.isOnHold()) {
+                        delivery.release();
+                    }
+                    delivery.cancel(LocalDateTime.now());
+                });
+    }
 }

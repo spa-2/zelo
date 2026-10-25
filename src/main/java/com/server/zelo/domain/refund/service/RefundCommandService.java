@@ -9,6 +9,7 @@ import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundItem;
@@ -79,6 +80,29 @@ public class RefundCommandService {
 
         // 지금은 전액 환불만 있어 취소 가능 잔액이 실제 결제 금액과 같다. 부분 환불(R5)에서 이전 환불 금액을 빼도록 바꾼다
         return new RefundTarget(savedRefund.getId(), payment.getPortoneId(), payment.getPgAmount());
+    }
+
+    // 취소 웹훅을 받으면 포트원에 다시 조회해, 결과를 모른 채 남은 환불이나 포트원에서 직접 취소한 결제를 맞춘다
+    public void syncCancellation(Long orderId, String portoneId) {
+        PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
+        if (!pgPayment.isCancelled()) {
+            log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={}, status={}", portoneId, pgPayment.status());
+            return;
+        }
+
+        transactionOperations.executeWithoutResult(status -> {
+            Payment payment = paymentService.getPayment(portoneId);
+            // 결제 확인이나 환불 요청에서 이미 취소까지 반영한 결제는 다시 바꾸지 않는다
+            if (!payment.isPaid()) {
+                return;
+            }
+            refundService.findRequestedRefund(payment.getId()).ifPresentOrElse(
+                    refund -> refundService.complete(refund.getId(), LocalDateTime.now()),
+                    () -> log.warn("환불 요청 없이 포트원에서 취소된 결제 portoneId={}", portoneId));
+            paymentService.cancel(portoneId, payment.getPgAmount());
+            orderCommandService.cancelIfPossible(orderId);
+            deliveryService.cancelDeliveryIfPossible(orderId);
+        });
     }
 
     private record RefundTarget(Long refundId, String portoneId, Long amount) {

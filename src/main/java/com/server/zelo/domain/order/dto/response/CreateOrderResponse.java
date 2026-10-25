@@ -17,9 +17,10 @@ public record CreateOrderResponse(
         OrderStatus status,
         List<Items> items,
         Long totalAmount,
+        String portoneId,
         LocalDateTime createdAt
 ) {
-    public static CreateOrderResponse from(Order order, List<OrderItem> orderItems) {
+    public static CreateOrderResponse from(Order order, List<OrderItem> orderItems, String portoneId) {
         return new CreateOrderResponse(
                 order.getId(),
                 order.getQuoteId(),
@@ -29,6 +30,7 @@ public record CreateOrderResponse(
                 order.getStatus(),
                 orderItems.stream().map(Items::from).toList(),
                 order.getTotalAmount(),
+                portoneId,
                 order.getCreatedAt()
         );
     }

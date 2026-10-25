@@ -322,6 +322,21 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 결제_결과_알림은_대화_기록에_남긴다() {
+        // given: 결제가 끝난 뒤 사용자가 결과를 물으면 LLM이 알림을 보고 답해야 한다
+        ChatMessage paymentNotice = ChatMessage.of(10L, ChatSender.SYSTEM_EVENT, "결제가 완료됐어요.",
+                "{\"type\": \"PAYMENT_CARD\", \"status\": \"PAID\"}");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(paymentNotice));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(paymentNotice);
+    }
+
+    @Test
     void 대화_기록이_2000자를_넘으면_오래된_메시지부터_뺀다() {
         // given: 최신부터 900자, 900자, 900자 → 앞의 두 개(1800자)까지만 들어간다
         ChatMessage newest = ChatMessage.of(10L, ChatSender.USER, "가".repeat(900));

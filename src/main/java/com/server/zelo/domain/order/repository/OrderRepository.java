@@ -32,4 +32,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // 주문 전체를 불러오지 않고 소유 여부만 조회
     boolean existsByIdAndUser_Id(Long id, Long userId);
 
+    // 같은 견적의 재요청에는 기존 주문과 품목을 반환
+    @EntityGraph(attributePaths = "orderItems")
+    Optional<Order> findByQuoteId(String quoteId);
+
+    boolean existsByUser_IdAndStatus(Long userId, OrderStatus status);
 }

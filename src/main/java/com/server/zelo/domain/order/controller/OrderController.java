@@ -5,10 +5,14 @@ import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
+import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
+import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
+import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.service.OrderCommandService;
+import com.server.zelo.domain.order.service.OrderFacade;
 import com.server.zelo.domain.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 @RequiredArgsConstructor
 @RequestMapping("/api/orders")
 public class OrderController {
-
+    private final OrderFacade orderFacade;
     private final OrderService orderService;
     private final OrderCommandService orderCommandService;
 
@@ -40,12 +44,24 @@ public class OrderController {
     }
 
     @PostMapping("/confirmations")
-    public ResponseEntity<ApiResponse<CreateOrderConfirmationResponse>> createOrder(
+    public ResponseEntity<ApiResponse<CreateOrderConfirmationResponse>> createConfirmation(
             @Auth AuthUser authUser,
             @Valid @RequestBody CreateOrderConfirmationRequest request
     ) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(orderCommandService.createConfirmation(authUser.id(), request)));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<CreateOrderResponse>> createOrder(
+            @Auth AuthUser authUser,
+            @Valid @RequestBody CreateOrderRequest request
+    ) {
+        CreateOrderResult result = orderFacade.createOrder(authUser.id(), request);
+
+        return ResponseEntity
+                .status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.response()));
     }
 }

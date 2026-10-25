@@ -48,6 +48,7 @@ public enum ErrorCode {
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
     INVALID_ORDER_STATUS(HttpStatus.BAD_REQUEST, "ORDER_002", "유효하지 않은 주문 상태 변경입니다."),
     ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ORDER_003", "해당 주문에 접근할 권한이 없습니다."),
+    PENDING_ORDER_EXISTS(HttpStatus.CONFLICT, "ORDER_004", "결제 대기 중인 주문이 이미 있습니다."),
 
     // Payment
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제 정보를 찾을 수 없습니다."),
@@ -98,6 +99,13 @@ public enum ErrorCode {
     TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요."),
     // 만료되거나 없는 소셜 로그인 티켓
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_008", "인증이 만료 되었습니다. 다시 소셜 로그인을 진행 해주세요"),
+    // 소셜 제공자(구글 등)가 code를 거절한 경우 (만료, 이미 사용, redirectUri 불일치)
+    SOCIAL_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_009", "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
+    // 신규 가입자에게만 적용함. 이미 가입한 사용자는 이메일이 없어도 로그인됨
+    SOCIAL_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_010", "인증된 이메일을 제공하지 않는 소셜 계정입니다. 이메일 제공에 동의해 주세요."),
+    SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "AUTH_011", "이미 가입된 이메일입니다. 기존 방식으로 로그인해 주세요."),
+    UNSUPPORTED_SOCIAL_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_012", "지원하지 않는 소셜 로그인입니다."),
+    SOCIAL_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_013", "소셜 로그인 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요."),
 
     //Refund
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),

@@ -2,6 +2,7 @@ package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatMessageService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
@@ -20,6 +21,7 @@ import com.server.zelo.domain.user.service.UserAddressService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionOperations;
@@ -312,6 +314,84 @@ class PaymentCommandServiceTest {
         then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
     }
 
+    @Test
+    void 결제_금액이_달라_환불하면_채팅방에_금액_불일치_카드를_남긴다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 1_000L, PAID_AT));
+        givenChatRoomOrder(OrderStatus.PAYMENT_PENDING, 5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.status()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(card.reason()).isEqualTo(PaymentCardPayload.AMOUNT_MISMATCH);
+        assertThat(card.paidAmount()).isEqualTo(1_000L);
+        assertThat(card.paidAt()).isNull();
+    }
+
+    @Test
+    void 주문이_먼저_취소돼_환불하면_채팅방에_주문_취소_환불_카드를_남긴다() {
+        // given
+        givenPaid();
+        givenChatRoomOrder(OrderStatus.CANCELED, 5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.status()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(card.reason()).isEqualTo(PaymentCardPayload.ORDER_CLOSED);
+        assertThat(card.paidAmount()).isEqualTo(AMOUNT);
+        assertThat(card.paidAt()).isNull();
+    }
+
+    @Test
+    void 결제가_실패하면_채팅방에_실패_카드를_남긴다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
+        givenChatRoomOrder(5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.status()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(card.reason()).isNull();
+        assertThat(card.paidAmount()).isNull();
+        assertThat(card.paidAt()).isNull();
+    }
+
+    @Test
+    void 결제창에서_취소하면_채팅방에_취소_카드를_남긴다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, AMOUNT, null));
+        givenChatRoomOrder(5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.status()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(card.reason()).isEqualTo(PaymentCardPayload.USER_CANCELED);
+        assertThat(card.paidAmount()).isNull();
+        assertThat(card.paidAt()).isNull();
+    }
+
     // 배송 생성 시 주문에서 주문한 사용자를 꺼내므로 그 조회 결과를 준비한다
     // 결제 반영 전에 주문이 결제 대기인지 확인하므로 주문 상태를 준비한다
     private Order givenOrderStatus(OrderStatus status) {
@@ -349,5 +429,31 @@ class PaymentCommandServiceTest {
         ChatRoom chatRoom = mock(ChatRoom.class);
         given(order.getChatRoom()).willReturn(chatRoom);
         given(chatRoom.getId()).willReturn(roomId);
+    }
+
+    // 결제 완료가 아닌 분기는 배송을 만들지 않으므로, 결제 카드에 필요한 사용자·채팅방만 준비한다
+    private void givenChatRoomOrder(OrderStatus status, Long roomId) {
+        Order order = givenOrderStatus(status);
+        givenOrderUserAndChatRoom(order, roomId);
+    }
+
+    // 결제 실패·결제창 취소는 주문 상태를 주문 쪽 조건부 메서드가 확인하므로 상태 없이 주문만 준비한다
+    private void givenChatRoomOrder(Long roomId) {
+        Order order = mock(Order.class);
+        given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+        givenOrderUserAndChatRoom(order, roomId);
+    }
+
+    private void givenOrderUserAndChatRoom(Order order, Long roomId) {
+        User user = mock(User.class);
+        given(order.getUser()).willReturn(user);
+        given(user.getId()).willReturn(USER_ID);
+        givenChatRoom(order, roomId);
+    }
+
+    private PaymentCardPayload capturedPaymentCard(Long roomId) {
+        ArgumentCaptor<PaymentCardPayload> card = ArgumentCaptor.forClass(PaymentCardPayload.class);
+        then(chatMessageService).should().createPaymentCardMessage(eq(roomId), eq(USER_ID), card.capture());
+        return card.getValue();
     }
 }

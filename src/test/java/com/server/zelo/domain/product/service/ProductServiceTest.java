@@ -1,9 +1,14 @@
 package com.server.zelo.domain.product.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.product.dto.request.ProductSort;
+import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.entity.Ingredient;
@@ -16,6 +21,7 @@ import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -23,6 +29,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -95,6 +104,45 @@ class ProductServiceTest {
 
         // then
         assertThat(result).containsExactly(product);
+    }
+
+    @Test
+    void 검색_조건을_판매중_상품_조회로_넘긴다() {
+        // given
+        Product product = product(1L);
+        SearchProductCondition condition = new SearchProductCondition("김치", 3L, true, ProductSort.PRICE_ASC, 1, 10);
+        given(productRepository.search("김치", 3L, true, ProductStatus.ON_SALE,
+                PageRequest.of(1, 10, ProductSort.PRICE_ASC.toSort()))).willReturn(new PageImpl<>(List.of(product)));
+
+        // when
+        Page<Product> result = productService.searchProducts(condition);
+
+        // then
+        assertThat(result.getContent()).containsExactly(product);
+    }
+
+    @Test
+    void 상품_코드로_상품을_찾는다() {
+        // given
+        Product product = product(1L);
+        given(productRepository.findByProductCode("P-1")).willReturn(Optional.of(product));
+
+        // when
+        Product result = productService.getProduct("P-1");
+
+        // then
+        assertThat(result).isEqualTo(product);
+    }
+
+    @Test
+    void 없는_상품_코드면_예외가_발생한다() {
+        // given
+        given(productRepository.findByProductCode("P-99")).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> productService.getProduct("P-99"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
     }
 
     @Test

@@ -1,5 +1,8 @@
 package com.server.zelo.domain.product.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Ingredient;
 import com.server.zelo.domain.product.entity.Keyword;
@@ -16,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +40,18 @@ public class ProductService {
         return ingredientRepository.findAll(Sort.by("id")).stream()
                 .collect(Collectors.toMap(Ingredient::getName, Ingredient::getBaseUnit,
                         (first, second) -> first, LinkedHashMap::new));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Product> searchProducts(SearchProductCondition condition) {
+        return productRepository.search(condition.keyword(), condition.categoryId(), condition.inStock(),
+                ProductStatus.ON_SALE, PageRequest.of(condition.page(), condition.size(), condition.sort().toSort()));
+    }
+
+    @Transactional(readOnly = true)
+    public Product getProduct(String productCode) {
+        return productRepository.findByProductCode(productCode)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     @Transactional(readOnly = true)

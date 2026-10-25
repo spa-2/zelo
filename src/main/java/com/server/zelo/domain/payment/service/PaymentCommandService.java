@@ -17,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
+import java.time.LocalDateTime;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -56,6 +58,7 @@ public class PaymentCommandService {
             portOneClient.cancelPayment(portoneId, CLOSED_ORDER_REASON);
             transactionOperations.executeWithoutResult(
                     status -> paymentService.cancel(portoneId, pgPayment.amount()));
+            createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.ORDER_CLOSED, pgPayment.amount(), null);
             return PaymentStatus.CANCELED;
         }
 
@@ -65,7 +68,7 @@ public class PaymentCommandService {
                 orderCommandService.completePayment(orderId);
                 createDelivery(orderId);
             });
-            createPaymentCard(orderId, pgPayment);
+            createPaymentCard(orderId, PaymentStatus.PAID, null, pgPayment.amount(), pgPayment.paidAt());
             return PaymentStatus.PAID;
         }
 
@@ -76,6 +79,7 @@ public class PaymentCommandService {
                 paymentService.cancel(portoneId, pgPayment.amount());
                 orderCommandService.cancel(orderId);
             });
+            createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.AMOUNT_MISMATCH, pgPayment.amount(), null);
             return PaymentStatus.CANCELED;
         }
 
@@ -84,6 +88,7 @@ public class PaymentCommandService {
                 paymentService.fail(portoneId);
                 failOrderIfPossible(orderId);
             });
+            createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
             return PaymentStatus.FAILED;
         }
 
@@ -93,6 +98,7 @@ public class PaymentCommandService {
                 paymentService.cancel(portoneId, pgPayment.amount());
                 cancelOrderIfPossible(orderId);
             });
+            createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED, null, null);
             return PaymentStatus.CANCELED;
         }
 
@@ -124,8 +130,10 @@ public class PaymentCommandService {
         }
     }
 
-    // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 성공으로 나가게 한다
-    private void createPaymentCard(Long orderId, PortOnePayment pgPayment) {
+    // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 그대로 나가게 한다
+    // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다
+    private void createPaymentCard(Long orderId, PaymentStatus paymentStatus, String reason,
+                                   Long paidAmount, LocalDateTime paidAt) {
         try {
             transactionOperations.executeWithoutResult(status -> {
                 Order order = orderService.getOrderWithItems(orderId);
@@ -133,10 +141,10 @@ public class PaymentCommandService {
                     return;
                 }
                 chatMessageService.createPaymentCardMessage(order.getChatRoom().getId(), order.getUser().getId(),
-                        PaymentCardPayload.from(order, pgPayment.amount(), pgPayment.paidAt()));
+                        PaymentCardPayload.from(order, paymentStatus, reason, paidAmount, paidAt));
             });
         } catch (RuntimeException e) {
-            log.error("결제 완료 카드 저장 실패 orderId={}", orderId, e);
+            log.error("결제 결과 카드 저장 실패 orderId={}, status={}", orderId, paymentStatus, e);
         }
     }
 

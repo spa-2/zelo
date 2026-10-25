@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat.service;
 
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -30,8 +32,12 @@ public class ChatMessageService {
     private static final String FALLBACK_CONTENT = "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.";
     private static final String FALLBACK_TYPE = "FALLBACK";
     private static final String FALLBACK_PAYLOAD_FORMAT = "{\"type\":\"" + FALLBACK_TYPE + "\",\"code\":\"%s\"}";
-    // 결제 성공 메세지
+    // 결제 결과 메시지. 취소는 사유마다 사용자가 알아야 할 내용(환불 여부)이 달라 문장을 나눈다
     private static final String PAYMENT_COMPLETED_CONTENT = "결제가 완료됐어요.";
+    private static final String PAYMENT_FAILED_CONTENT = "결제에 실패했어요.";
+    private static final String PAYMENT_CANCELED_CONTENT = "결제를 취소했어요.";
+    private static final String PAYMENT_AMOUNT_MISMATCH_CONTENT = "결제 금액이 주문 금액과 달라 결제를 취소하고 환불했어요.";
+    private static final String PAYMENT_ORDER_CLOSED_CONTENT = "주문이 이미 취소된 상태라 결제된 금액을 환불했어요.";
     // LLM에 함께 보내는 앞 대화의 상한. 사용자·AI가 다섯 번쯤 주고받은 양이고,
     // 메시지 하나는 1000자 제한이 있어도 기록이 쌓이면 프롬프트가 끝없이 길어지므로 글자 수로도 자른다
     private static final int HISTORY_SIZE = 10;
@@ -120,11 +126,27 @@ public class ChatMessageService {
     // 다른 도메인이 남기는 알림이라 AI 답변과 구분되게 SYSTEM_EVENT로 저장한다
     @Transactional
     public ChatMessage createPaymentCardMessage(Long roomId, Long userId, PaymentCardPayload paymentCard) {
+        String content = paymentResultContent(paymentCard);
         ChatRoom chatRoom = chatRoomService.getOwnedChatRoom(roomId, userId);
         ChatMessage chatMessage = chatMessageRepository.save(ChatMessage.of(roomId, ChatSender.SYSTEM_EVENT,
-                PAYMENT_COMPLETED_CONTENT, jsonMapper.writeValueAsString(paymentCard)));
+                content, jsonMapper.writeValueAsString(paymentCard)));
         chatRoom.updateLastMessageAt(LocalDateTime.now());
         return chatMessage;
+    }
+
+    // 결과가 정해지지 않은 상태(READY, CONFIRM_PENDING)는 알릴 내용이 없으므로 저장하지 않는다.
+    // 사유가 없거나 모르는 취소는 결제창 취소처럼 안내한다(환불했다고 잘못 말하지 않게)
+    private String paymentResultContent(PaymentCardPayload paymentCard) {
+        return switch (paymentCard.status()) {
+            case PAID -> PAYMENT_COMPLETED_CONTENT;
+            case FAILED -> PAYMENT_FAILED_CONTENT;
+            case CANCELED -> switch (Objects.requireNonNullElse(paymentCard.reason(), "")) {
+                case PaymentCardPayload.AMOUNT_MISMATCH -> PAYMENT_AMOUNT_MISMATCH_CONTENT;
+                case PaymentCardPayload.ORDER_CLOSED -> PAYMENT_ORDER_CLOSED_CONTENT;
+                default -> PAYMENT_CANCELED_CONTENT;
+            };
+            case READY, CONFIRM_PENDING -> throw new BusinessException(ErrorCode.INVALID_INPUT);
+        };
     }
 
     // DB(jsonb)가 키 순서·공백을 바꿔 돌려주므로 문자열 비교가 아니라 JSON의 type 값으로 본다

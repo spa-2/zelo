@@ -4,6 +4,7 @@ import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
+import com.server.zelo.domain.webhook.service.WebhookCommandService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 public class WebhookController {
 
-    private final PaymentFacade paymentFacade;
+    private final WebhookCommandService webhookCommandService;
     private final PortOneWebhookVerifier portOneWebhookVerifier;
 
     // 서명은 포트원이 보낸 본문 그대로 계산해야 해서 원문으로 받는다
@@ -32,7 +33,7 @@ public class WebhookController {
             @RequestBody String body) {
         WebhookRequest request =
                 portOneWebhookVerifier.verify(webhookId, webhookTimestamp, webhookSignature, body);
-        paymentFacade.confirmPayment(request.data().paymentId());
+        webhookCommandService.handle(webhookId, request, body);
         return ResponseEntity.ok(ApiResponse.ok());
     }
 }

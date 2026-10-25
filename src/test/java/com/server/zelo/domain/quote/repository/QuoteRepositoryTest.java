@@ -8,9 +8,13 @@ import static org.mockito.BDDMockito.then;
 
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.QuoteItemReason;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,7 +89,8 @@ class QuoteRepositoryTest {
     private Quote quote(Long roomId) {
         LocalDateTime createdAt = LocalDateTime.of(2026, 10, 21, 18, 0);
         return new Quote("q-1", 12L, roomId, "김치볶음밥",
-                List.of(new QuoteItem(3L, "P-KIMCHI-001", "백김치 1kg", "1kg", 8900L, 1, 8900L)),
+                List.of(new QuoteItem(3L, "P-KIMCHI-001", "백김치 1kg", "1kg", 8900L, 1, 8900L,
+                        new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15), true))),
                 List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")),
                 8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL));
     }

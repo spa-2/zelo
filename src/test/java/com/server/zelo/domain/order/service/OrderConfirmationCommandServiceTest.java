@@ -15,6 +15,9 @@ import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.service.UserAddressService;
+import com.server.zelo.domain.user.service.UserService;
+import com.server.zelo.domain.product.service.ProductService;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +81,15 @@ class OrderConfirmationCommandServiceTest {
     @Captor
     private ArgumentCaptor<String> confirmationIdCaptor;
 
+    @Mock
+    private UserService userService;
+
+    @Mock
+    private ProductService productService;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     private OrderCommandService orderCommandService;
 
     @BeforeEach
@@ -86,7 +98,8 @@ class OrderConfirmationCommandServiceTest {
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         QuoteService quoteService = new QuoteService(quoteRepository);
         orderCommandService = new OrderCommandService(
-                orderService, quoteService, chatRoomService, inventoryService, userAddressService);
+                userService, orderService, quoteService, productService, chatRoomService,
+                inventoryService, userAddressService, transactionTemplate);
     }
 
     @Test

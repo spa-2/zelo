@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.repository;
 
+import com.server.zelo.domain.order.model.OrderConfirmation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.types.Expiration;
@@ -9,6 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -56,5 +58,22 @@ public class OrderConfirmationRepository {
         stringRedisTemplate.opsForValue()
                 .set(key, json, Expiration.unixTimestamp(expiresAtMillis, TimeUnit.MILLISECONDS)
         );
+    }
+
+    // 구매 확인 정보가 있고 유효한지 검사
+    public Optional<OrderConfirmation> findById(String confirmationId) {
+
+        String json = stringRedisTemplate.opsForValue().get(KEY_PREFIX + confirmationId);
+
+        // 만료된 확인 정보도 Redis에서 조회되지 않으므로 없는 경우와 동일하게 처리
+        if (json == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(jsonMapper.readValue(json, OrderConfirmation.class));
+    }
+
+    public void deleteById(String confirmationId) {
+        stringRedisTemplate.delete(KEY_PREFIX + confirmationId);
     }
 }

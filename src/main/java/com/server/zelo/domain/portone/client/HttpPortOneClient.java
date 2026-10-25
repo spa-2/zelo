@@ -83,7 +83,6 @@ public class HttpPortOneClient implements PortOneClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (HttpClientErrorException e) {
-            // 이전 시도가 포트원에서는 성공하고 응답만 끊긴 경우라 환불은 이미 끝난 상태다
             if (alreadyCancelledIsSuccess && isAlreadyCancelled(e)) {
                 log.info("포트원 결제 이미 취소됨 portoneId={}", portoneId);
                 return;
@@ -93,7 +92,7 @@ public class HttpPortOneClient implements PortOneClient {
             }
             log.error("포트원 결제 취소 거절 portoneId={}, status={}, body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());
-            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
         } catch (RestClientResponseException e) {
             log.error("포트원 결제 취소 실패 portoneId={}, status={}, body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());

@@ -13,6 +13,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j(topic = "service")
 @RestControllerAdvice
@@ -89,4 +90,16 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR));
     }
 
+    /**
+     * 경로 변수나 요청 파라미터의 타입 변환 실패를 입력 오류 응답으로 변환한다.
+     *
+     * @param e 요청 인자의 타입 변환 중 발생한 예외
+     * @return HTTP 400 상태와 {@link ErrorCode#INVALID_INPUT} 코드를 담은 오류 응답
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        log.info("요청 인자 타입 변환 실패: name={}, requiredType={}", e.getName(), e.getRequiredType());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
+    }
 }

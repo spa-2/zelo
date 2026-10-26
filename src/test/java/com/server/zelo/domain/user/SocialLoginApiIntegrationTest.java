@@ -230,7 +230,7 @@ class SocialLoginApiIntegrationTest {
 
     @Test
     void 지원하지_않는_제공자는_400이다() throws Exception {
-        login("kakao", uniqueCode())
+        login("facebook", uniqueCode())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("AUTH_012"));
     }

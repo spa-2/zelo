@@ -2,7 +2,7 @@ package com.server.zelo.domain.user.social;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.domain.user.dto.social.GoogleTokenResponse;
+import com.server.zelo.domain.user.dto.social.SocialTokenResponse;
 import com.server.zelo.domain.user.dto.social.GoogleUserInfoResponse;
 import com.server.zelo.domain.user.entity.SocialProvider;
 import com.server.zelo.domain.user.social.config.GoogleOAuthProperties;
@@ -33,7 +33,7 @@ public class GoogleSocialLoginClient implements SocialLoginClient {
     @Override
     public SocialProfile getProfile(String code, String redirectUri, String codeVerifier) {
         // 1. 구글로부터 Access Token 받아오기
-        GoogleTokenResponse tokenResponse = fetchGoogleToken(code, redirectUri, codeVerifier);
+        SocialTokenResponse tokenResponse = fetchGoogleToken(code, redirectUri, codeVerifier);
 
         // 2. Access Token을 이용해 구글 사용자 정보 가져오기
         GoogleUserInfoResponse userInfoResponse = getUserInfo(tokenResponse.accessToken());
@@ -48,7 +48,7 @@ public class GoogleSocialLoginClient implements SocialLoginClient {
     }
 
     // 구글 OAuth 서버와 통신하여 Access Token을 발급받음
-    private GoogleTokenResponse fetchGoogleToken(String code, String redirectUri, String codeVerifier) {
+    private SocialTokenResponse fetchGoogleToken(String code, String redirectUri, String codeVerifier) {
         try {
             MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
             params.add("code", code);
@@ -61,12 +61,12 @@ public class GoogleSocialLoginClient implements SocialLoginClient {
                 params.add("code_verifier", codeVerifier);
             }
 
-            GoogleTokenResponse tokenResponse = googleSocialRestClient.post()
+            SocialTokenResponse tokenResponse = googleSocialRestClient.post()
                     .uri(googleOAuthProperties.tokenUri())
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(params)
                     .retrieve()
-                    .body(GoogleTokenResponse.class);
+                    .body(SocialTokenResponse.class);
 
             if (tokenResponse == null || tokenResponse.accessToken() == null || tokenResponse.accessToken().isBlank()) {
                 throw new BusinessException(ErrorCode.SOCIAL_AUTH_FAILED);

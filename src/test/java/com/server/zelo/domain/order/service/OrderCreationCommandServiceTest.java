@@ -543,9 +543,8 @@ class OrderCreationCommandServiceTest {
         assertThat(saved.getOrderId()).isEqualTo(101L);
         assertThat(saved.getAmount()).isEqualTo(7_000L);
         assertThat(saved.getStatus()).isEqualTo(PaymentStatus.READY);
-        assertThat(saved.getPortoneId()).startsWith("payment-");
-        String uuid = saved.getPortoneId().substring("payment-".length());
-        assertThat(java.util.UUID.fromString(uuid).toString()).isEqualTo(uuid);
+        assertThat(saved.getPortoneId()).startsWith("payment-").hasSize(40);
+        assertThat(saved.getPortoneId().substring("payment-".length())).matches("[0-9a-f]{32}");
         assertThat(result.response().portoneId()).isEqualTo(saved.getPortoneId());
         assertThat(transactionManager.events).containsExactly("begin", "commit");
         verifyNoInteractions(paymentService);

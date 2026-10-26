@@ -41,7 +41,7 @@ class PaymentServiceTest {
         assertThat(payment.getOrderId()).isEqualTo(10L);
         assertThat(payment.getAmount()).isEqualTo(32_000L);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
-        assertThat(payment.getPortoneId()).startsWith("payment-").hasSizeLessThanOrEqualTo(50);
+        assertThat(payment.getPortoneId()).startsWith("payment-").hasSize(40);
     }
 
     @Test

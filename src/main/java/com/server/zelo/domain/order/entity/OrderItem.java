@@ -62,6 +62,7 @@ public class OrderItem extends BaseTimeEntity {
 
     // 구매 수량은 유지하고 취소한 수량을 별도로 누적
     @Column(name = "canceled_quantity", nullable = false)
+    @ColumnDefault("0")
     private Integer canceledQuantity;
 
     private OrderItem(Order order, Product product, String productName,

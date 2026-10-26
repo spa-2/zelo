@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 
 @ExtendWith(MockitoExtension.class)
@@ -209,6 +211,29 @@ class DeliveryServiceTest {
 
         // when // then
         assertThat(deliveryService.cancelDeliveryIfPossible(10L)).isTrue();
+    }
+
+    @Test
+    void 주문의_배송을_잠금_없이_조회한다() {
+        // given
+        Delivery delivery = readyDelivery();
+        given(deliveryRepository.findDeliveryByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        Optional<Delivery> result = deliveryService.findDelivery(10L);
+
+        // then
+        assertThat(result).containsSame(delivery);
+        then(deliveryRepository).should(never()).findByOrderId(any());
+    }
+
+    @Test
+    void 배송이_없는_주문이면_빈_값을_돌려준다() {
+        // given
+        given(deliveryRepository.findDeliveryByOrderId(10L)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(deliveryService.findDelivery(10L)).isEmpty();
     }
 
     private Delivery readyDelivery() {

@@ -13,4 +13,6 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
     boolean existsByPaymentIdAndStatus(Long paymentId, RefundStatus status);
 
     Optional<Refund> findByPaymentIdAndStatus(Long paymentId, RefundStatus status);
+
+    Optional<Refund> findTopByPaymentIdOrderByIdDesc(Long paymentId);
 }

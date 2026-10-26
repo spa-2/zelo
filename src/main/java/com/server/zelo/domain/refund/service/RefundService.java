@@ -33,6 +33,13 @@ public class RefundService {
         }
     }
 
+    // 부분 환불 뒤 포트원에 넘길 취소 가능 잔액을 계산하려고 완료된 환불 금액을 더한다
+    public long calculateRefundedAmount(Long paymentId) {
+        return refundRepository.findAllByPaymentIdAndStatus(paymentId, RefundStatus.COMPLETED).stream()
+                .mapToLong(Refund::getItemsAmount)
+                .sum();
+    }
+
     public void complete(Long refundId, LocalDateTime refundedAt) {
         getRefund(refundId).complete(refundedAt);
     }

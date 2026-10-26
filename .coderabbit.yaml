@@ -25,6 +25,7 @@ reviews:
       - "!gradle/wrapper/**"
       - "!**/*.iml"
       - "!HELP.md"
+      - "!terraform/**"
 
   path_instructions:
     - path: "src/main/java/**/controller/**"

@@ -1,7 +1,9 @@
 package com.server.zelo.domain.quote.model;
 
+import com.server.zelo.domain.product.entity.Keyword;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 // Redis quote:{roomId}에 저장하는 견적. TTL 10분, 발급·수정 때마다 덮어씀ㅁ
 public record Quote(
@@ -14,6 +16,19 @@ public record Quote(
         List<ExcludedItem> excludedItems,
         Long totalAmount,
         LocalDateTime createdAt,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        // 사용자가 말한 조건 (맵지 않게 등). 재료를 추가할 때도 같은 조건으로 고르려고 저장함
+        Set<Keyword> conditions
 ) {
+
+    // 조건이 없던 예전 견적 JSON을 읽어도 null이 아니게
+    public Quote {
+        conditions = conditions == null ? Set.of() : conditions;
+    }
+
+    // 조건 없이 만드는 기존 호출용. 채팅·주문·AI 테스트가 이 모양을 써서 남겨둠
+    public Quote(String quoteId, Long userId, Long roomId, String menuName, List<QuoteItem> items,
+                 List<ExcludedItem> excludedItems, Long totalAmount, LocalDateTime createdAt, LocalDateTime expiresAt) {
+        this(quoteId, userId, roomId, menuName, items, excludedItems, totalAmount, createdAt, expiresAt, Set.of());
+    }
 }

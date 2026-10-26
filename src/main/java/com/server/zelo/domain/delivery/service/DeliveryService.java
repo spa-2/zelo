@@ -63,6 +63,10 @@ public class DeliveryService {
         delivery.cancel(LocalDateTime.now());
     }
 
+    public Optional<Delivery> findDelivery(Long orderId) {
+        return deliveryRepository.findDeliveryByOrderId(orderId);
+    }
+
     private Delivery getDelivery(Long orderId) {
         return deliveryRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DELIVERY_NOT_FOUND));

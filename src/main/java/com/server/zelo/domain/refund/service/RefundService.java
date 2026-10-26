@@ -7,6 +7,7 @@ import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.repository.RefundRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -19,6 +20,11 @@ public class RefundService {
 
     public Refund createRefund(Refund refund) {
         return refundRepository.save(refund);
+    }
+
+    @Transactional
+    public Optional<Refund> findLatestRefund(Long paymentId) {
+        return refundRepository.findTopByPaymentIdOrderByIdDesc(paymentId);
     }
 
     public void validateNotInProgress(Long paymentId) {

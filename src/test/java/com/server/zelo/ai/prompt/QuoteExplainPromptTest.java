@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -163,29 +164,36 @@ class QuoteExplainPromptTest {
         MenuPlan menuPlan = plan(null, List.of(Keyword.NOT_SPICY), List.of());
         Quote quote = quote(List.of(
                 new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 1, 8_900L,
-                        new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15), true)),
+                        new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15),
+                                "아삭하다는 평이 많아요", Set.of(Keyword.NOT_SPICY), true)),
                 new QuoteItem(2L, "VEG-0001", "대파", "1단", 2_500L, 1, 2_500L,
-                        new QuoteItemReason(2, null, 0, Map.of(Keyword.NOT_SPICY, 0), false))), List.of());
+                        new QuoteItemReason(2, null, 0, Map.of(Keyword.NOT_SPICY, 0), null, Set.of(), false)),
+                new QuoteItem(3L, "SID-0001", "포기김치", "1kg", 9_900L, 1, 9_900L,
+                        new QuoteItemReason(40, null, 0, Map.of(Keyword.NOT_SPICY, 0), null, Set.of(), true))),
+                List.of());
 
         // when
         String text = quoteExplainPrompt.userText(menuPlan, quote);
 
-        // then: 리뷰가 적고 맞은 조건도 없는 대파는 근거 줄이 없다
+        // then: 리뷰가 적고 조건과 상관없는 대파는 근거 줄이 없고, 조건 상품이 품절이었던 포기김치는 그 사실을 적는다
         assertThat(text).isEqualTo("""
                 메뉴: 김치볶음밥 (4인분)
                 조건: 맵지 않은
                 담은 상품:
                 - 백김치 (1kg) 1개, 8,900원
-                  근거: 조건 맞음(맵지 않은), 평점 4.5 (리뷰 23개), 리뷰에서 '맵지 않은' 언급 15건
+                  근거: 조건 맞음(맵지 않은), 평점 4.5 (리뷰 23개), 리뷰에서 '맵지 않은' 언급 15건, 리뷰 요약: 아삭하다는 평이 많아요
                 - 대파 (1단) 1개, 2,500원
-                합계: 11,400원""");
+                - 포기김치 (1kg) 1개, 9,900원
+                  근거: 조건에 맞는 상품이 재고가 없어 다른 상품으로 고름
+                합계: 21,300원""");
     }
 
     @Test
     void 고친_견적의_안내에는_근거를_적지_않는다() {
         // given
         QuoteItem kimchi = new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 1, 8_900L,
-                new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15), true));
+                new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15),
+                        null, Set.of(Keyword.NOT_SPICY), true));
         Quote before = quote(List.of(kimchi), List.of());
         Quote after = quote(List.of(new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 2, 17_800L, kimchi.reason())),
                 List.of());
@@ -204,7 +212,8 @@ class QuoteExplainPromptTest {
         assertThat(quoteExplainPrompt.systemPrompt())
                 .contains("\"근거:\" 줄이 있으면")
                 .contains("근거 줄에 없는 이유")
-                .contains("근거 줄이 없는 상품은 고른 이유를 말하지 마");
+                .contains("근거 줄이 없는 상품은 고른 이유를 말하지 마")
+                .contains("조건 상품이 품절이라 다른 상품을 담았다고 알려 줘");
     }
 
     @Test

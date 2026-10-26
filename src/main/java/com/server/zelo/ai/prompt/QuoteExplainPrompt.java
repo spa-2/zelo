@@ -5,6 +5,7 @@ import com.server.zelo.ai.plan.QuoteEdit;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.product.entity.BaseUnit;
+import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -53,7 +54,7 @@ public class QuoteExplainPrompt {
             lines.add("예산: " + won(menuPlan.budget()) + budgetResult(menuPlan.budget(), quote.totalAmount()));
         }
         if (!menuPlan.conditions().isEmpty()) {
-            List<String> conditionNames = menuPlan.conditions().stream().map(QuoteCardPayload::conditionName).toList();
+            List<String> conditionNames = menuPlan.conditions().stream().map(Keyword::getLabel).toList();
             lines.add("조건: " + String.join(", ", conditionNames));
         }
         if (!menuPlan.unmatchedConditions().isEmpty()) {
@@ -133,6 +134,9 @@ public class QuoteExplainPrompt {
         List<String> parts = new ArrayList<>();
         if (!reason.matchedConditions().isEmpty()) {
             parts.add("조건 맞음(" + String.join(", ", reason.matchedConditions()) + ")");
+        }
+        if (reason.conditionSoldOut()) {
+            parts.add("조건에 맞는 상품이 재고가 없어 다른 상품으로 고름");
         }
         if (reason.avgRating() != null) {
             parts.add("평점 " + reason.avgRating().toPlainString() + " (리뷰 " + reason.reviewCount() + "개)");

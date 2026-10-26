@@ -4,6 +4,8 @@ import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
@@ -40,13 +42,19 @@ public class QuoteCommandService {
 
     private final ReviewService reviewService;
     private final ProductService productService;
+    private final BusinessMetrics businessMetrics;
     private final QuoteRepository quoteRepository;
     private final InventoryService inventoryService;
 
     @Transactional(readOnly = true)
     public Quote createQuote(Long userId, Long roomId, MenuPlan menuPlan) {
-        Selection selection = select(menuPlan.ingredients(), new HashSet<>(menuPlan.conditions()));
-        return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems());
+        Quote quote = businessMetrics.time(BusinessMetric.QUOTE_CREATE_TIME, () -> {
+            Selection selection = select(menuPlan.ingredients(), new HashSet<>(menuPlan.conditions()));
+            return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems());
+        });
+        businessMetrics.count(BusinessMetric.QUOTE_CREATED);
+        quote.excludedItems().forEach(item -> businessMetrics.count(BusinessMetric.QUOTE_EXCLUDED, "reason", item.reason()));
+        return quote;
     }
 
     public Quote removeItem(Long userId, Long roomId, Long productId) {

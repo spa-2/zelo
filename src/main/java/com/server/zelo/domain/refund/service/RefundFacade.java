@@ -17,11 +17,12 @@ public class RefundFacade {
 
     public CreateRefundResponse createRefund(Long userId, Long orderId, CreateRefundRequest request) {
         return lockDistributeService.execute(LockKey.refund(orderId),
-                () -> refundCommandService.createRefund(userId, orderId, request.reason()));
+                () -> refundCommandService.createRefund(userId, orderId, request.reason(), request.toCancelQuantities()));
     }
 
     public void syncCancellation(Long orderId, String portoneId) {
         lockDistributeService.execute(LockKey.refund(orderId),
                 () -> refundCommandService.syncCancellation(orderId, portoneId));
     }
+
 }

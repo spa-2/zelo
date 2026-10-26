@@ -11,8 +11,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,5 +123,19 @@ class RefundServiceTest {
 
         // when // then
         assertThat(refundService.findLatestRefund(PAYMENT_ID)).isEmpty();
+    }
+
+    @Test
+    void 완료된_환불_금액을_모두_더한다() {
+        // given
+        Refund first = Refund.of(PAYMENT_ID, RefundType.PARTIAL, "단순 변심");
+        Refund second = Refund.of(PAYMENT_ID, RefundType.PARTIAL, "단순 변심");
+        ReflectionTestUtils.setField(first, "itemsAmount", 3_000L);
+        ReflectionTestUtils.setField(second, "itemsAmount", 2_000L);
+        given(refundRepository.findAllByPaymentIdAndStatus(PAYMENT_ID, RefundStatus.COMPLETED))
+                .willReturn(List.of(first, second));
+
+        // when // then
+        assertThat(refundService.calculateRefundedAmount(PAYMENT_ID)).isEqualTo(5_000L);
     }
 }

@@ -3,6 +3,7 @@ package com.server.zelo.domain.refund.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
@@ -22,10 +23,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionOperations;
-import com.server.zelo.domain.order.entity.Order;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,14 +66,14 @@ class RefundCommandServiceTest {
         givenRefundable();
 
         // when
-        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON);
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
 
         // then
         assertThat(response.status()).isEqualTo(RefundStatus.COMPLETED);
         then(deliveryService).should().holdForRefund(ORDER_ID);
         then(refundService).should().complete(eq(REFUND_ID), any());
         then(paymentService).should().cancel(PORTONE_ID, 10_000L);
-        then(orderCommandService).should().cancel(ORDER_ID);
+        then(orderCommandService).should().cancelItems(ORDER_ID, Map.of(1L, 2));
         then(deliveryService).should().cancelDelivery(ORDER_ID);
     }
 
@@ -84,7 +85,7 @@ class RefundCommandServiceTest {
                 .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
 
         // when
-        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON);
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
 
         // then
         assertThat(response.status()).isEqualTo(RefundStatus.FAILED);
@@ -101,7 +102,7 @@ class RefundCommandServiceTest {
                 .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
 
         // when
-        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON);
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
 
         // then
         assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
@@ -115,7 +116,7 @@ class RefundCommandServiceTest {
         given(paymentService.getLatestPayment(ORDER_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, 10_000L));
 
         // when // then
-        assertThatThrownBy(() -> refundCommandService.createRefund(USER_ID, ORDER_ID, REASON))
+        assertThatThrownBy(() -> refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.PAYMENT_NOT_REFUNDABLE);
         then(deliveryService).shouldHaveNoInteractions();
@@ -129,7 +130,7 @@ class RefundCommandServiceTest {
                 .given(refundService).validateNotInProgress(1L);
 
         // when // then
-        assertThatThrownBy(() -> refundCommandService.createRefund(USER_ID, ORDER_ID, REASON))
+        assertThatThrownBy(() -> refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.REFUND_IN_PROGRESS);
         then(deliveryService).shouldHaveNoInteractions();
@@ -144,7 +145,7 @@ class RefundCommandServiceTest {
                 .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
 
         // when
-        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON);
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
 
         // then
         assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
@@ -160,7 +161,6 @@ class RefundCommandServiceTest {
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
         Refund refund = Refund.of(1L, RefundType.FULL, REASON);
         ReflectionTestUtils.setField(refund, "id", REFUND_ID);
-        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
         given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(true);
 
@@ -180,7 +180,6 @@ class RefundCommandServiceTest {
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
-        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
         given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(true);
 
@@ -277,15 +276,74 @@ class RefundCommandServiceTest {
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
 
         // then
-        // then
         then(paymentService).should().cancel(PORTONE_ID, 10_000L);
         then(deliveryService).should().cancelDeliveryIfPossible(ORDER_ID);
         then(orderCommandService).shouldHaveNoInteractions();
     }
 
-    private void givenRefundable() {
+    @Test
+    void 일부_수량만_환불하면_그만큼만_취소하고_배송_보류를_푼다() {
+        // given
+        givenRefundable();
+
+        // when
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of(1L, 1));
+
+        // then
+        assertThat(response.status()).isEqualTo(RefundStatus.COMPLETED);
+        then(portOneClient).should().cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000010", 5_000L, 10_000L, REASON);
+        then(orderCommandService).should().cancelItems(ORDER_ID, Map.of(1L, 1));
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(paymentService).should(never()).cancel(any(), any());
+        then(deliveryService).should(never()).cancelDelivery(any());
+    }
+
+    @Test
+    void 부분_환불_뒤_남은_상품을_환불하면_남은_결제_금액을_취소하고_결제와_배송을_취소한다() {
+        // given
+        givenRefundable(1);
+        given(refundService.calculateRefundedAmount(1L)).willReturn(5_000L);
+
+        // when
+        refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
+
+        // then
+        then(portOneClient).should().cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000010", 5_000L, 5_000L, REASON);
+        then(orderCommandService).should().cancelItems(ORDER_ID, Map.of(1L, 1));
+        then(paymentService).should().cancel(PORTONE_ID, 10_000L);
+        then(deliveryService).should().cancelDelivery(ORDER_ID);
+    }
+
+    @Test
+    void 주문에_없는_상품을_환불하면_예외가_발생하고_포트원을_호출하지_않는다() {
+        // given
         OrderItem orderItem = mock(OrderItem.class);
+        given(orderItem.getId()).willReturn(1L);
+        given(orderItem.getCancelableQuantity()).willReturn(2);
+        Order order = mock(Order.class);
+        given(order.getOrderItems()).willReturn(List.of(orderItem));
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paidPayment());
+        given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+
+        // when // then
+        assertThatThrownBy(() -> refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of(99L, 1)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+        then(portOneClient).shouldHaveNoInteractions();
+    }
+
+    private OrderItem givenRefundable() {
+        return givenRefundable(2);
+    }
+
+    private OrderItem givenRefundable(int cancelableQuantity) {
+        OrderItem orderItem = mock(OrderItem.class);
+        given(orderItem.getId()).willReturn(1L);
         given(orderItem.getQuantity()).willReturn(2);
+        given(orderItem.getCancelableQuantity()).willReturn(cancelableQuantity);
         given(orderItem.getUnitPrice()).willReturn(5_000L);
         Order order = mock(Order.class);
         given(order.getOrderItems()).willReturn(List.of(orderItem));
@@ -297,6 +355,7 @@ class RefundCommandServiceTest {
             ReflectionTestUtils.setField(refund, "id", REFUND_ID);
             return refund;
         });
+        return orderItem;
     }
 
     private Payment paidPayment() {

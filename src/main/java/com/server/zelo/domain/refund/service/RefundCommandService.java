@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -20,7 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -37,13 +40,14 @@ public class RefundCommandService {
     private static final String CANCEL_KEY_PREFIX = "refund-cancel-";
 
     // 포트원 취소는 외부 HTTP 호출이라 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
-    public CreateRefundResponse createRefund(Long userId, Long orderId, String reason) {
-        RefundTarget target = Objects.requireNonNull(
-                transactionOperations.execute(status -> requestRefund(userId, orderId, reason)));
+    public CreateRefundResponse createRefund(Long userId, Long orderId, String reason,
+                                             Map<Long, Integer> cancelQuantities) {
+        RefundTarget target = Objects.requireNonNull(transactionOperations.execute(
+                status -> requestRefund(userId, orderId, reason, cancelQuantities)));
 
         try {
             portOneClient.cancelPaymentWithAmount(target.portoneId(),String.format("%s%012d", CANCEL_KEY_PREFIX, target.refundId()),
-                    target.amount(), target.amount(), reason);
+                    target.amount(), target.cancellableAmount(), reason);
         } catch (BusinessException e) {
             if (!isRejected(e)) {
                 log.warn("환불 결과 불명확 refundId={}, errorCode={}", target.refundId(), e.getErrorCode());
@@ -58,14 +62,19 @@ public class RefundCommandService {
 
         transactionOperations.executeWithoutResult(status -> {
             refundService.complete(target.refundId(), LocalDateTime.now());
-            paymentService.cancel(target.portoneId(), target.amount());
-            orderCommandService.cancel(orderId);
-            deliveryService.cancelDelivery(orderId);
+            orderCommandService.cancelItems(orderId, target.cancelQuantities());
+            // 남은 상품이 없으면 보낼 것도 없으므로 결제와 배송을 취소하고, 남아 있으면 보류만 풀어 출고되게 한다
+            if (target.cancelsAll()) {
+                paymentService.cancel(target.portoneId(), target.pgAmount());
+                deliveryService.cancelDelivery(orderId);
+            } else {
+                deliveryService.releaseHold(orderId);
+            }
         });
         return CreateRefundResponse.of(target.refundId(), RefundStatus.COMPLETED);
     }
 
-    private RefundTarget requestRefund(Long userId, Long orderId, String reason) {
+    private RefundTarget requestRefund(Long userId, Long orderId, String reason, Map<Long, Integer> requested) {
         orderService.validateOwner(orderId, userId);
         Payment payment = paymentService.getLatestPayment(orderId);
         payment.validateRefundable();
@@ -73,13 +82,42 @@ public class RefundCommandService {
         deliveryService.holdForRefund(orderId);
 
         Order order = orderService.getOrderWithItems(orderId);
-        Refund refund = Refund.of(payment.getId(), RefundType.FULL, reason);
-        order.getOrderItems()
-                .forEach(orderItem -> refund.addRefundItem(RefundItem.of(orderItem, orderItem.getQuantity())));
+        // 환불할 상품을 고르지 않으면 남은 상품 전부를 환불한다
+        Map<Long, Integer> cancelQuantities = requested.isEmpty() ? remainingQuantities(order) : requested;
+        boolean cancelsAll = isAllRemaining(order, cancelQuantities);
+
+        Refund refund = Refund.of(payment.getId(), cancelsAll ? RefundType.FULL : RefundType.PARTIAL, reason);
+        Map<Long, OrderItem> orderItems = order.getOrderItems().stream()
+                .collect(Collectors.toMap(OrderItem::getId, orderItem -> orderItem));
+        cancelQuantities.forEach((orderItemId, quantity) -> {
+            OrderItem orderItem = orderItems.get(orderItemId);
+            if (orderItem == null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "해당 주문에 속한 주문 상품만 환불할 수 있습니다.");
+            }
+            // 이미 환불한 수량을 빼고 남은 수량까지만 환불할 수 있다
+            orderItem.validateCancelQuantity(quantity);
+            refund.addRefundItem(RefundItem.of(orderItem, quantity));
+        });
         Refund savedRefund = refundService.createRefund(refund);
 
-        // 지금은 전액 환불만 있어 취소 가능 잔액이 실제 결제 금액과 같다. 부분 환불(R5)에서 이전 환불 금액을 빼도록 바꾼다
-        return new RefundTarget(savedRefund.getId(), payment.getPortoneId(), payment.getPgAmount());
+        long cancellableAmount = payment.getPgAmount() - refundService.calculateRefundedAmount(payment.getId());
+        // 남은 상품을 모두 환불하면 남은 결제 금액 전부를, 일부면 상품 금액만 취소한다
+        long amount = cancelsAll ? cancellableAmount : savedRefund.getItemsAmount();
+        return new RefundTarget(savedRefund.getId(), payment.getPortoneId(), amount, cancellableAmount,
+                payment.getPgAmount(), cancelQuantities, cancelsAll);
+    }
+
+    private Map<Long, Integer> remainingQuantities(Order order) {
+        return order.getOrderItems().stream()
+                .filter(orderItem -> orderItem.getCancelableQuantity() > 0)
+                .collect(Collectors.toMap(OrderItem::getId, OrderItem::getCancelableQuantity));
+    }
+
+    // 이번 환불로 모든 상품의 남은 수량이 0이 되는지 확인한다
+    private boolean isAllRemaining(Order order, Map<Long, Integer> cancelQuantities) {
+        return order.getOrderItems().stream()
+                .allMatch(orderItem -> orderItem.getCancelableQuantity()
+                        .equals(cancelQuantities.getOrDefault(orderItem.getId(), 0)));
     }
 
     // 취소 웹훅을 받으면 포트원에 다시 조회해, 결과를 모른 채 남은 환불이나 포트원에서 직접 취소한 결제를 맞춘다
@@ -113,7 +151,8 @@ public class RefundCommandService {
         });
     }
 
-    private record RefundTarget(Long refundId, String portoneId, Long amount) {
+    private record RefundTarget(Long refundId, String portoneId, Long amount, Long cancellableAmount,
+                                Long pgAmount, Map<Long, Integer> cancelQuantities, boolean cancelsAll) {
     }
 
     private boolean isRejected(BusinessException e) {

@@ -1,0 +1,25 @@
+#!/bin/bash
+# 배포 = 이 스크립트 실행. 부팅할 때(user_data)와 수동 배포, 배포 파이프라인이 같은 스크립트를 쓴다.
+set -euo pipefail
+
+REGION=${region}
+PREFIX=${prefix}
+REPOSITORY=${repository_url}
+
+TAG=$(aws ssm get-parameter --region "$REGION" --name "$PREFIX/deploy/image_tag" --query Parameter.Value --output text)
+if [ "$TAG" = "none" ]; then
+  echo "image_tag가 none이라 배포하지 않음"
+  exit 0
+fi
+
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$${REPOSITORY%%/*}"
+docker pull "$REPOSITORY:$TAG"
+docker rm -f zelo 2>/dev/null || true
+# 설정(DB, Redis, 시크릿)은 앱이 기동할 때 Spring Cloud AWS가 SSM에서 직접 읽는다
+docker run -d --name zelo --restart unless-stopped \
+  -e SPRING_CONFIG_IMPORT="aws-parameterstore:$PREFIX/" \
+  -e SPRING_CLOUD_AWS_REGION_STATIC="$REGION" \
+  -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
+  -p ${app_port}:8080 -p ${management_port}:9292 "$REPOSITORY:$TAG"
+docker image prune -f > /dev/null
+echo "배포 완료: $TAG"

@@ -1,0 +1,28 @@
+#!/bin/bash
+# Redis 서버 부팅 스크립트(user_data): SSM에서 비밀번호를 읽어 설정 파일을 만들고 Redis 컨테이너를 띄운다.
+exec > >(tee /var/log/zelo-bootstrap.log) 2>&1
+set -euo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+PASSWORD=$(aws ssm get-parameter --region ${region} --name "${prefix}/spring.data.redis.password" \
+  --with-decryption --query Parameter.Value --output text)
+
+# 컨테이너 안의 redis 사용자(uid 999)가 읽고 쓸 수 있게 한다
+install -d -o 999 -g 999 /data/redis
+install -m 600 -o 999 -g 999 /dev/null /data/redis/redis.conf
+cat > /data/redis/redis.conf <<EOF
+bind 0.0.0.0
+requirepass $PASSWORD
+appendonly yes
+appendfsync everysec
+# 토큰과 락이 들어 있어서 메모리가 차도 키를 지우지 않고 쓰기를 거절하게 한다
+maxmemory 600mb
+maxmemory-policy noeviction
+EOF
+
+docker rm -f redis 2>/dev/null || true
+docker run -d --name redis --restart unless-stopped \
+  -p 6379:6379 -v /data/redis:/data \
+  redis:7 redis-server /data/redis.conf

@@ -1,6 +1,6 @@
 @host = http://localhost:8080
 
-### Zelo 전체 흐름 시나리오 (프론트 없이)
+# Zelo 전체 흐름 시나리오 (프론트 없이)
 # IntelliJ에서 위에서부터 순서대로 ▶ 실행 (또는 파일 맨 위 ▶▶ "Run All")
 # 앱은 ZELO_SEED_ENABLED=true 로 시드 넣고 실행. 결제는 PORTONE_MODE 기본값(fake)이라 돈 안 나감
 # LLM은 real 모드(실제 OPENAI_API_KEY)로 실행. fake 모드는 기본이 일반 질문 답변이라 견적 카드가 안 나옴
@@ -10,6 +10,8 @@ GET {{host}}/api/categories
 
 > {%
     client.test("서버 응답", () => client.assert(response.status === 200, "서버가 안 떠 있어요"));
+    // 이전 실행의 quoteId 같은 값이 남아 있으면 엉뚱한 견적으로 요청될 수 있어서 비우고 시작
+    client.global.clearAll();
     client.global.set("email", "zelo" + Date.now() + "@test.com");
     client.global.set("password", "Zelo1234!");
 %}
@@ -64,7 +66,7 @@ Authorization: Bearer {{token}}
 %}
 
 
-### ===== 시나리오 A. 메뉴 추천에서 결제까지 =====
+# ===== 시나리오 A. 메뉴 추천에서 결제까지 =====
 
 ### A-1. 채팅 시작: 견적 카드 받기 (roomId, quoteId 저장)
 POST {{host}}/api/chat/messages
@@ -155,7 +157,7 @@ Authorization: Bearer {{token}}
 %}
 
 
-### ===== 시나리오 C. 사고 방지 =====
+# ===== 시나리오 C. 사고 방지 =====
 
 ### C-1. 같은 주문 요청을 다시 보내도 주문은 1건 (새로 만들지 않고 기존 주문을 돌려줌)
 POST {{host}}/api/orders
@@ -168,8 +170,8 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("새 주문 안 생김", () => client.assert(response.status !== 201, "status " + response.status + "로 새 주문이 생겼어요"));
-    client.test("같은 주문", () => client.assert(response.status !== 200 || response.body.data.orderId === client.global.get("orderId"), "다른 주문이 왔어요"));
+    client.test("새로 안 만들고 200", () => client.assert(response.status === 200, "status " + response.status));
+    client.test("같은 주문", () => client.assert(response.body.data.orderId === client.global.get("orderId"), "다른 주문이 왔어요"));
 %}
 
 ### C-2. 수정 전 견적(첫 번째 quoteId)으로 구매 확인 → QUOTE_NOT_CURRENT
@@ -186,7 +188,7 @@ Content-Type: application/json
     client.test("수정 전 견적 거부", () => client.assert(response.body.code === "QUOTE_002", JSON.stringify(response.body)));
 %}
 
-### C-3. 남의 채팅방(없는 방)으로 구매 확인 → 거부
+### C-3. 없는 채팅방으로 구매 확인 → CHAT_ROOM_NOT_FOUND
 POST {{host}}/api/orders/confirmations
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -197,11 +199,57 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("거부됨", () => client.assert(response.status >= 400, "status " + response.status));
+    client.test("없는 방 거부", () => client.assert(response.status === 404 && response.body.code === "CHAT_001", JSON.stringify(response.body)));
+%}
+
+### C-4. 다른 사용자 가입
+POST {{host}}/api/users
+Content-Type: application/json
+
+{
+  "email": "other{{email}}",
+  "password": "{{password}}",
+  "passwordConfirm": "{{password}}",
+  "name": "다른사용자",
+  "phoneNumber": "010-8765-4321",
+  "place": "집",
+  "addresses": "서울시 마포구 월드컵로 1",
+  "zipCode": "03900"
+}
+
+> {%
+    client.test("다른 사용자 가입 201", () => client.assert(response.status === 201, "status " + response.status));
+%}
+
+### C-5. 다른 사용자 로그인 (token은 그대로 두고 otherToken에 저장)
+POST {{host}}/api/users/login
+Content-Type: application/json
+
+{
+  "email": "other{{email}}",
+  "password": "{{password}}"
+}
+
+> {%
+    client.global.set("otherToken", response.body.data.accessToken);
+%}
+
+### C-6. 다른 사용자가 A의 채팅방으로 구매 확인 → CHAT_ROOM_ACCESS_DENIED
+POST {{host}}/api/orders/confirmations
+Authorization: Bearer {{otherToken}}
+Content-Type: application/json
+
+{
+  "roomId": {{roomId}},
+  "quoteId": "{{quoteId}}"
+}
+
+> {%
+    client.test("남의 방 거부", () => client.assert(response.status === 403 && response.body.code === "CHAT_002", JSON.stringify(response.body)));
 %}
 
 
-### ===== 시나리오 D. 제한 품목 (주류) =====
+# ===== 시나리오 D. 제한 품목 (주류) =====
 
 ### D-1. 맥주를 같이 요청하면 견적에서 빠짐
 POST {{host}}/api/chat/messages
@@ -220,7 +268,7 @@ Content-Type: application/json
 %}
 
 
-### ===== 시나리오 E. 결제 전 주문 취소 =====
+# ===== 시나리오 E. 결제 전 주문 취소 =====
 
 ### E-1. 새 견적 받기
 POST {{host}}/api/chat/messages

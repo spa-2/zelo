@@ -13,8 +13,11 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.QuoteItemReason;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -152,6 +155,56 @@ class QuoteExplainPromptTest {
                 하지 못한 수정:
                 - 계란 (10구) 50개로 바꾸기: 재고 부족
                 """);
+    }
+
+    @Test
+    void 근거가_있는_상품은_카드와_같은_근거를_상품_아래에_적는다() {
+        // given
+        MenuPlan menuPlan = plan(null, List.of(Keyword.NOT_SPICY), List.of());
+        Quote quote = quote(List.of(
+                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 1, 8_900L,
+                        new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15), true)),
+                new QuoteItem(2L, "VEG-0001", "대파", "1단", 2_500L, 1, 2_500L,
+                        new QuoteItemReason(2, null, 0, Map.of(Keyword.NOT_SPICY, 0), false))), List.of());
+
+        // when
+        String text = quoteExplainPrompt.userText(menuPlan, quote);
+
+        // then: 리뷰가 적고 맞은 조건도 없는 대파는 근거 줄이 없다
+        assertThat(text).isEqualTo("""
+                메뉴: 김치볶음밥 (4인분)
+                조건: 맵지 않은
+                담은 상품:
+                - 백김치 (1kg) 1개, 8,900원
+                  근거: 조건 맞음(맵지 않은), 평점 4.5 (리뷰 23개), 리뷰에서 '맵지 않은' 언급 15건
+                - 대파 (1단) 1개, 2,500원
+                합계: 11,400원""");
+    }
+
+    @Test
+    void 고친_견적의_안내에는_근거를_적지_않는다() {
+        // given
+        QuoteItem kimchi = new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 1, 8_900L,
+                new QuoteItemReason(120, new BigDecimal("4.50"), 23, Map.of(Keyword.NOT_SPICY, 15), true));
+        Quote before = quote(List.of(kimchi), List.of());
+        Quote after = quote(List.of(new QuoteItem(1L, "SID-0008", "백김치", "1kg", 8_900L, 2, 17_800L, kimchi.reason())),
+                List.of());
+
+        // when
+        String text = quoteExplainPrompt.editedText(before, after,
+                List.of(QuoteEdit.of(QuoteEditAction.CHANGE_QUANTITY, 1L, 2, "", 0, BaseUnit.EA)), null, null);
+
+        // then
+        assertThat(text).doesNotContain("근거:");
+    }
+
+    @Test
+    void 프롬프트에_근거_줄에_있는_것만_숫자_그대로_말하는_규칙이_있다() {
+        // then
+        assertThat(quoteExplainPrompt.systemPrompt())
+                .contains("\"근거:\" 줄이 있으면")
+                .contains("근거 줄에 없는 이유")
+                .contains("근거 줄이 없는 상품은 고른 이유를 말하지 마");
     }
 
     @Test

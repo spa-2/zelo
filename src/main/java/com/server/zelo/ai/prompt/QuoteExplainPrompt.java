@@ -3,8 +3,8 @@ package com.server.zelo.ai.prompt;
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.QuoteEdit;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -53,13 +53,13 @@ public class QuoteExplainPrompt {
             lines.add("예산: " + won(menuPlan.budget()) + budgetResult(menuPlan.budget(), quote.totalAmount()));
         }
         if (!menuPlan.conditions().isEmpty()) {
-            List<String> conditionNames = menuPlan.conditions().stream().map(QuoteExplainPrompt::conditionName).toList();
+            List<String> conditionNames = menuPlan.conditions().stream().map(QuoteCardPayload::conditionName).toList();
             lines.add("조건: " + String.join(", ", conditionNames));
         }
         if (!menuPlan.unmatchedConditions().isEmpty()) {
             lines.add("상품 조건으로 반영하지 못한 요청: " + String.join(", ", menuPlan.unmatchedConditions()));
         }
-        addQuoteLines(lines, quote);
+        addQuoteLines(lines, quote, true);
         return String.join("\n", lines);
     }
 
@@ -76,14 +76,19 @@ public class QuoteExplainPrompt {
             lines.add("- " + editLabel(before, failedEdit) + ": "
                     + EDIT_FAILURE_REASONS.getOrDefault(failure, failure.getMessage()));
         }
-        addQuoteLines(lines, after);
+        // 수정 안내는 무엇을 바꿨는지가 중요해서 고른 근거는 넣지 않는다
+        addQuoteLines(lines, after, false);
         return String.join("\n", lines);
     }
 
-    private static void addQuoteLines(List<String> lines, Quote quote) {
+    private static void addQuoteLines(List<String> lines, Quote quote, boolean withReasons) {
         lines.add("담은 상품:" + (quote.items().isEmpty() ? " 없음" : ""));
         for (QuoteItem item : quote.items()) {
             lines.add("- " + productLabel(item) + " " + item.quantity() + "개, " + won(item.lineAmount()));
+            QuoteCardPayload.Reason reason = QuoteCardPayload.Reason.from(item.reason());
+            if (withReasons && reason != null && !reason.isEmpty()) {
+                lines.add("  근거: " + reasonText(reason));
+            }
         }
         if (!quote.excludedItems().isEmpty()) {
             lines.add("빠진 재료:");
@@ -123,11 +128,21 @@ public class QuoteExplainPrompt {
         return totalAmount > budget ? " (예산을 " + won(totalAmount - budget) + " 넘음)" : " (예산 안)";
     }
 
-    // 키워드 설명의 괄호 안은 사용자 말 예시라 빼고 이름만 쓴다 (예: "맵지 않은 (예: 안 맵게, …)" → "맵지 않은")
-    private static String conditionName(Keyword keyword) {
-        String description = keyword.getDescription();
-        int exampleStart = description.indexOf(" (");
-        return exampleStart < 0 ? description : description.substring(0, exampleStart);
+    // 카드에 보이는 근거와 같은 값만 적어, 안내 문장이 카드에 없는 이유를 말하지 않게 한다
+    private static String reasonText(QuoteCardPayload.Reason reason) {
+        List<String> parts = new ArrayList<>();
+        if (!reason.matchedConditions().isEmpty()) {
+            parts.add("조건 맞음(" + String.join(", ", reason.matchedConditions()) + ")");
+        }
+        if (reason.avgRating() != null) {
+            parts.add("평점 " + reason.avgRating().toPlainString() + " (리뷰 " + reason.reviewCount() + "개)");
+        }
+        reason.keywordMentions().forEach(mention ->
+                parts.add("리뷰에서 '" + mention.condition() + "' 언급 " + mention.count() + "건"));
+        if (reason.summary() != null) {
+            parts.add("리뷰 요약: " + reason.summary());
+        }
+        return String.join(", ", parts);
     }
 
     private static String won(Long amount) {

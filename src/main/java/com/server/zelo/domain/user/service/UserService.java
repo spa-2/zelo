@@ -59,4 +59,8 @@ public class UserService {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
     }
+
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmail(User.normalizeEmail(email));
+    }
 }

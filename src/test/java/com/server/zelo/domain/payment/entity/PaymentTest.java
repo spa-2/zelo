@@ -107,4 +107,17 @@ class PaymentTest {
         assertThat(payment.isAmountMatched(1_000L)).isFalse();
     }
 
+    @Test
+    void 결제_완료_상태인지_확인한다() {
+        // given
+        Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
+        payment.startConfirm();
+
+        // when
+        payment.complete(10_000L, LocalDateTime.now());
+
+        // then
+        assertThat(payment.isPaid()).isTrue();
+    }
+
 }

@@ -1,14 +1,14 @@
 package com.server.zelo.domain.chat.service;
 
-import com.server.zelo.ai.llm.ChatPrompt;
-import com.server.zelo.ai.llm.LlmGateway;
-import com.server.zelo.ai.llm.LlmReply;
-import com.server.zelo.ai.llm.MenuPlan;
-import com.server.zelo.ai.llm.MenuPlanPrompt;
-import com.server.zelo.ai.llm.QuoteEdit;
-import com.server.zelo.ai.llm.QuoteEditPlan;
-import com.server.zelo.ai.llm.QuoteEditPrompt;
-import com.server.zelo.ai.llm.QuoteExplainPrompt;
+import com.server.zelo.ai.gateway.LlmGateway;
+import com.server.zelo.ai.gateway.LlmReply;
+import com.server.zelo.ai.plan.MenuPlan;
+import com.server.zelo.ai.plan.QuoteEdit;
+import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.server.zelo.ai.prompt.ChatPrompt;
+import com.server.zelo.ai.prompt.MenuPlanPrompt;
+import com.server.zelo.ai.prompt.QuoteEditPrompt;
+import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;

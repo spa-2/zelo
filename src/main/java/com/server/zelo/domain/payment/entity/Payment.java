@@ -72,7 +72,6 @@ public class Payment extends BaseTimeEntity {
         changeStatus(PaymentStatus.FAILED);
     }
 
-    // 포트원에서는 결제됐지만 금액이 달라 환불한 경우라 실제 결제 금액을 함께 남긴다
     public void cancel(Long pgAmount) {
         changeStatus(PaymentStatus.CANCELED);
         this.pgAmount = pgAmount;
@@ -82,9 +81,15 @@ public class Payment extends BaseTimeEntity {
         return status == PaymentStatus.READY;
     }
 
+    public boolean isPaid() {
+        return status == PaymentStatus.PAID;
+    }
+
     // 포트원 확인이 끝나 결과가 반영된 결제
     public boolean isConfirmed() {
-        return status == PaymentStatus.PAID || status == PaymentStatus.FAILED || status == PaymentStatus.CANCELED;
+        return status == PaymentStatus.PAID ||
+                status == PaymentStatus.FAILED ||
+                status == PaymentStatus.CANCELED;
     }
 
     public boolean isAmountMatched(Long pgAmount) {

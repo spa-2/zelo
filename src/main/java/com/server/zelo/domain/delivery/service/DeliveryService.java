@@ -5,7 +5,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.entity.Delivery;
 import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
-import com.server.zelo.domain.user.entity.UserAddress;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -25,7 +26,8 @@ public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
 
     // 배송지는 결제 완료 시점의 기본 배송지를 복사해 둔다. 이후 사용자가 배송지를 바꾸거나 지워도 이미 접수된 배송은 바뀌지 않는다
-    public Delivery createDelivery(Long orderId, UserAddress address) {
+    // 주문할 때 복사해 둔 배송지로 배송을 만든다. 주문 후 사용자가 기본 배송지를 바꾸거나 지워도 주문 때 주소로 배송된다
+    public Delivery createDelivery(Long orderId, ShippingAddress address) {
         return deliveryRepository.save(Delivery.of(orderId, address.getRecipientName(),
                 address.getRecipientPhone(), address.getZipCode(), address.getAddress(), null));
     }
@@ -61,6 +63,10 @@ public class DeliveryService {
         delivery.cancel(LocalDateTime.now());
     }
 
+    public Optional<Delivery> findDelivery(Long orderId) {
+        return deliveryRepository.findDeliveryByOrderId(orderId);
+    }
+
     private Delivery getDelivery(Long orderId) {
         return deliveryRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DELIVERY_NOT_FOUND));
@@ -69,5 +75,23 @@ public class DeliveryService {
     private List<Delivery> findProgressTargets(DeliveryStatus status, LocalDateTime before) {
         return deliveryRepository.findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(
                 status, before, Limit.of(BATCH_SIZE));
+    }
+
+    // 출고 전이면 배송을 취소하고 true, 이미 출고됐으면 바꾸지 않고 false를 돌려준다.
+    // 배송이 아직 없으면 보낼 상품도 없으므로 true다
+    public boolean cancelDeliveryIfPossible(Long orderId) {
+        Optional<Delivery> found = deliveryRepository.findByOrderId(orderId);
+        if (found.isEmpty()) {
+            return true;
+        }
+        Delivery delivery = found.get();
+        if (!delivery.isCancelable()) {
+            return false;
+        }
+        if (delivery.isOnHold()) {
+            delivery.release();
+        }
+        delivery.cancel(LocalDateTime.now());
+        return true;
     }
 }

@@ -215,39 +215,53 @@ class OrderCommandServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({
-            "RELEASED, cancel",
-            "RESTORED, cancel",
-            "RELEASED, cancelIfPossible",
-            "RESTORED, cancelIfPossible"
-    })
-    void 이미_해제되거나_복원된_품목은_취소_예외를_던지고_재고를_변경하지_않는다(
-            StockState initialState, String operation) {
+    @ValueSource(strings = {"cancel", "cancelIfPossible"})
+    void 이미_해제된_품목은_재고_상태_오류로_거부한다(String operation) {
         // given
         Fixture fixture = createFixture();
-        if (initialState == StockState.RELEASED) {
-            fixture.firstItem().release();
-            fixture.firstInventory().release(3);
-        } else {
-            fixture.firstItem().deduct();
-            fixture.firstInventory().deduct(3);
-            fixture.firstItem().restore();
-            fixture.firstInventory().restore(3);
-        }
+        fixture.firstItem().release();
+        fixture.firstInventory().release(3);
         stubOrder(fixture);
         stubProductIds();
 
         // when
+        // then
         assertThatThrownBy(() -> execute(operation))
                 .isInstanceOfSatisfying(BusinessException.class,
-                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ORDER_STATUS));
-
-        // then
-        assertThat(fixture.firstItem().getStockState()).isEqualTo(initialState);
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_STOCK_STATUS));
+        assertThat(fixture.firstItem().getStockState()).isEqualTo(StockState.RELEASED);
         assertThat(fixture.secondItem().getStockState()).isEqualTo(StockState.RESERVED);
         assertQuantities(fixture.firstInventory(), 10, 1, 9);
         assertQuantities(fixture.secondInventory(), 20, 3, 17);
         verifyNoInteractions(inventoryRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cancel", "cancelIfPossible"})
+    void 이미_전량_복원된_품목은_건너뛰고_남은_품목만_취소한다(String operation) {
+        // given
+        Fixture fixture = createFixture();
+        fixture.firstItem().deduct();
+        fixture.firstInventory().deduct(3);
+        fixture.firstItem().restore();
+        fixture.firstInventory().restore(3);
+        stubOrder(fixture);
+        stubProductIds();
+        given(inventoryRepository.findInventoryByProduct_Id(9L))
+                .willReturn(Optional.of(fixture.secondInventory()));
+
+        // when
+        execute(operation);
+
+        // then
+        assertThat(fixture.order().getStatus()).isEqualTo(OrderStatus.CANCELED);
+        assertThat(fixture.firstItem().getStockState()).isEqualTo(StockState.RESTORED);
+        assertThat(fixture.firstItem().getCanceledQuantity()).isEqualTo(3);
+        assertThat(fixture.secondItem().getStockState()).isEqualTo(StockState.RELEASED);
+        assertQuantities(fixture.firstInventory(), 10, 1, 9);
+        assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        then(inventoryRepository).should(never()).findInventoryByProduct_Id(7L);
+        then(inventoryRepository).should().findInventoryByProduct_Id(9L);
     }
 
     @ParameterizedTest

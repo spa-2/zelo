@@ -5,24 +5,23 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.delivery.entity.Delivery;
 import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
-import com.server.zelo.domain.user.entity.User;
-import com.server.zelo.domain.user.entity.UserAddress;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Limit;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+
 
 @ExtendWith(MockitoExtension.class)
 class DeliveryServiceTest {
@@ -35,9 +34,9 @@ class DeliveryServiceTest {
     private static final Limit BATCH = Limit.of(DeliveryService.BATCH_SIZE);
 
     @Test
-    void 기본_배송지_정보로_배송_준비_상태의_배송을_만든다() {
+    void 주문_배송지로_배송_준비_상태의_배송을_만든다() {
         // given
-        UserAddress address = UserAddress.of(mock(User.class), "집", "홍길동", "010-1234-5678", "12345", "서울시 강남구", true);
+        ShippingAddress address = ShippingAddress.of("홍길동", "010-1234-5678", "12345", "서울시 강남구");
         given(deliveryRepository.save(any(Delivery.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         // when
@@ -173,6 +172,68 @@ class DeliveryServiceTest {
         assertThatThrownBy(() -> deliveryService.holdForRefund(10L))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DELIVERY_NOT_FOUND));
+    }
+
+    @Test
+    void 출고_전_배송은_보류를_풀고_취소한다() {
+        // given
+        Delivery delivery = readyDelivery();
+        delivery.hold();
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        boolean result = deliveryService.cancelDeliveryIfPossible(10L);
+
+        // then
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.CANCELED);
+        assertThat(delivery.isOnHold()).isFalse();
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void 이미_출고된_배송은_취소하지_않는다() {
+        // given
+        Delivery delivery = readyDelivery();
+        delivery.ship(NOW);
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        deliveryService.cancelDeliveryIfPossible(10L);
+
+        // then
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.SHIPPING);
+    }
+
+    @Test
+    void 배송이_없으면_취소할_것이_없어_true를_돌려준다() {
+        // given
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(deliveryService.cancelDeliveryIfPossible(10L)).isTrue();
+    }
+
+    @Test
+    void 주문의_배송을_잠금_없이_조회한다() {
+        // given
+        Delivery delivery = readyDelivery();
+        given(deliveryRepository.findDeliveryByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        Optional<Delivery> result = deliveryService.findDelivery(10L);
+
+        // then
+        assertThat(result).containsSame(delivery);
+        then(deliveryRepository).should(never()).findByOrderId(any());
+    }
+
+    @Test
+    void 배송이_없는_주문이면_빈_값을_돌려준다() {
+        // given
+        given(deliveryRepository.findDeliveryByOrderId(10L)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(deliveryService.findDelivery(10L)).isEmpty();
     }
 
     private Delivery readyDelivery() {

@@ -15,6 +15,9 @@ import java.util.Optional;
 @Repository
 public interface DeliveryRepository extends JpaRepository<Delivery, Long> {
 
+    // 상세 조회가 스케줄러·환불의 배송 상태 변경을 막지 않도록 잠금 없이 조회한다
+    Optional<Delivery> findDeliveryByOrderId(Long orderId);
+
     // 환불로 보류된 배송은 빼고, 상태가 바뀐 지 일정 시간이 지난 배송을 오래된 것부터 limit 건까지 찾는다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<Delivery> findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(

@@ -26,6 +26,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.AdditionalAnswers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -319,6 +322,21 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 결제_결과_알림은_대화_기록에_남긴다() {
+        // given: 결제가 끝난 뒤 사용자가 결과를 물으면 LLM이 알림을 보고 답해야 한다
+        ChatMessage paymentNotice = ChatMessage.of(10L, ChatSender.SYSTEM_EVENT, "결제가 완료됐어요.",
+                "{\"type\": \"PAYMENT_CARD\", \"status\": \"PAID\"}");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 5L, Limit.of(10)))
+                .willReturn(List.of(paymentNotice));
+
+        // when
+        List<ChatMessage> history = chatMessageService.findHistory(10L, 5L);
+
+        // then
+        assertThat(history).containsExactly(paymentNotice);
+    }
+
+    @Test
     void 대화_기록이_2000자를_넘으면_오래된_메시지부터_뺀다() {
         // given: 최신부터 900자, 900자, 900자 → 앞의 두 개(1800자)까지만 들어간다
         ChatMessage newest = ChatMessage.of(10L, ChatSender.USER, "가".repeat(900));
@@ -341,9 +359,7 @@ class ChatMessageServiceTest {
         LocalDateTime before = chatRoom.getLastMessageAt();
         given(chatRoomService.getOwnedChatRoom(10L, 1L)).willReturn(chatRoom);
         given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
-        PaymentCardPayload card = new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
-                List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),
-                12_000L, PaymentStatus.PAID, LocalDateTime.of(2026, 10, 24, 12, 0));
+        PaymentCardPayload card = paymentCard(PaymentStatus.PAID, null);
 
         // when
         ChatMessage result = chatMessageService.createPaymentCardMessage(10L, 1L, card);
@@ -353,6 +369,48 @@ class ChatMessageServiceTest {
         assertThat(result.getContent()).isEqualTo("결제가 완료됐어요.");
         assertThat(result.getPayload()).contains("\"type\":\"PAYMENT_CARD\"").contains("\"orderId\":3");
         assertThat(chatRoom.getLastMessageAt()).isAfterOrEqualTo(before);
+    }
+
+    // 빈 칸은 사유 없음(null)
+    @ParameterizedTest
+    @CsvSource({
+            "PAID, , 결제가 완료됐어요.",
+            "FAILED, , 결제에 실패했어요.",
+            "CANCELED, USER_CANCELED, 결제를 취소했어요.",
+            "CANCELED, AMOUNT_MISMATCH, 결제 금액이 주문 금액과 달라 결제를 취소하고 환불했어요.",
+            "CANCELED, ORDER_CLOSED, 이미 처리가 끝난 주문이라 결제된 금액을 환불했어요.",
+            "CANCELED, , 결제를 취소했어요."
+    })
+    void 결제_결과와_취소_사유에_맞는_문장으로_결제_카드를_저장한다(PaymentStatus status, String reason, String content) {
+        // given
+        given(chatRoomService.getOwnedChatRoom(10L, 1L)).willReturn(ChatRoom.of(1L));
+        given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(AdditionalAnswers.returnsFirstArg());
+
+        // when
+        ChatMessage result = chatMessageService.createPaymentCardMessage(10L, 1L, paymentCard(status, reason));
+
+        // then
+        assertThat(result.getContent()).isEqualTo(content);
+        assertThat(result.getPayload()).contains("\"status\":\"" + status + "\"");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PaymentStatus.class, names = {"READY", "CONFIRM_PENDING"})
+    void 결제_결과가_정해지지_않았으면_결제_카드를_저장하지_않는다(PaymentStatus status) {
+        // given
+        PaymentCardPayload card = paymentCard(status, null);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.createPaymentCardMessage(10L, 1L, card))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        then(chatMessageRepository).should(never()).save(any());
+    }
+
+    private PaymentCardPayload paymentCard(PaymentStatus status, String reason) {
+        return new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
+                List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),
+                12_000L, status, reason, LocalDateTime.of(2026, 10, 24, 12, 0));
     }
 
     private List<ChatMessage> messagesWithIds(Long... ids) {

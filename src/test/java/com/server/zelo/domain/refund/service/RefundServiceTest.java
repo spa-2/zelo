@@ -92,4 +92,34 @@ class RefundServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.REFUND_NOT_FOUND);
     }
+
+    @Test
+    void 진행_중인_환불을_찾는다() {
+        // given
+        Refund refund = Refund.of(PAYMENT_ID, RefundType.FULL, "단순 변심");
+        given(refundRepository.findByPaymentIdAndStatus(PAYMENT_ID, RefundStatus.REQUESTED))
+                .willReturn(Optional.of(refund));
+
+        // when // then
+        assertThat(refundService.findRequestedRefund(PAYMENT_ID)).containsSame(refund);
+    }
+
+    @Test
+    void 결제의_가장_최근_환불을_조회한다() {
+        // given
+        Refund refund = Refund.of(PAYMENT_ID, RefundType.FULL, "단순 변심");
+        given(refundRepository.findTopByPaymentIdOrderByIdDesc(PAYMENT_ID)).willReturn(Optional.of(refund));
+
+        // when // then
+        assertThat(refundService.findLatestRefund(PAYMENT_ID)).containsSame(refund);
+    }
+
+    @Test
+    void 환불_이력이_없으면_빈_값을_돌려준다() {
+        // given
+        given(refundRepository.findTopByPaymentIdOrderByIdDesc(PAYMENT_ID)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(refundService.findLatestRefund(PAYMENT_ID)).isEmpty();
+    }
 }

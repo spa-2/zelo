@@ -9,11 +9,12 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
-import com.server.zelo.ai.llm.MenuPlan;
-import com.server.zelo.ai.llm.MenuPlanIngredient;
-import com.server.zelo.ai.llm.MenuPlanIntent;
+import com.server.zelo.ai.plan.MenuPlan;
+import com.server.zelo.ai.plan.MenuPlanIngredient;
+import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
@@ -24,8 +25,12 @@ import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.QuoteItemReason;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
+import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -52,6 +58,11 @@ class QuoteCommandServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
 
     @InjectMocks
     private QuoteCommandService quoteCommandService;
@@ -111,6 +122,81 @@ class QuoteCommandServiceTest {
                 tuple("김가루", "PRODUCT_NOT_FOUND"),
                 tuple("소주", "CATEGORY_NOT_ALLOWED"),
                 tuple("김치", "OUT_OF_STOCK"));
+    }
+
+    @Test
+    void 견적을_만들면_발급_수와_빠진_사유를_센다() {
+        // given
+        Product sojuProduct = product(1L, soju, "소주 360ml", 1900L, 360, 100);
+        Product pogi = product(2L, kimchi, "포기김치 500g", 5900L, 500, 100);
+        givenProducts(List.of(sojuProduct, pogi), Map.of(1L, 100, 2L, 100), Map.of());
+
+        // when
+        quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(
+                MenuPlanIngredient.of("소주", 360, BaseUnit.ML),
+                MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of()));
+
+        // then
+        assertThat(meterRegistry.get("zelo.quote.created").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.quote.excluded").tag("reason", "CATEGORY_NOT_ALLOWED").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.quote.create.time").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 고른_상품에_판매량_리뷰_조건_일치_여부를_근거로_담는다() {
+        // given
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
+        Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
+        given(productService.findOnSaleProducts(anyList())).willReturn(List.of(pogi, baek));
+        given(inventoryService.findAvailableQuantities(anyCollection())).willReturn(Map.of(1L, 100, 2L, 100));
+        given(productService.findKeywords(anyCollection())).willReturn(Map.of(2L, Set.of(Keyword.NOT_SPICY)));
+        given(reviewService.findReviewEvidences(anyList(), anySet())).willReturn(Map.of(2L, ProductReviewEvidence.of(
+                2L, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15), null)));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L,
+                menuPlan(List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY)));
+
+        // then
+        QuoteItemReason reason = quote.items().get(0).reason();
+        assertThat(reason.salesCount()).isEqualTo(80);
+        assertThat(reason.avgRating()).isEqualByComparingTo("4.6");
+        assertThat(reason.reviewCount()).isEqualTo(23);
+        assertThat(reason.keywordMentions()).containsEntry(Keyword.NOT_SPICY, 15);
+        assertThat(reason.conditionMatched()).isTrue();
+    }
+
+    @Test
+    void 조건에_맞는_상품이_없으면_조건_불일치로_담고_리뷰가_없으면_비워둔다() {
+        // given
+        givenProducts(List.of(product(1L, kimchi, "포기김치 500g", 5900L, 500, 120)), Map.of(1L, 100), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L,
+                menuPlan(List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY)));
+
+        // then
+        QuoteItemReason reason = quote.items().get(0).reason();
+        assertThat(reason.conditionMatched()).isFalse();
+        assertThat(reason.avgRating()).isNull();
+        assertThat(reason.reviewCount()).isZero();
+        assertThat(reason.keywordMentions()).isEmpty();
+    }
+
+    @Test
+    void 수량을_바꿔도_근거는_그대로_둔다() {
+        // given
+        QuoteItemReason reason = new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(), true);
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
+                List.of(new QuoteItem(1L, "P-1", "백김치 1kg", "1kg", 8900L, 1, 8900L, reason)), List.of(), 8900L,
+                LocalDateTime.now(), LocalDateTime.now().plusMinutes(10))));
+        given(inventoryService.findAvailableQuantities(List.of(1L))).willReturn(Map.of(1L, 10));
+
+        // when
+        Quote quote = quoteCommandService.changeQuantity(1L, 5L, 1L, 2);
+
+        // then
+        assertThat(quote.items().get(0).reason()).isEqualTo(reason);
     }
 
     @Test

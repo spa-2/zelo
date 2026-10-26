@@ -3,9 +3,9 @@ package com.server.zelo.domain.webhook.controller;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
-import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
+import com.server.zelo.domain.webhook.service.WebhookCommandService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,8 +15,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.http.MediaType;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -33,8 +33,7 @@ class WebhookControllerTest {
     @InjectMocks
     private WebhookController webhookController;
 
-    @Mock
-    private PaymentFacade paymentFacade;
+    @Mock private WebhookCommandService webhookCommandService;
 
     @Mock
     private PortOneWebhookVerifier portOneWebhookVerifier;
@@ -63,7 +62,7 @@ class WebhookControllerTest {
                         .content(BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
-        then(paymentFacade).should().confirmPayment("payment-uuid-1");
+        then(webhookCommandService).should().handle(eq("wh-1"), any(WebhookRequest.class), eq(BODY));
     }
 
     @Test
@@ -78,6 +77,6 @@ class WebhookControllerTest {
                         .content(BODY))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_WEBHOOK_SIGNATURE.getCode()));
-        then(paymentFacade).should(never()).confirmPayment(anyString());
+        then(webhookCommandService).should(never()).handle(any(), any(), any());
     }
 }

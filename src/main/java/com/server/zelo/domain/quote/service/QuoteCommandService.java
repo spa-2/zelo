@@ -12,6 +12,7 @@ import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.QuoteItemReason;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
@@ -135,8 +136,10 @@ public class QuoteCommandService {
 
             Product product = pick(ingredient, inStock, conditions, keywords, reviews);
             int quantity = quantity(ingredient, product);
+            boolean conditionMatched = !Collections.disjoint(keywords.getOrDefault(product.getId(), Set.of()), conditions);
+            QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()), conditionMatched);
             items.add(new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
-                    product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity));
+                    product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason));
         }
         return new Selection(items, excludedItems);
     }
@@ -169,7 +172,7 @@ public class QuoteCommandService {
 
     private QuoteItem withQuantity(QuoteItem item, int quantity) {
         return new QuoteItem(item.productId(), item.productCode(), item.productName(), item.productUnit(),
-                item.unitPrice(), quantity, item.unitPrice() * quantity);
+                item.unitPrice(), quantity, item.unitPrice() * quantity, item.reason());
     }
 
     // 필요한 양을 상품 1개 용량으로 나눠서 올림 (김치 400g인데 500g짜리면 1개)

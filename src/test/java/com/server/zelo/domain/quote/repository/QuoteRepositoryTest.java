@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +55,7 @@ class QuoteRepositoryTest {
         quoteRepository.save(quote);
 
         // then
-            then(valueOperations).should().set(eq("quote:5"), json.capture(), eq(Duration.ofMinutes(10)));
+        then(valueOperations).should().set(eq("quote:5"), json.capture(), eq(Duration.ofMinutes(10)));
         assertThat(json.getValue()).contains("\"quoteId\":\"q-1\"", "\"menuName\":\"김치볶음밥\"");
     }
 
@@ -86,12 +87,27 @@ class QuoteRepositoryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void 조건이_없던_예전_견적도_빈_조건으로_읽는다() {
+        // given
+        given(valueOperations.get("quote:5")).willReturn("""
+                {"quoteId":"q-old","userId":12,"roomId":5,"menuName":"김치볶음밥","items":[],"excludedItems":[],
+                "totalAmount":0,"createdAt":"2026-10-21T18:00:00","expiresAt":"2026-10-21T18:10:00"}""");
+
+        // when
+        Quote quote = quoteRepository.findByRoomId(5L).orElseThrow();
+
+        // then
+        assertThat(quote.conditions()).isEmpty();
+    }
+
     private Quote quote(Long roomId) {
         LocalDateTime createdAt = LocalDateTime.of(2026, 10, 21, 18, 0);
         return new Quote("q-1", 12L, roomId, "김치볶음밥",
                 List.of(new QuoteItem(3L, "P-KIMCHI-001", "백김치 1kg", "1kg", 8900L, 1, 8900L,
-                        new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15), true))),
+                        new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15),
+                                "맵지 않아 아이들도 잘 먹어요", Set.of(Keyword.NOT_SPICY), true))),
                 List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")),
-                8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL));
+                8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL), Set.of(Keyword.NOT_SPICY));
     }
 }

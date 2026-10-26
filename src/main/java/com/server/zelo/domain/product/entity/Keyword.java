@@ -21,4 +21,10 @@ public enum Keyword {
     EASY_COOK("간편 조리 (예: 빨리, 간단하게, 바빠서, 바쁨, 손질 없이, 요리 초보)");
 
     private final String description;
+
+    // 카드에 보여줄 짧은 이름 ("맵지 않은"). description은 프롬프트용이라 괄호 안 예시까지 들어 있음
+    public String getLabel() {
+        int bracket = description.indexOf(" (");
+        return bracket < 0 ? description : description.substring(0, bracket);
+    }
 }

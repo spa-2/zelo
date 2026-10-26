@@ -48,9 +48,10 @@ public class QuoteCommandService {
 
     @Transactional(readOnly = true)
     public Quote createQuote(Long userId, Long roomId, MenuPlan menuPlan) {
+        Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
         Quote quote = businessMetrics.time(BusinessMetric.QUOTE_CREATE_TIME, () -> {
-            Selection selection = select(menuPlan.ingredients(), new HashSet<>(menuPlan.conditions()));
-            return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems());
+            Selection selection = select(menuPlan.ingredients(), conditions);
+            return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems(), conditions);
         });
         businessMetrics.count(BusinessMetric.QUOTE_CREATED);
         quote.excludedItems().forEach(item -> businessMetrics.count(BusinessMetric.QUOTE_EXCLUDED, "reason", item.reason()));
@@ -61,7 +62,7 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         QuoteItem target = getItem(quote, productId);
         List<QuoteItem> items = quote.items().stream().filter(item -> item != target).toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions());
     }
 
     @Transactional(readOnly = true)
@@ -77,7 +78,7 @@ public class QuoteCommandService {
         List<QuoteItem> items = quote.items().stream()
                 .map(item -> item == target ? withQuantity(item, quantity) : item)
                 .toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions());
     }
 
     // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
@@ -87,7 +88,8 @@ public class QuoteCommandService {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
         Quote quote = getQuote(userId, roomId);
-        Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), Set.of());
+        // 처음 견적의 조건(맵지 않게 등)으로 골라야 추가한 재료도 같은 기준이 됨
+        Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), quote.conditions());
 
         List<QuoteItem> items = new ArrayList<>(quote.items());
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems().stream()
@@ -108,7 +110,7 @@ public class QuoteCommandService {
                 items.set(items.indexOf(same), withQuantity(same, quantity));
             }
         }
-        return save(userId, roomId, quote.menuName(), items, excludedItems);
+        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions());
     }
 
     private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions) {
@@ -144,8 +146,13 @@ public class QuoteCommandService {
 
             Product product = pick(ingredient, inStock, conditions, keywords, reviews);
             int quantity = quantity(ingredient, product);
-            boolean conditionMatched = !Collections.disjoint(keywords.getOrDefault(product.getId(), Set.of()), conditions);
-            QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()), conditionMatched);
+            Set<Keyword> matched = new HashSet<>(keywords.getOrDefault(product.getId(), Set.of()));
+            matched.retainAll(conditions);
+            // 품절 상품까지 포함해서 봐야 "조건 상품이 품절이라 다른 걸 골랐다"를 알 수 있음
+            boolean conditionProductExists = candidates.stream()
+                    .anyMatch(candidate -> !Collections.disjoint(keywords.getOrDefault(candidate.getId(), Set.of()), conditions));
+            QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()),
+                    matched, conditionProductExists);
             items.add(new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
                     product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason));
         }
@@ -153,11 +160,12 @@ public class QuoteCommandService {
     }
 
     // 수정할 때마다 quoteId를 새로 발급해서 수정 전 카드로는 주문 못 하게 함
-    private Quote save(Long userId, Long roomId, String menuName, List<QuoteItem> items, List<ExcludedItem> excludedItems) {
+    private Quote save(Long userId, Long roomId, String menuName, List<QuoteItem> items, List<ExcludedItem> excludedItems,
+                       Set<Keyword> conditions) {
         long totalAmount = items.stream().mapToLong(QuoteItem::lineAmount).sum();
         LocalDateTime now = LocalDateTime.now();
         Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName,
-                items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL));
+                items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions);
         quoteRepository.save(quote);
         return quote;
     }

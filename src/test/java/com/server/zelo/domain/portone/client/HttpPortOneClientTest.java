@@ -260,6 +260,23 @@ class HttpPortOneClientTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_REJECTED));
     }
 
+    @Test
+    void 같은_멱등_키의_취소가_처리_중이면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"IDEMPOTENCY_OUTSTANDING_REQUEST","message":"처리 중인 요청입니다."}
+                                """));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000007", 3_000L, 10_000L, CANCEL_REASON))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_FAILED));
+    }
+
     @ParameterizedTest
     @CsvSource(value = {
             "null, 10000",
@@ -276,6 +293,4 @@ class HttpPortOneClientTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         server.verify();
     }
-
-
 }

@@ -30,8 +30,14 @@ public class WebhookEventService {
         getWebhookEvent(webhookEventId).fail(failureReason);
     }
 
+    public void ignore(Long webhookEventId) {
+        getWebhookEvent(webhookEventId).ignore();
+    }
+
     private WebhookEvent getWebhookEvent(Long webhookEventId) {
         return webhookEventRepository.findById(webhookEventId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.WEBHOOK_EVENT_NOT_FOUND));
     }
 }
+
+

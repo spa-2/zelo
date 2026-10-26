@@ -76,8 +76,16 @@ public class WebhookEvent extends BaseCreatedEntity {
         this.failureReason = failureReason;
     }
 
+    public void ignore() {
+        if (isProcessed()) {
+            return;
+        }
+        changeStatus(WebhookStatus.IGNORED);
+    }
+
+    // 무시한 웹훅도 다시 와서 처리할 일이 없으므로 처리가 끝난 것으로 본다
     public boolean isProcessed() {
-        return status == WebhookStatus.PROCESSED;
+        return status == WebhookStatus.PROCESSED || status == WebhookStatus.IGNORED;
     }
 
     private void changeStatus(WebhookStatus target) {

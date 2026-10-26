@@ -19,4 +19,9 @@ public class RefundFacade {
         return lockDistributeService.execute(LockKey.refund(orderId),
                 () -> refundCommandService.createRefund(userId, orderId, request.reason()));
     }
+
+    public void syncCancellation(Long orderId, String portoneId) {
+        lockDistributeService.execute(LockKey.refund(orderId),
+                () -> refundCommandService.syncCancellation(orderId, portoneId));
+    }
 }

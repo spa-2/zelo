@@ -10,7 +10,7 @@ public enum WebhookStatus {
     RECEIVED("수신") {
         @Override
         public boolean canTransitTo(WebhookStatus target) {
-            return target == PROCESSED || target == FAILED;
+            return target == PROCESSED || target == FAILED || target == IGNORED;
         }
     },
     PROCESSED("처리 완료") {
@@ -23,11 +23,16 @@ public enum WebhookStatus {
     FAILED("처리 실패") {
         @Override
         public boolean canTransitTo(WebhookStatus target) {
-            return target == PROCESSED || target == FAILED;
+            return target == PROCESSED || target == FAILED || target == IGNORED;
+        }
+    },
+    IGNORED("처리 안 함") {
+        @Override
+        public boolean canTransitTo(WebhookStatus target) {
+            return false;
         }
     };
 
     private final String description;
-
     public abstract boolean canTransitTo(WebhookStatus target);
 }

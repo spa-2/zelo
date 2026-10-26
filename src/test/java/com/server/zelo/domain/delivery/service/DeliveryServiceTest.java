@@ -172,6 +172,45 @@ class DeliveryServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DELIVERY_NOT_FOUND));
     }
 
+    @Test
+    void 출고_전_배송은_보류를_풀고_취소한다() {
+        // given
+        Delivery delivery = readyDelivery();
+        delivery.hold();
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        boolean result = deliveryService.cancelDeliveryIfPossible(10L);
+
+        // then
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.CANCELED);
+        assertThat(delivery.isOnHold()).isFalse();
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void 이미_출고된_배송은_취소하지_않는다() {
+        // given
+        Delivery delivery = readyDelivery();
+        delivery.ship(NOW);
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.of(delivery));
+
+        // when
+        deliveryService.cancelDeliveryIfPossible(10L);
+
+        // then
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.SHIPPING);
+    }
+
+    @Test
+    void 배송이_없으면_취소할_것이_없어_true를_돌려준다() {
+        // given
+        given(deliveryRepository.findByOrderId(10L)).willReturn(Optional.empty());
+
+        // when // then
+        assertThat(deliveryService.cancelDeliveryIfPossible(10L)).isTrue();
+    }
+
     private Delivery readyDelivery() {
         return Delivery.of(10L, "홍길동", "010-1234-5678", "12345", "서울시 강남구", null);
     }

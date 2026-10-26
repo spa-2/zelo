@@ -28,6 +28,7 @@ public class HttpPortOneClient implements PortOneClient {
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String IDEMPOTENCY_KEY_PREFIX = "cancel-";
     private static final String ALREADY_CANCELLED = "PAYMENT_ALREADY_CANCELLED";
+    private static final String IDEMPOTENCY_OUTSTANDING = "IDEMPOTENCY_OUTSTANDING_REQUEST";
 
     @Override
     public PortOnePayment getPayment(String portoneId) {
@@ -69,7 +70,12 @@ public class HttpPortOneClient implements PortOneClient {
                                         Long currentCancellableAmount, String reason) {
         validateCancelAmount(amount, currentCancellableAmount);
         cancel(portoneId, cancelKey,
-                PortOneCancelRequest.of(portOneProperties.storeId(), reason, amount, currentCancellableAmount), false);
+                PortOneCancelRequest.of(
+                        portOneProperties.storeId(),
+                        reason,
+                        amount,
+                        currentCancellableAmount),
+                false);
     }
 
     // 전액 취소는 이미 취소된 결제면 목표를 이룬 것이지만, 금액 지정 취소는 이번 금액이 취소된 게 아니므로 실패로 본다
@@ -89,6 +95,10 @@ public class HttpPortOneClient implements PortOneClient {
             }
             if (e.getStatusCode().value() == 404) {
                 throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
+            }
+            if (isIdempotencyOutstanding(e)) {
+                log.warn("포트원 결제 취소 처리 중 portoneId={}", portoneId);
+                throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
             }
             log.error("포트원 결제 취소 거절 portoneId={}, status={}, body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());
@@ -124,6 +134,15 @@ public class HttpPortOneClient implements PortOneClient {
     private void validateCancelAmount(Long amount, Long currentCancellableAmount) {
         if (amount == null || amount <= 0 || currentCancellableAmount == null || amount > currentCancellableAmount) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "취소 금액은 1원 이상, 취소 가능 잔액 이하여야 합니다.");
+        }
+    }
+
+    private boolean isIdempotencyOutstanding(HttpClientErrorException e) {
+        try {
+            PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
+            return error != null && IDEMPOTENCY_OUTSTANDING.equals(error.type());
+        } catch (RuntimeException parseError) {
+            return false;
         }
     }
 }

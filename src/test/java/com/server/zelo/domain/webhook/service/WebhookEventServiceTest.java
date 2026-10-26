@@ -104,4 +104,17 @@ class WebhookEventServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.WEBHOOK_EVENT_NOT_FOUND);
     }
+
+    @Test
+    void 무시하면_무시_상태가_된다() {
+        // given
+        WebhookEvent event = WebhookEvent.of(WEBHOOK_ID, "payment-uuid-1", "Transaction.Ready", BODY);
+        given(webhookEventRepository.findById(1L)).willReturn(Optional.of(event));
+
+        // when
+        webhookEventService.ignore(1L);
+
+        // then
+        assertThat(event.getStatus()).isEqualTo(WebhookStatus.IGNORED);
+    }
 }

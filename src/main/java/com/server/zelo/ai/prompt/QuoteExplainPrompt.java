@@ -144,9 +144,15 @@ public class QuoteExplainPrompt {
         reason.keywordMentions().forEach(mention ->
                 parts.add("리뷰에서 '" + mention.condition() + "' 언급 " + mention.count() + "건"));
         if (reason.summary() != null) {
-            parts.add("리뷰 요약: " + reason.summary());
+            parts.add("리뷰 요약: " + summaryData(reason.summary()));
         }
         return String.join(", ", parts);
+    }
+
+    // 리뷰 요약은 다른 사용자가 쓴 리뷰에서 나온 글이라, 안에 지시문이 있어도 데이터로만 읽히게 태그로 감싼다.
+    // 꺾쇠괄호를 바꿔 두어 요약 안에 닫는 태그를 넣어 경계를 빠져나가지 못하게 한다
+    private static String summaryData(String summary) {
+        return "<review_summary>" + summary.replace("<", "&lt;").replace(">", "&gt;") + "</review_summary>";
     }
 
     private static String won(Long amount) {

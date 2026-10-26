@@ -151,7 +151,7 @@ class QuoteCommandServiceTest {
         given(inventoryService.findAvailableQuantities(anyCollection())).willReturn(Map.of(1L, 100, 2L, 100));
         given(productService.findKeywords(anyCollection())).willReturn(Map.of(2L, Set.of(Keyword.NOT_SPICY)));
         given(reviewService.findReviewEvidences(anyList(), anySet())).willReturn(Map.of(2L, ProductReviewEvidence.of(
-                2L, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15), null)));
+                2L, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15), "맵지 않아 아이들도 잘 먹는다는 평이 많아요")));
 
         // when
         Quote quote = quoteCommandService.createQuote(1L, 5L,
@@ -163,11 +163,50 @@ class QuoteCommandServiceTest {
         assertThat(reason.avgRating()).isEqualByComparingTo("4.6");
         assertThat(reason.reviewCount()).isEqualTo(23);
         assertThat(reason.keywordMentions()).containsEntry(Keyword.NOT_SPICY, 15);
-        assertThat(reason.conditionMatched()).isTrue();
+        assertThat(reason.summary()).isEqualTo("맵지 않아 아이들도 잘 먹는다는 평이 많아요");
+        assertThat(reason.matchedConditions()).containsExactly(Keyword.NOT_SPICY);
+        assertThat(reason.conditionProductExists()).isTrue();
+        assertThat(quote.conditions()).containsExactly(Keyword.NOT_SPICY);
     }
 
     @Test
-    void 조건에_맞는_상품이_없으면_조건_불일치로_담고_리뷰가_없으면_비워둔다() {
+    void 조건_상품이_품절이면_조건_불일치지만_조건_상품은_있었다고_담는다() {
+        // given
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
+        Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
+        givenProducts(List.of(pogi, baek), Map.of(1L, 100, 2L, 0), Map.of(2L, Set.of(Keyword.NOT_SPICY)));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L,
+                menuPlan(List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY)));
+
+        // then
+        QuoteItemReason reason = quote.items().get(0).reason();
+        assertThat(quote.items()).extracting(QuoteItem::productName).containsExactly("포기김치 500g");
+        assertThat(reason.matchedConditions()).isEmpty();
+        assertThat(reason.conditionProductExists()).isTrue();
+    }
+
+    @Test
+    void 재료를_추가할_때도_처음_견적의_조건으로_고른다() {
+        // given
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
+                List.of(), List.of(), 0L, LocalDateTime.now(), LocalDateTime.now().plusMinutes(10), Set.of(Keyword.NOT_SPICY))));
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
+        Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
+        givenProducts(List.of(pogi, baek), Map.of(1L, 100, 2L, 100), Map.of(2L, Set.of(Keyword.NOT_SPICY)));
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "김치", 400, BaseUnit.G);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productName).containsExactly("백김치 1kg");
+        assertThat(quote.items().get(0).reason().matchedConditions()).containsExactly(Keyword.NOT_SPICY);
+        assertThat(quote.conditions()).containsExactly(Keyword.NOT_SPICY);
+    }
+
+    @Test
+    void 조건_상품이_아예_없으면_조건과_상관없는_재료로_담고_리뷰가_없으면_비워둔다() {
         // given
         givenProducts(List.of(product(1L, kimchi, "포기김치 500g", 5900L, 500, 120)), Map.of(1L, 100), Map.of());
 
@@ -177,16 +216,17 @@ class QuoteCommandServiceTest {
 
         // then
         QuoteItemReason reason = quote.items().get(0).reason();
-        assertThat(reason.conditionMatched()).isFalse();
+        assertThat(reason.matchedConditions()).isEmpty();
+        assertThat(reason.conditionProductExists()).isFalse();
         assertThat(reason.avgRating()).isNull();
         assertThat(reason.reviewCount()).isZero();
         assertThat(reason.keywordMentions()).isEmpty();
+        assertThat(reason.summary()).isNull();
     }
-
     @Test
     void 수량을_바꿔도_근거는_그대로_둔다() {
         // given
-        QuoteItemReason reason = new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(), true);
+            QuoteItemReason reason = new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(), null, Set.of(), false);
         given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
                 List.of(new QuoteItem(1L, "P-1", "백김치 1kg", "1kg", 8900L, 1, 8900L, reason)), List.of(), 8900L,
                 LocalDateTime.now(), LocalDateTime.now().plusMinutes(10))));

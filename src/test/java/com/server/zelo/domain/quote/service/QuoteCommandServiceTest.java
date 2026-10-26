@@ -14,6 +14,7 @@ import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
@@ -28,6 +29,7 @@ import com.server.zelo.domain.quote.model.QuoteItemReason;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -55,6 +58,11 @@ class QuoteCommandServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
 
     @InjectMocks
     private QuoteCommandService quoteCommandService;
@@ -114,6 +122,24 @@ class QuoteCommandServiceTest {
                 tuple("김가루", "PRODUCT_NOT_FOUND"),
                 tuple("소주", "CATEGORY_NOT_ALLOWED"),
                 tuple("김치", "OUT_OF_STOCK"));
+    }
+
+    @Test
+    void 견적을_만들면_발급_수와_빠진_사유를_센다() {
+        // given
+        Product sojuProduct = product(1L, soju, "소주 360ml", 1900L, 360, 100);
+        Product pogi = product(2L, kimchi, "포기김치 500g", 5900L, 500, 100);
+        givenProducts(List.of(sojuProduct, pogi), Map.of(1L, 100, 2L, 100), Map.of());
+
+        // when
+        quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(
+                MenuPlanIngredient.of("소주", 360, BaseUnit.ML),
+                MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of()));
+
+        // then
+        assertThat(meterRegistry.get("zelo.quote.created").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.quote.excluded").tag("reason", "CATEGORY_NOT_ALLOWED").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.quote.create.time").timer().count()).isEqualTo(1);
     }
 
     @Test

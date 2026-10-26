@@ -3,6 +3,8 @@ package com.server.zelo.domain.order.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
@@ -91,6 +93,12 @@ class OrderCommandServiceTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private DeliveryService deliveryService;
+
     private OrderCommandService orderCommandService;
 
     @BeforeEach
@@ -99,8 +107,17 @@ class OrderCommandServiceTest {
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         InventoryService inventoryService = new InventoryService(inventoryRepository);
         orderCommandService = new OrderCommandService(
-                userService, orderService, quoteService, productService, paymentService, chatRoomService,
-                inventoryService, userAddressService, transactionTemplate);
+                userService,
+                orderService,
+                quoteService,
+                refundService,
+                productService,
+                paymentService,
+                chatRoomService,
+                deliveryService,
+                inventoryService,
+                userAddressService,
+                transactionTemplate);
     }
 
     @Test

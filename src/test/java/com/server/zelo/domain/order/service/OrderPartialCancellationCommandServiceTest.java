@@ -3,6 +3,8 @@ package com.server.zelo.domain.order.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
@@ -68,14 +70,30 @@ class OrderPartialCancellationCommandServiceTest {
     @Mock private UserAddressService userAddressService;
     @Mock private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private DeliveryService deliveryService;
+
     private OrderCommandService command;
 
     @BeforeEach
     void setUp() {
         OrderService orders = new OrderService(orderRepository, orderConfirmationRepository);
         InventoryService inventories = new InventoryService(inventoryRepository);
-        command = new OrderCommandService(userService, orders, quoteService, productService,
-                paymentService, chatRoomService, inventories, userAddressService, transactionTemplate);
+        command = new OrderCommandService(
+                userService,
+                orders,
+                quoteService,
+                refundService,
+                productService,
+                paymentService,
+                chatRoomService,
+                deliveryService,
+                inventories,
+                userAddressService,
+                transactionTemplate);
     }
 
     @Test

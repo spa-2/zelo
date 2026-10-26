@@ -4,6 +4,8 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
@@ -94,6 +96,12 @@ class OrderConfirmationCommandServiceTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private DeliveryService deliveryService;
+
     private OrderCommandService orderCommandService;
 
     @BeforeEach
@@ -102,8 +110,17 @@ class OrderConfirmationCommandServiceTest {
         OrderService orderService = new OrderService(orderRepository, orderConfirmationRepository);
         QuoteService quoteService = new QuoteService(quoteRepository);
         orderCommandService = new OrderCommandService(
-                userService, orderService, quoteService, productService, paymentService, chatRoomService,
-                inventoryService, userAddressService, transactionTemplate);
+                userService,
+                orderService,
+                quoteService,
+                refundService,
+                productService,
+                paymentService,
+                chatRoomService,
+                deliveryService,
+                inventoryService,
+                userAddressService,
+                transactionTemplate);
     }
 
     @Test

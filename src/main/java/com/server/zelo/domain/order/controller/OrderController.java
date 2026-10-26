@@ -11,6 +11,7 @@ import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
+import com.server.zelo.domain.order.dto.response.GetOrderDetailResponse;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.service.OrderCommandService;
@@ -42,8 +43,7 @@ public class OrderController {
             // URL의 쿼리 파라미터를 검색 조건 DTO로 묶어 받는다는 의도를 명확히 하려고 붙인 @ModelAttribute
             @Valid @ModelAttribute SearchOrderCondition condition
     ) {
-        return ResponseEntity
-                .ok(ApiResponse.ok(orderService.getMyOrders(authUser.id(), condition)));
+        return ResponseEntity.ok(ApiResponse.ok(orderService.getMyOrders(authUser.id(), condition)));
     }
 
     @PostMapping("/confirmations")
@@ -76,6 +76,16 @@ public class OrderController {
             @Valid @RequestBody CancelOrderRequest request
     ) {
         CancelOrderResponse response = orderFacade.cancelBeforePayment(authUser.id(), orderId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/{orderId}")
+    public ResponseEntity<ApiResponse<GetOrderDetailResponse>> getOrderDetail(
+            @Auth AuthUser authUser,
+            @PathVariable("orderId") Long orderId
+    ) {
+        GetOrderDetailResponse response = orderCommandService.getOrderDetail(authUser.id(), orderId);
 
         return ResponseEntity.ok(ApiResponse.ok(response));
     }

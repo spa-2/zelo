@@ -4,12 +4,15 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.entity.Delivery;
+import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
+import com.server.zelo.domain.order.dto.response.GetOrderDetailResponse;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
@@ -25,6 +28,8 @@ import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.refund.entity.Refund;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
@@ -56,9 +61,11 @@ public class OrderCommandService {
     private final UserService userService;
     private final OrderService orderService;
     private final QuoteService quoteService;
+    private final RefundService refundService;
     private final ProductService productService;
     private final PaymentService paymentService;
     private final ChatRoomService chatRoomService;
+    private final DeliveryService deliveryService;
     private final InventoryService inventoryService;
     private final UserAddressService userAddressService;
     private final TransactionTemplate transactionTemplate;
@@ -331,6 +338,35 @@ public class OrderCommandService {
         if (order.isFullyCanceled()) {
             order.cancel();
         }
+    }
+
+    /**
+     * 본인 주문의 품목과 최신 결제·배송·환불 정보를 함께 조회한다.
+     *
+     * @param userId 조회하는 사용자 ID
+     * @param orderId 조회할 주문 ID
+     * @throws BusinessException 주문 ID가 올바르지 않으면 INVALID_INPUT,
+     *         주문이 없으면 ORDER_NOT_FOUND,
+     *         다른 사용자의 주문이면 ORDER_ACCESS_DENIED
+     */
+    @Transactional(readOnly = true)
+    public GetOrderDetailResponse getOrderDetail(Long userId, Long orderId) {
+        // 소유권을 먼저 확인하여 다른 사용자의 결제·배송·환불 정보 조회를 막음.
+        Order order = orderService.getOwnedOrderWithItems(userId, orderId);
+
+        // 결제 기록이 있으면 READY 상태도 반환
+        Payment payment = paymentService.findLatestPayment(orderId).orElse(null);
+
+        // 배송 정보가 아직 생성되지 않은 주문도 조회할 수 있도록, 없으면 null로 처리
+        Delivery delivery = deliveryService.findDelivery(orderId).orElse(null);
+
+        // 환불 이력이 없는 주문도 조회할 수 있도록, 최신 환불 정보가 없으면 null로 처리
+        Refund refund = payment == null
+                ? null
+                : refundService.findLatestRefund(payment.getId()).orElse(null);
+
+        // 지연 로딩이 필요한 품목과 배송지 변환까지 트랜잭션 안에서 완료
+        return GetOrderDetailResponse.from(order, payment, delivery, refund);
     }
 
     private List<OrderItem> getItemsInProductOrder(Order order) {

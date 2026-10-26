@@ -156,4 +156,29 @@ public class OrderService {
                 }
         );
     }
+
+    /**
+     * 본인의 주문과 주문 상품을 함께 조회한다.
+     *
+     * @param userId 조회하는 사용자 ID
+     * @param orderId 조회할 주문 ID
+     * @throws BusinessException 주문 ID가 올바르지 않으면 INVALID_INPUT,
+     *         주문이 없으면 ORDER_NOT_FOUND,
+     *         다른 사용자의 주문이면 ORDER_ACCESS_DENIED
+     */
+    public Order getOwnedOrderWithItems(Long userId, Long orderId) {
+        if (orderId == null || orderId < 1) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        // 기존 품목 동시 조회를 재사용하고, 없는 주문은 404로 구분
+        Order order = getOrderWithItems(orderId);
+
+        // 결제·배송·환불 정보를 조회하기 전에 주문 소유권을 확인
+        if (!userId.equals(order.getUser().getId())) {
+            throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+        }
+
+        return order;
+    }
 }

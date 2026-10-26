@@ -3,6 +3,8 @@ package com.server.zelo.domain.order.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
@@ -71,6 +73,12 @@ class OrderCancellationCommandServiceTest {
     @Mock private InventoryRepository inventoryRepository;
     @Mock private OrderConfirmationRepository confirmationRepository;
 
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private DeliveryService deliveryService;
+
     private OrderCommandService command;
     private OrderTestTransactionManager transactionManager;
     private TransactionTemplate transactionTemplate;
@@ -80,10 +88,18 @@ class OrderCancellationCommandServiceTest {
         transactionManager = new OrderTestTransactionManager();
         transactionTemplate = new TransactionTemplate(transactionManager);
         // 상태와 수량 변경은 실제 Service·엔티티로 확인하고 저장소만 Mock으로 둔다.
-        command = new OrderCommandService(userService,
-                new OrderService(orderRepository, confirmationRepository), quoteService, productService,
-                new PaymentService(paymentRepository), chatRoomService,
-                new InventoryService(inventoryRepository), userAddressService, transactionTemplate);
+        command = new OrderCommandService(
+                userService,
+                new OrderService(orderRepository, confirmationRepository),
+                quoteService,
+                refundService,
+                productService,
+                new PaymentService(paymentRepository),
+                chatRoomService,
+                deliveryService,
+                new InventoryService(inventoryRepository),
+                userAddressService,
+                transactionTemplate);
     }
 
     @ParameterizedTest

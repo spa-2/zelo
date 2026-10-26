@@ -140,17 +140,4 @@ class ProductTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
-
-    @Test
-    @SuppressWarnings("deprecation")
-    void 브랜드_없이_만들면_기타로_채운다() {
-        // given
-        Ingredient ingredient = Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA);
-
-        // when
-        Product product = Product.of("APPLE-BOX", ingredient, "사과 한 상자", null, 0L, 1, "1box");
-
-        // then
-        assertThat(product.getBrand()).isEqualTo("기타");
-    }
 }

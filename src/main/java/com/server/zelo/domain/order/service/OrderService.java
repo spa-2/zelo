@@ -10,6 +10,7 @@ import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.model.OrderConfirmation;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,6 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -29,6 +31,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
+    private static final int EXPIRATION_BATCH_SIZE = 100;
+
     private final OrderRepository orderRepository;
     private final OrderConfirmationRepository orderConfirmationRepository;
 
@@ -180,5 +184,24 @@ public class OrderService {
         }
 
         return order;
+    }
+
+    // 한 번의 실행에서 처리할 주문 수를 제한하고, 취소 가능 여부는 잠금 후 다시 확인
+    public List<Long> findExpiredOrderIds(LocalDateTime cutoff) {
+        return orderRepository.findExpiredOrderIds(
+                OrderStatus.PAYMENT_PENDING,
+                cutoff,
+                List.of(PaymentStatus.CONFIRM_PENDING, PaymentStatus.PAID),
+                PageRequest.of(0, EXPIRATION_BATCH_SIZE)
+        );
+    }
+
+    public boolean isExpiredOrder(Long orderId, LocalDateTime cutoff) {
+        return orderRepository.existsExpiredOrder(
+                orderId,
+                OrderStatus.PAYMENT_PENDING,
+                cutoff,
+                List.of(PaymentStatus.CONFIRM_PENDING, PaymentStatus.PAID)
+        );
     }
 }

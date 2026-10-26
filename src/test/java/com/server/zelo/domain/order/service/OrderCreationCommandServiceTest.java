@@ -4,6 +4,8 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatRoomService;
+import com.server.zelo.domain.delivery.service.DeliveryService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.entity.ActorType;
@@ -87,13 +89,28 @@ class OrderCreationCommandServiceTest {
     @Mock private ChatRoom chatRoom;
 
     private OrderTestTransactionManager transactionManager;
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private DeliveryService deliveryService;
+
     private OrderCommandService command;
 
     @BeforeEach
     void setUp() {
         transactionManager = new OrderTestTransactionManager();
-        command = new OrderCommandService(userService, orderService, quoteService, productService, paymentService,
-                chatRoomService, inventoryService, userAddressService,
+        command = new OrderCommandService(
+                userService,
+                orderService,
+                quoteService,
+                refundService,
+                productService,
+                paymentService,
+                chatRoomService,
+                deliveryService,
+                inventoryService,
+                userAddressService,
                 new TransactionTemplate(transactionManager));
     }
 
@@ -499,8 +516,17 @@ class OrderCreationCommandServiceTest {
         stubSave();
         PaymentRepository paymentRepository = mock(PaymentRepository.class);
         PaymentService actualPaymentService = new PaymentService(paymentRepository);
-        OrderCommandService actualCommand = new OrderCommandService(userService, orderService, quoteService,
-                productService, actualPaymentService, chatRoomService, inventoryService, userAddressService,
+        OrderCommandService actualCommand = new OrderCommandService(
+                userService,
+                orderService,
+                quoteService,
+                refundService,
+                productService,
+                actualPaymentService,
+                chatRoomService,
+                deliveryService,
+                inventoryService,
+                userAddressService,
                 new TransactionTemplate(transactionManager));
         given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();

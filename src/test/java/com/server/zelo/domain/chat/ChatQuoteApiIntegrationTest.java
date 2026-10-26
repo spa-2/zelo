@@ -119,7 +119,6 @@ class ChatQuoteApiIntegrationTest {
                 .andExpect(jsonPath("$.data.payload.items[0].lineAmount").value(12_000))
                 .andExpect(jsonPath("$.data.payload.excludedItems[0].reason").value("CATEGORY_NOT_ALLOWED"))
                 .andExpect(jsonPath("$.data.payload.totalAmount").value(12_000))
-                .andExpect(jsonPath("$.data.payload.buttons[0].action").value("YES"))
                 .andExpect(jsonPath("$.data.payload.userId").doesNotExist());
     }
 

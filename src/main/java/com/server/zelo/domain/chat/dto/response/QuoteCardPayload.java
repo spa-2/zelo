@@ -10,7 +10,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-// AI 메시지의 payload로 저장해, 화면이 견적 카드와 [예][아니오] 버튼을 그린다. 방을 다시 열어도 그때 본 카드가 그대로 보인다.
+// AI 메시지의 payload로 저장해, 화면이 견적 카드를 그린다. [예]·[수정하기] 버튼은 카드마다 같아서 화면이 고정으로 그린다. 방을 다시 열어도 그때 본 카드가 그대로 보인다.
 // 상품·가격은 LLM 답이 아니라 서버 견적에서 만든다. 화면은 주문할 때 quoteId만 보낸다(상품·가격을 보내면 조작할 수 있어서).
 // 사용자 ID·방 ID·상품 코드처럼 화면에 필요 없는 견적 값은 넣지 않는다
 public record QuoteCardPayload(
@@ -21,12 +21,10 @@ public record QuoteCardPayload(
         List<Item> items, // 견적이 담긴 상품 목록
         List<Excluded> excludedItems, // 상품을 찾지 못하거나 재고가 부족해 견적에서 제외된 상품
         Long totalAmount, // 견적 총액
-        LocalDateTime expiresAt, // 견적 만료 시각
-        List<Button> buttons // [예], [아니오] 버튼 정보
+        LocalDateTime expiresAt // 견적 만료 시각
 ) {
 
     public static final String TYPE = "QUOTE_CARD";
-    private static final List<Button> BUTTONS = List.of(new Button("YES", "예"), new Button("NO", "아니오"));
 
     public static QuoteCardPayload from(Quote quote) {
         List<Item> items = quote.items().stream()
@@ -37,7 +35,7 @@ public record QuoteCardPayload(
                 .map(excludedItem -> new Excluded(excludedItem.name(), excludedItem.reason()))
                 .toList();
         return new QuoteCardPayload(TYPE, quote.quoteId(), quote.menuName(), conditionNames(requestedConditions(quote)),
-                items, excludedItems, quote.totalAmount(), quote.expiresAt(), BUTTONS);
+                items, excludedItems, quote.totalAmount(), quote.expiresAt());
     }
 
     // 키워드 설명의 괄호 안은 사용자 말 예시라 빼고 이름만 쓴다 (예: "맵지 않은 (예: 안 맵게, …)" → "맵지 않은")
@@ -125,13 +123,6 @@ public record QuoteCardPayload(
     public record Excluded(
             String name,
             String reason
-    ) {
-    }
-
-    // action은 [예]/[아니오] API가 받을 값
-    public record Button(
-            String action,
-            String label
     ) {
     }
 }

@@ -25,7 +25,7 @@ class QuoteCardPayloadTest {
             24_000L, CREATED_AT, CREATED_AT.plusMinutes(10));
 
     @Test
-    void 견적에서_카드에_필요한_값과_예_아니오_버튼을_만든다() {
+    void 견적에서_카드에_필요한_값을_만든다() {
         // when
         QuoteCardPayload card = QuoteCardPayload.from(quote);
 
@@ -37,7 +37,6 @@ class QuoteCardPayloadTest {
         assertThat(card.excludedItems()).containsExactly(new QuoteCardPayload.Excluded("소주", "CATEGORY_NOT_ALLOWED"));
         assertThat(card.totalAmount()).isEqualTo(24_000L);
         assertThat(card.expiresAt()).isEqualTo(CREATED_AT.plusMinutes(10));
-        assertThat(card.buttons()).extracting(QuoteCardPayload.Button::action).containsExactly("YES", "NO");
     }
 
     @Test

@@ -97,6 +97,32 @@ class OrderDetailControllerTest {
     }
 
     @Test
+    void 결제_배송_환불_기록이_없어도_주문_상세를_200으로_반환한다() throws Exception {
+        // given
+        authenticate();
+        GetOrderDetailResponse detail = response();
+        given(command.getOrderDetail(USER_ID, ORDER_ID)).willReturn(new GetOrderDetailResponse(
+                detail.orderId(), detail.quoteId(), detail.orderName(), detail.status(),
+                detail.totalAmount(), detail.createdAt(), detail.shippingAddress(), detail.items(),
+                null, null, null));
+
+        // when
+        // then
+        mockMvc.perform(get(URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderId").value(101))
+                .andExpect(jsonPath("$.data.totalAmount").value(3_000))
+                .andExpect(jsonPath("$.data.shippingAddress.address").value("주문 당시 주소"))
+                .andExpect(jsonPath("$.data.items[0].productName").value("구매 당시 사과"))
+                .andExpect(jsonPath("$.data.payment").doesNotExist())
+                .andExpect(jsonPath("$.data.delivery").doesNotExist())
+                .andExpect(jsonPath("$.data.refund").doesNotExist());
+        then(command).should().getOrderDetail(USER_ID, ORDER_ID);
+        verifyNoInteractions(facade, service);
+    }
+
+    @Test
     void 인증정보가_없으면_401로_응답하고_조회하지_않는다() throws Exception {
         // given
         SecurityContextHolder.clearContext();

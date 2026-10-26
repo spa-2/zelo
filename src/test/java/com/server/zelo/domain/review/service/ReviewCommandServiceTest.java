@@ -8,9 +8,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
-import com.server.zelo.ai.llm.LlmGateway;
-import com.server.zelo.ai.llm.LlmReply;
-import com.server.zelo.ai.llm.ReviewSummaryPrompt;
+import com.server.zelo.ai.gateway.LlmGateway;
+import com.server.zelo.ai.gateway.LlmReply;
+import com.server.zelo.ai.prompt.ReviewSummaryPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;

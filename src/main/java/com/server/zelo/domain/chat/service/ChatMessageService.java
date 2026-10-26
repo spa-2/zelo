@@ -32,7 +32,9 @@ public class ChatMessageService {
     private static final String FALLBACK_CONTENT = "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.";
     private static final String FALLBACK_TYPE = "FALLBACK";
     private static final String FALLBACK_PAYLOAD_FORMAT = "{\"type\":\"" + FALLBACK_TYPE + "\",\"code\":\"%s\"}";
-    // 결제 결과 메시지. 취소는 사유마다 사용자가 알아야 할 내용(환불 여부)이 달라 문장을 나눈다
+    // 결제 결과 메시지. 취소는 사유마다 사용자가 알아야 할 내용(환불 여부)이 달라 문장을 나눈다.
+    // 이 문장은 LLM에 system 역할로 가서 규칙처럼 읽히므로, 주문명·상품명처럼 사용자나 LLM에서 온 글자를 넣지 않는다
+    // (그런 값은 화면용 payload에만 담는다)
     private static final String PAYMENT_COMPLETED_CONTENT = "결제가 완료됐어요.";
     private static final String PAYMENT_FAILED_CONTENT = "결제에 실패했어요.";
     private static final String PAYMENT_CANCELED_CONTENT = "결제를 취소했어요.";

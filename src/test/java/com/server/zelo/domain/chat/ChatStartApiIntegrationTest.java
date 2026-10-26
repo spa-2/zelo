@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
-import com.server.zelo.ai.llm.FakeLlmGateway;
+import com.server.zelo.ai.gateway.FakeLlmGateway;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.chat.entity.ChatMessage;

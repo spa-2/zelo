@@ -357,13 +357,13 @@ public class OrderCommandService {
         // 결제 기록이 있으면 READY 상태도 반환
         Payment payment = paymentService.findLatestPayment(orderId).orElse(null);
 
-        // TODO(#169): 배송 정보 조회 메서드 구현 후 실제 조회로 교체
-        Delivery delivery = null;
-        // delivery = deliveryService.findDelivery(orderId).orElse(null); <- 실제 조회
+        // 배송 정보가 아직 생성되지 않은 주문도 조회할 수 있도록, 없으면 null로 처리
+        Delivery delivery = deliveryService.findDelivery(orderId).orElse(null);
 
-        // TODO(#169): 환불 정보 조회 메서드 구현 후 실제 조회로 교체
-        Refund refund = null;
-        // refund = refundService.findLatestRefund(orderId).orElse(null); <- 실제 조회
+        // 환불 이력이 없는 주문도 조회할 수 있도록, 최신 환불 정보가 없으면 null로 처리
+        Refund refund = payment == null
+                ? null
+                : refundService.findLatestRefund(payment.getId()).orElse(null);
 
         // 지연 로딩이 필요한 품목과 배송지 변환까지 트랜잭션 안에서 완료
         return GetOrderDetailResponse.from(order, payment, delivery, refund);

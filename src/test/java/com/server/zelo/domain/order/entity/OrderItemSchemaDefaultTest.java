@@ -96,7 +96,7 @@ class OrderItemSchemaDefaultTest {
                 .orElseThrow(() -> new AssertionError("canceled_quantity 추가 DDL이 없습니다."));
 
         // then
-        assertThat(addColumn).startsWith("alter table order_items ");
+        assertThat(addColumn).matches("alter table (?:if exists )?order_items add column canceled_quantity .+");
         assertDefaultAndNotNull(addColumn);
     }
 

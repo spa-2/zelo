@@ -2,6 +2,11 @@ spring:
   application:
     name: zelo
 
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # ssm 리전
+
   datasource:
     url: jdbc:postgresql://localhost:5432/zelotest
     username: postgres
@@ -124,8 +129,3 @@ info:
   app:
     name: zelo
     version: 1.0.0
-
-  cloud:
-    aws:
-      region:
-        static: ap-northeast-2 # ssm 리전

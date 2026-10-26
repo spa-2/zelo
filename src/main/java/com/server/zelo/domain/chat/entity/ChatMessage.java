@@ -43,7 +43,7 @@ public class ChatMessage extends BaseCreatedEntity {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
-    // 견적 카드·버튼처럼 화면에 그릴 구조화 데이터(JSON). 그때 보여 준 화면을 그대로 복원하기 위한 스냅샷
+    // 견적 카드처럼 화면에 그릴 구조화 데이터(JSON). 그때 보여 준 화면을 그대로 복원하기 위한 스냅샷
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload", nullable = true, columnDefinition = "jsonb")
     private String payload;

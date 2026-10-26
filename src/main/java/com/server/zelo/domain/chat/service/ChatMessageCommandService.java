@@ -179,7 +179,7 @@ public class ChatMessageCommandService {
     private <T> ChatMessage replyWithQuoteCard(Long roomId, Long userId, Quote quote, String quoteText,
                                                Function<ChatMessageResponse, T> toResponse) {
         if (quote.items().isEmpty()) {
-            // 주문할 상품이 없는데 [예] 버튼이 뜨지 않도록 카드 없이 빠진 이유만 안내한다
+            // 주문할 상품이 없는데 [주문하기] 버튼이 뜨지 않도록 카드 없이 빠진 이유만 안내한다
             String reason = explain(roomId, userId, quoteExplainPrompt.systemPrompt(), List.of(), quoteText, toResponse).text();
             return chatMessageService.createAssistantMessage(roomId, userId, reason);
         }

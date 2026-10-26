@@ -11,7 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-// AI 메시지의 payload로 저장해, 화면이 견적 카드를 그린다. [예]·[수정하기] 버튼은 카드마다 같아서 화면이 고정으로 그린다. 방을 다시 열어도 그때 본 카드가 그대로 보인다.
+// AI 메시지의 payload로 저장해, 화면이 견적 카드를 그린다. [주문하기]·[수정하기] 버튼은 카드마다 같아서 화면이 고정으로 그린다. 방을 다시 열어도 그때 본 카드가 그대로 보인다.
 // 상품·가격은 LLM 답이 아니라 서버 견적에서 만든다. 화면은 주문할 때 quoteId만 보낸다(상품·가격을 보내면 조작할 수 있어서).
 // 사용자 ID·방 ID·상품 코드처럼 화면에 필요 없는 견적 값은 넣지 않는다
 public record QuoteCardPayload(

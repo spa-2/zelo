@@ -229,7 +229,7 @@ class QuoteExplainPromptTest {
         // then
         assertThat(quoteExplainPrompt.systemPrompt())
                 .contains("받은 그대로만 써")
-                .contains("[예] 버튼")
+                .contains("[주문하기] 버튼")
                 .contains("결제를 했다고 말하지 마");
     }
 

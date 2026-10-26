@@ -260,7 +260,7 @@ class ChatMessageCommandServiceTest {
 
         // then
         assertThat(response.content()).isEqualTo("백김치로 준비할게요.");
-        assertThat(chatPrompt.systemPrompt()).contains("[예] 버튼");
+        assertThat(chatPrompt.systemPrompt()).contains("[주문하기] 버튼");
     }
 
     @Test
@@ -327,10 +327,10 @@ class ChatMessageCommandServiceTest {
         givenUserMessageAndPlan(menuPlan);
         given(quoteCommandService.createQuote(1L, 10L, menuPlan)).willReturn(quote);
         given(llmGateway.explain(quoteExplainPrompt.systemPrompt(), List.of(), quoteExplainPrompt.userText(menuPlan, quote)))
-                .willReturn(LlmReply.of("맵지 않은 김치로 골랐어요. 주문하려면 [예]를 눌러 주세요.", "gpt-test", 1, 1));
-        given(chatMessageService.createQuoteCardMessage(10L, 1L, "맵지 않은 김치로 골랐어요. 주문하려면 [예]를 눌러 주세요.",
+                .willReturn(LlmReply.of("맵지 않은 김치로 골랐어요. 주문하려면 [주문하기]를 눌러 주세요.", "gpt-test", 1, 1));
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "맵지 않은 김치로 골랐어요. 주문하려면 [주문하기]를 눌러 주세요.",
                 QuoteCardPayload.from(quote)))
-                .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "맵지 않은 김치로 골랐어요. 주문하려면 [예]를 눌러 주세요.",
+                .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "맵지 않은 김치로 골랐어요. 주문하려면 [주문하기]를 눌러 주세요.",
                         "{\"type\":\"QUOTE_CARD\"}"));
 
         // when
@@ -364,7 +364,7 @@ class ChatMessageCommandServiceTest {
 
     @Test
     void 담은_상품이_없으면_카드_없이_빠진_이유만_안내한다() {
-        // given: 주문할 상품이 없는데 [예] 버튼이 뜨면 안 된다
+        // given: 주문할 상품이 없는데 [주문하기] 버튼이 뜨면 안 된다
         MenuPlan menuPlan = plan(MenuPlanIntent.SHOPPING_REQUEST);
         Quote quote = quote(List.of(), List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")));
         givenUserMessageAndPlan(menuPlan);

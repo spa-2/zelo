@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -13,7 +14,7 @@ import java.util.stream.Collectors;
 // items가 비어 있으면 남은 상품 전부를 환불한다
 public record CreateRefundRequest(
         @NotBlank @Size(max = 50) String reason,
-        @Valid List<RefundItemRequest> items
+        List<@NotNull @Valid RefundItemRequest> items
 ) {
 
     public Map<Long, Integer> toCancelQuantities() {

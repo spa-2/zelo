@@ -249,7 +249,7 @@ class ChatQuoteApiIntegrationTest {
 
     private ResultActions pressItemButton(Long roomId, String quoteId, Long productId, int quantity) throws Exception {
         return mockMvc.perform(post("/api/chat/rooms/{roomId}/quote-items", roomId)
-                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID))
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"quoteId\":\"" + quoteId + "\",\"productId\":" + productId + ",\"quantity\":" + quantity + "}"));
     }

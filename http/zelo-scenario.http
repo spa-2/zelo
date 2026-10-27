@@ -263,8 +263,9 @@ Content-Type: application/json
 > {%
     const card = response.body.data.message.payload;
     client.test("견적 카드가 옴", () => client.assert(card && card.type === "QUOTE_CARD", response.body.data.message.content));
-    const blocked = card && card.excludedItems.find(i => i.name === "맥주" && i.reason === "CATEGORY_NOT_ALLOWED");
-    client.test("주류가 빠짐", () => client.assert(blocked, JSON.stringify(card.excludedItems)));
+    const excluded = card ? card.excludedItems : [];
+    const blocked = excluded.find(i => i.name === "맥주" && i.reason === "CATEGORY_NOT_ALLOWED");
+    client.test("주류가 빠짐", () => client.assert(blocked, JSON.stringify(excluded)));
 %}
 
 

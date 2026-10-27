@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import java.sql.SQLException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -165,7 +167,7 @@ class ProductServiceTest {
     void 상품을_등록하면_재료의_카테고리로_판매중_상품을_만든다() {
         // given
         given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
-        given(ingredientRepository.findById(3L)).willReturn(Optional.of(kimchi));
+        given(ingredientRepository.findWithCategoryById(3L)).willReturn(Optional.of(kimchi));
         given(productRepository.saveAndFlush(any(Product.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         // when
@@ -192,8 +194,9 @@ class ProductServiceTest {
     void 확인한_사이에_같은_코드가_먼저_저장되면_중복_예외로_바꾼다() {
         // given
         given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
-        given(ingredientRepository.findById(3L)).willReturn(Optional.of(kimchi));
-        given(productRepository.saveAndFlush(any(Product.class))).willThrow(new DataIntegrityViolationException("duplicate"));
+        given(ingredientRepository.findWithCategoryById(3L)).willReturn(Optional.of(kimchi));
+        given(productRepository.saveAndFlush(any(Product.class))).willThrow(
+                new DataIntegrityViolationException("duplicate", new SQLException("duplicate", "23505")));
 
         // when & then
         assertThatThrownBy(() -> productService.createProduct(createRequest()))
@@ -202,10 +205,23 @@ class ProductServiceTest {
     }
 
     @Test
+    void 유니크_위반이_아닌_저장_오류는_그대로_던진다() {
+        // given
+        DataIntegrityViolationException failure =
+                new DataIntegrityViolationException("not null", new SQLException("not null", "23502"));
+        given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
+        given(ingredientRepository.findWithCategoryById(3L)).willReturn(Optional.of(kimchi));
+        given(productRepository.saveAndFlush(any(Product.class))).willThrow(failure);
+
+        // when & then
+        assertThatThrownBy(() -> productService.createProduct(createRequest())).isSameAs(failure);
+    }
+
+    @Test
     void 없는_재료로_등록하면_예외가_발생한다() {
         // given
         given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
-        given(ingredientRepository.findById(3L)).willReturn(Optional.empty());
+        given(ingredientRepository.findWithCategoryById(3L)).willReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> productService.createProduct(createRequest()))

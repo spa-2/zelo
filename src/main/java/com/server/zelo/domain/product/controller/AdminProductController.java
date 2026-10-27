@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// ADMIN만 호출할 수 있게 SecurityConfig에서 /api/admin/** 로 막음
+// ADMIN 확인은 회원 role 작업에서 SecurityConfig로 /api/admin/** 를 막을 예정. 그 전까지는 다른 API처럼 열려 있음
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/products")

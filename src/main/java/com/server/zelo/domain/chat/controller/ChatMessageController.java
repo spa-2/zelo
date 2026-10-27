@@ -9,7 +9,6 @@ import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.service.ChatMessageCommandService;
-import com.server.zelo.domain.chat.service.ChatMessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,7 +26,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/chat")
 public class ChatMessageController {
 
-    private final ChatMessageService chatMessageService;
     private final ChatMessageCommandService chatMessageCommandService;
 
     // 채팅방 없이 메인 화면에서 첫 메시지를 보내면 방 생성 + 메세지 생성
@@ -44,7 +42,7 @@ public class ChatMessageController {
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
             @Valid @ModelAttribute SearchChatMessageCondition condition) {
-        GetChatMessagesResponse response = chatMessageService.getMessages(roomId, authUser.id(), condition);
+        GetChatMessagesResponse response = chatMessageCommandService.getMessages(roomId, authUser.id(), condition);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

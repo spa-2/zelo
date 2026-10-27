@@ -13,15 +13,25 @@ public record ChatMessageResponse(
         // DB에 JSON 문자열로 저장된 값을 문자열이 아닌 JSON 객체로 처리
         @JsonRawValue
         String payload,
+        QuoteCardStatus quoteCardStatus, // 견적 카드 메시지만 값이 있고 나머지는 null
         LocalDateTime createdAt
 ) {
 
     public static ChatMessageResponse from(ChatMessage chatMessage) {
+        return from(chatMessage, null);
+    }
+
+    public static ChatMessageResponse from(ChatMessage chatMessage, QuoteCardStatus quoteCardStatus) {
         return new ChatMessageResponse(
                 chatMessage.getId(),
                 chatMessage.getSender(),
                 chatMessage.getContent(),
                 chatMessage.getPayload(),
+                quoteCardStatus,
                 chatMessage.getCreatedAt());
+    }
+
+    public ChatMessageResponse withQuoteCardStatus(QuoteCardStatus quoteCardStatus) {
+        return new ChatMessageResponse(messageId, sender, content, payload, quoteCardStatus, createdAt);
     }
 }

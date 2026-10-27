@@ -15,6 +15,7 @@ import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
@@ -51,7 +52,8 @@ public class QuoteCommandService {
         Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
         Quote quote = businessMetrics.time(BusinessMetric.QUOTE_CREATE_TIME, () -> {
             Selection selection = select(menuPlan.ingredients(), conditions);
-            return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems(), conditions);
+            return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems(), conditions,
+                    selection.substitutes());
         });
         businessMetrics.count(BusinessMetric.QUOTE_CREATED);
         quote.excludedItems().forEach(item -> businessMetrics.count(BusinessMetric.QUOTE_EXCLUDED, "reason", item.reason()));
@@ -62,7 +64,7 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         QuoteItem target = getItem(quote, productId);
         List<QuoteItem> items = quote.items().stream().filter(item -> item != target).toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes());
     }
 
     @Transactional(readOnly = true)
@@ -78,7 +80,7 @@ public class QuoteCommandService {
         List<QuoteItem> items = quote.items().stream()
                 .map(item -> item == target ? withQuantity(item, quantity) : item)
                 .toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes());
     }
 
     // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
@@ -110,7 +112,41 @@ public class QuoteCommandService {
                 items.set(items.indexOf(same), withQuantity(same, quantity));
             }
         }
-        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions());
+        List<SubstituteItem> substitutes = new ArrayList<>(quote.substitutes().stream()
+                .filter(substitute -> !substitute.name().equals(ingredientName))
+                .toList());
+        substitutes.addAll(selection.substitutes());
+        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes);
+    }
+
+    // 후보를 보여준 사이에 팔렸을 수 있어서 재고를 다시 봄. 모자라면 addItem처럼 품절로 돌려줌
+    @Transactional(readOnly = true)
+    public Quote acceptSubstitute(Long userId, Long roomId, String name) {
+        Quote quote = getQuote(userId, roomId);
+        SubstituteItem target = getSubstitute(quote, name);
+        QuoteItem added = target.item();
+
+        List<QuoteItem> items = new ArrayList<>(quote.items());
+        List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
+        QuoteItem same = items.stream().filter(item -> item.productId().equals(added.productId())).findFirst().orElse(null);
+        int quantity = same == null ? added.quantity() : same.quantity() + added.quantity();
+        if (inventoryService.findAvailableQuantities(List.of(added.productId())).getOrDefault(added.productId(), 0) < quantity) {
+            excludedItems.add(new ExcludedItem(name, "OUT_OF_STOCK"));
+        } else if (same == null) {
+            items.add(added);
+        } else {
+            items.set(items.indexOf(same), withQuantity(same, quantity));
+        }
+        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), without(quote, target));
+    }
+
+    public Quote rejectSubstitute(Long userId, Long roomId, String name) {
+        Quote quote = getQuote(userId, roomId);
+        SubstituteItem target = getSubstitute(quote, name);
+        List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
+        excludedItems.add(new ExcludedItem(name, "OUT_OF_STOCK"));
+        return save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
+                without(quote, target));
     }
 
     private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions) {
@@ -124,6 +160,7 @@ public class QuoteCommandService {
 
         List<QuoteItem> items = new ArrayList<>();
         List<ExcludedItem> excludedItems = new ArrayList<>();
+        List<SubstituteItem> substitutes = new ArrayList<>();
         for (MenuPlanIngredient ingredient : ingredients) {
             List<Product> candidates = products.stream()
                     .filter(product -> product.getIngredient().getName().equals(ingredient.name()))
@@ -144,7 +181,10 @@ public class QuoteCommandService {
                 continue;
             }
 
-            Product product = pick(ingredient, inStock, conditions, keywords, reviews);
+            // 재고 상관없이 원래 고를 상품부터 정함. 그게 품절이면 대신 고른 건 사용자가 고를 때까지 후보로만 둠
+            Product first = pick(ingredient, candidates, conditions, keywords, reviews);
+            boolean firstInStock = stocks.getOrDefault(first.getId(), 0) >= quantity(ingredient, first);
+            Product product = firstInStock ? first : pick(ingredient, inStock, conditions, keywords, reviews);
             int quantity = quantity(ingredient, product);
             Set<Keyword> matched = new HashSet<>(keywords.getOrDefault(product.getId(), Set.of()));
             matched.retainAll(conditions);
@@ -153,19 +193,24 @@ public class QuoteCommandService {
                     .anyMatch(candidate -> !Collections.disjoint(keywords.getOrDefault(candidate.getId(), Set.of()), conditions));
             QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()),
                     matched, conditionProductExists);
-            items.add(new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
-                    product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason));
+            QuoteItem item = new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
+                    product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason);
+            if (firstInStock) {
+                items.add(item);
+            } else {
+                substitutes.add(new SubstituteItem(ingredient.name(), first.getName(), item));
+            }
         }
-        return new Selection(items, excludedItems);
+        return new Selection(items, excludedItems, substitutes);
     }
 
     // 수정할 때마다 quoteId를 새로 발급해서 수정 전 카드로는 주문 못 하게 함
     private Quote save(Long userId, Long roomId, String menuName, List<QuoteItem> items, List<ExcludedItem> excludedItems,
-                       Set<Keyword> conditions) {
+                       Set<Keyword> conditions, List<SubstituteItem> substitutes) {
         long totalAmount = items.stream().mapToLong(QuoteItem::lineAmount).sum();
         LocalDateTime now = LocalDateTime.now();
         Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName,
-                items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions);
+                items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions, substitutes);
         quoteRepository.save(quote);
         return quote;
     }
@@ -184,6 +229,17 @@ public class QuoteCommandService {
                 .filter(item -> item.productId().equals(productId))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    private SubstituteItem getSubstitute(Quote quote, String name) {
+        return quote.substitutes().stream()
+                .filter(substitute -> substitute.name().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+    }
+
+    private List<SubstituteItem> without(Quote quote, SubstituteItem target) {
+        return quote.substitutes().stream().filter(substitute -> substitute != target).toList();
     }
 
     private QuoteItem withQuantity(QuoteItem item, int quantity) {
@@ -235,6 +291,6 @@ public class QuoteCommandService {
         return product.getPrice() * quantity(ingredient, product);
     }
 
-    private record Selection(List<QuoteItem> items, List<ExcludedItem> excludedItems) {
+    private record Selection(List<QuoteItem> items, List<ExcludedItem> excludedItems, List<SubstituteItem> substitutes) {
     }
 }

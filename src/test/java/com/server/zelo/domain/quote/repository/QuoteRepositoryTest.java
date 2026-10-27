@@ -11,6 +11,7 @@ import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -88,7 +89,7 @@ class QuoteRepositoryTest {
     }
 
     @Test
-    void 조건이_없던_예전_견적도_빈_조건으로_읽는다() {
+    void 조건과_후보가_없던_예전_견적도_빈_값으로_읽는다() {
         // given
         given(valueOperations.get("quote:5")).willReturn("""
                 {"quoteId":"q-old","userId":12,"roomId":5,"menuName":"김치볶음밥","items":[],"excludedItems":[],
@@ -99,6 +100,7 @@ class QuoteRepositoryTest {
 
         // then
         assertThat(quote.conditions()).isEmpty();
+        assertThat(quote.substitutes()).isEmpty();
     }
 
     private Quote quote(Long roomId) {
@@ -108,6 +110,8 @@ class QuoteRepositoryTest {
                         new QuoteItemReason(80, new BigDecimal("4.6"), 23, Map.of(Keyword.NOT_SPICY, 15),
                                 "맵지 않아 아이들도 잘 먹어요", Set.of(Keyword.NOT_SPICY), true))),
                 List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")),
-                8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL), Set.of(Keyword.NOT_SPICY));
+                8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL), Set.of(Keyword.NOT_SPICY),
+                List.of(new SubstituteItem("계란", "무항생제 계란 10구", new QuoteItem(4L, "P-EGG-002", "계란 10구", "10구",
+                        3900L, 1, 3900L))));
     }
 }

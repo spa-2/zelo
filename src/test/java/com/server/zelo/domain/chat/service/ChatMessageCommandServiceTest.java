@@ -32,6 +32,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
+import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
@@ -101,6 +102,9 @@ class ChatMessageCommandServiceTest {
 
     @Mock
     private LockDistributeService lockDistributeService;
+
+    @Mock
+    private ChatRoomService chatRoomService;
 
     // 실제 프롬프트 파일과 견적 글이 LLM으로 가는지 보려고 진짜 객체를 쓴다
     @Spy
@@ -712,6 +716,178 @@ class ChatMessageCommandServiceTest {
         // then
         assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
         then(quoteCommandService).should(never()).removeItem(any(), any(), any());
+    }
+
+    @Test
+    void 카드의_빼기_버튼은_LLM_없이_락_안에서_상품을_빼고_새_카드와_정해진_문장을_저장한다() {
+        // given
+        Quote removed = quote("quote-2", List.of(EGG_ITEM));
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM, EGG_ITEM), List.of())));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willReturn(removed);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "백김치 (1kg) 상품을 뺐어요.", QuoteCardPayload.from(removed)))
+                .willReturn(cardMessage("백김치 (1kg) 상품을 뺐어요."));
+        given(chatMessageService.findQuoteCardId("{\"type\":\"QUOTE_CARD\"}")).willReturn(Optional.of("quote-2"));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        InOrder order = inOrder(chatRoomService, lockDistributeService, quoteCommandService);
+        order.verify(chatRoomService).getOwnedChatRoom(10L, 1L);
+        order.verify(lockDistributeService).execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any());
+        order.verify(quoteCommandService).removeItem(1L, 10L, 1L);
+        assertThat(response.content()).isEqualTo("백김치 (1kg) 상품을 뺐어요.");
+        assertThat(response.quoteCardStatus()).isEqualTo(QuoteCardStatus.ACTIVE);
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 카드의_수량_버튼은_최종_수량으로_바꾸고_정해진_문장으로_알린다() {
+        // given
+        QuoteItem threeEggs = new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 3, 13_500L);
+        Quote changed = quote("quote-2", List.of(KIMCHI_ITEM, threeEggs));
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM, EGG_ITEM), List.of())));
+        given(quoteCommandService.changeQuantity(1L, 10L, 2L, 3)).willReturn(changed);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "계란 (10구) 상품을 3개로 바꿨어요.", QuoteCardPayload.from(changed)))
+                .willReturn(cardMessage("계란 (10구) 상품을 3개로 바꿨어요."));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 2L, 3));
+
+        // then
+        assertThat(response.content()).isEqualTo("계란 (10구) 상품을 3개로 바꿨어요.");
+        then(quoteCommandService).should(never()).removeItem(any(), any(), any());
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 마지막_상품을_빼면_카드_없이_남은_상품이_없다고_알린다() {
+        // given
+        String reply = "백김치 (1kg) 상품을 뺐어요. 견적에 남은 상품이 없어요. 만들 메뉴를 다시 말씀해 주세요.";
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willReturn(quote("quote-2", List.of()));
+        givenAssistantMessage(reply);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(reply);
+        assertThat(response.quoteCardStatus()).isNull();
+        then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 버튼을_누른_카드가_지금_견적이_아니면_고치지_않고_정해진_문장으로_답한다() {
+        // given: 화면은 quote-1 카드를 보고 눌렀지만 지금 견적은 quote-9다
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote("quote-9", List.of(KIMCHI_ITEM))));
+        givenAssistantMessage(QUOTE_CHANGED);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_CHANGED);
+        then(lockDistributeService).shouldHaveNoInteractions();
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 버튼을_눌렀을_때_견적이_만료됐으면_고치지_않고_정해진_문장으로_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.empty());
+        givenAssistantMessage(NO_QUOTE_TO_EDIT);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(NO_QUOTE_TO_EDIT);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 락을_기다리는_사이_견적이_바뀌면_버튼_수정을_적용하지_않는다() {
+        // given: 처음 읽을 땐 quote-1, 락 안에서 다시 읽으면 다른 요청이 바꾼 quote-9
+        given(quoteService.findQuote(10L))
+                .willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())), Optional.of(quote("quote-9", List.of(KIMCHI_ITEM))));
+        givenAssistantMessage(QUOTE_CHANGED);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_CHANGED);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 버튼_수정_중_락을_얻지_못하면_고치지_않고_잠시_후_다시_하라고_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())));
+        given(lockDistributeService.execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        givenAssistantMessage(QUOTE_IN_PROGRESS);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 버튼으로_바꾼_수량만큼_재고가_없으면_고치지_않고_정해진_문장으로_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())));
+        given(quoteCommandService.changeQuantity(1L, 10L, 1L, 10))
+                .willThrow(new BusinessException(ErrorCode.INSUFFICIENT_STOCK));
+        givenAssistantMessage(NOT_ENOUGH_STOCK);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 10));
+
+        // then
+        assertThat(response.content()).isEqualTo(NOT_ENOUGH_STOCK);
+        then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 견적에_없는_상품의_버튼이면_고치지_않고_정해진_문장으로_답한다() {
+        // given: 이미 뺀 상품의 ✕를 한 번 더 누른 경우
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(EGG_ITEM), List.of())));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willThrow(new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+        givenAssistantMessage(NOT_IN_QUOTE);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo(NOT_IN_QUOTE);
+    }
+
+    @Test
+    void 다른_사용자의_방이면_견적을_보지도_고치지도_않는다() {
+        // given
+        given(chatRoomService.getOwnedChatRoom(10L, 2L)).willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.updateQuoteItem(10L, 2L, new UpdateQuoteItemRequest("quote-1", 1L, 0)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+        then(quoteService).shouldHaveNoInteractions();
+        then(quoteCommandService).shouldHaveNoInteractions();
+        then(chatMessageService).shouldHaveNoInteractions();
     }
 
     @Test

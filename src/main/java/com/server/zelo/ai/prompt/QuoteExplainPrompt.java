@@ -118,8 +118,9 @@ public class QuoteExplainPrompt {
                 .orElse("상품 " + productId);
     }
 
-    // 상품명에 단위가 이미 들어 있으면(ex: "백김치 1kg") 같은 말을 두 번 쓰지 않는다
-    private static String productLabel(QuoteItem item) {
+    // 상품명에 단위가 이미 들어 있으면(ex: "백김치 1kg") 같은 말을 두 번 쓰지 않는다.
+    // 카드 버튼 수정의 정해진 문장(ChatMessageCommandService)도 같은 표기를 쓴다
+    public static String productLabel(QuoteItem item) {
         return item.productName().contains(item.productUnit())
                 ? item.productName()
                 : item.productName() + " (" + item.productUnit() + ")";

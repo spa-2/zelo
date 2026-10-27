@@ -16,10 +16,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 // 메시지 한 건 저장을 하나의 짧은 트랜잭션으로 끝낸다. LLM 호출은 이 클래스 밖(트랜잭션 밖)에서 한다
@@ -149,6 +151,18 @@ public class ChatMessageService {
             };
             case READY, CONFIRM_PENDING -> throw new BusinessException(ErrorCode.INVALID_INPUT);
         };
+    }
+
+    // 견적 카드 메시지면 카드의 quoteId. isFallback과 같은 이유로 JSON의 type 값으로 구분한다
+    public Optional<String> findQuoteCardId(String payload) {
+        if (payload == null) {
+            return Optional.empty();
+        }
+        JsonNode node = jsonMapper.readTree(payload);
+        if (!QuoteCardPayload.TYPE.equals(node.path("type").asString(""))) {
+            return Optional.empty();
+        }
+        return Optional.of(node.path("quoteId").asString());
     }
 
     // DB(jsonb)가 키 순서·공백을 바꿔 돌려주므로 문자열 비교가 아니라 JSON의 type 값으로 본다

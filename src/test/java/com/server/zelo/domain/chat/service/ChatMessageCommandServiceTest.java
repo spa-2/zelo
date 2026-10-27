@@ -29,11 +29,15 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
+import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
+import com.server.zelo.domain.chat.dto.response.QuoteCardStatus;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatSender;
+import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.service.ProductService;
@@ -46,6 +50,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -84,6 +89,9 @@ class ChatMessageCommandServiceTest {
 
     @Mock
     private QuoteCommandService quoteCommandService;
+
+    @Mock
+    private OrderService orderService;
 
     // 실제 프롬프트 파일과 견적 글이 LLM으로 가는지 보려고 진짜 객체를 쓴다
     @Spy
@@ -332,12 +340,14 @@ class ChatMessageCommandServiceTest {
                 QuoteCardPayload.from(quote)))
                 .willReturn(ChatMessage.of(10L, ChatSender.ASSISTANT, "맵지 않은 김치로 골랐어요. 주문하려면 [주문하기]를 눌러 주세요.",
                         "{\"type\":\"QUOTE_CARD\"}"));
+        given(chatMessageService.findQuoteCardId("{\"type\":\"QUOTE_CARD\"}")).willReturn(Optional.of("quote-1"));
 
         // when
         ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료 준비해 줘");
 
-        // then: 일반 채팅 프롬프트로는 답하지 않는다
+        // then: 일반 채팅 프롬프트로는 답하지 않고, 방금 만든 카드는 현재 견적이라 ACTIVE다
         assertThat(response.payload()).contains("QUOTE_CARD");
+        assertThat(response.quoteCardStatus()).isEqualTo(QuoteCardStatus.ACTIVE);
         then(llmGateway).should(never()).explain(eq(chatPrompt.systemPrompt()), anyList(), anyString());
     }
 
@@ -697,6 +707,75 @@ class ChatMessageCommandServiceTest {
                     assertThat(exception.getData()).isNull();
                 });
         then(chatMessageService).should(never()).createFallbackMessage(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 메시지_목록의_견적_카드마다_현재_견적과_주문을_보고_상태를_붙인다() {
+        // given: 견적 A로 주문했고, B는 C로 수정되기 전 카드, C가 현재 견적
+        ChatMessageResponse user = messageResponse(1L, null);
+        ChatMessageResponse cardA = messageResponse(2L, "card-A");
+        ChatMessageResponse cardB = messageResponse(3L, "card-B");
+        ChatMessageResponse cardC = messageResponse(4L, "card-C");
+        SearchChatMessageCondition condition = new SearchChatMessageCondition(null, null);
+        given(chatMessageService.getMessages(10L, 1L, condition))
+                .willReturn(GetChatMessagesResponse.of(List.of(cardC, cardB, cardA, user), 1L, true));
+        given(chatMessageService.findQuoteCardId("card-A")).willReturn(Optional.of("A"));
+        given(chatMessageService.findQuoteCardId("card-B")).willReturn(Optional.of("B"));
+        given(chatMessageService.findQuoteCardId("card-C")).willReturn(Optional.of("C"));
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote("C", List.of(KIMCHI_ITEM))));
+        given(orderService.findOrderedQuoteIds(any())).willReturn(Set.of("A"));
+
+        // when
+        GetChatMessagesResponse response = chatMessageCommandService.getMessages(10L, 1L, condition);
+
+        // then: 순서와 커서는 그대로, 사용자 메시지는 상태가 없다
+        assertThat(response.messages()).extracting(ChatMessageResponse::messageId).containsExactly(4L, 3L, 2L, 1L);
+        assertThat(response.messages()).extracting(ChatMessageResponse::quoteCardStatus)
+                .containsExactly(QuoteCardStatus.ACTIVE, QuoteCardStatus.REPLACED, QuoteCardStatus.ORDERED, null);
+        assertThat(response.nextCursor()).isEqualTo(1L);
+        assertThat(response.hasNext()).isTrue();
+    }
+
+    @Test
+    void 현재_견적이_없으면_주문하지_않은_카드는_모두_만료로_표시한다() {
+        // given
+        ChatMessageResponse cardA = messageResponse(2L, "card-A");
+        ChatMessageResponse cardB = messageResponse(3L, "card-B");
+        SearchChatMessageCondition condition = new SearchChatMessageCondition(null, null);
+        given(chatMessageService.getMessages(10L, 1L, condition))
+                .willReturn(GetChatMessagesResponse.of(List.of(cardB, cardA), null, false));
+        given(chatMessageService.findQuoteCardId("card-A")).willReturn(Optional.of("A"));
+        given(chatMessageService.findQuoteCardId("card-B")).willReturn(Optional.of("B"));
+        given(quoteService.findQuote(10L)).willReturn(Optional.empty());
+        given(orderService.findOrderedQuoteIds(any())).willReturn(Set.of("A"));
+
+        // when
+        GetChatMessagesResponse response = chatMessageCommandService.getMessages(10L, 1L, condition);
+
+        // then
+        assertThat(response.messages()).extracting(ChatMessageResponse::quoteCardStatus)
+                .containsExactly(QuoteCardStatus.EXPIRED, QuoteCardStatus.ORDERED);
+    }
+
+    @Test
+    void 메시지_목록에_견적_카드가_없으면_견적과_주문을_조회하지_않는다() {
+        // given
+        GetChatMessagesResponse messages = GetChatMessagesResponse.of(List.of(messageResponse(1L, null)), null, false);
+        SearchChatMessageCondition condition = new SearchChatMessageCondition(null, null);
+        given(chatMessageService.getMessages(10L, 1L, condition)).willReturn(messages);
+
+        // when
+        GetChatMessagesResponse response = chatMessageCommandService.getMessages(10L, 1L, condition);
+
+        // then
+        assertThat(response).isSameAs(messages);
+        then(quoteService).should(never()).findQuote(any());
+        then(orderService).should(never()).findOrderedQuoteIds(any());
+    }
+
+    private ChatMessageResponse messageResponse(Long messageId, String payload) {
+        return new ChatMessageResponse(messageId, ChatSender.ASSISTANT, "메시지 " + messageId, payload, null,
+                LocalDateTime.of(2026, 10, 27, 12, 0));
     }
 
     private void givenEditRequest(Quote current, QuoteEditPlan editPlan) {

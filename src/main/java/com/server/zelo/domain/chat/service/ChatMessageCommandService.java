@@ -11,19 +11,25 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
+import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
+import com.server.zelo.domain.chat.dto.response.QuoteCardStatus;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
+import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -51,6 +57,7 @@ public class ChatMessageCommandService {
     private final ChatPrompt chatPrompt;
     private final LlmGateway llmGateway;
     private final QuoteService quoteService;
+    private final OrderService orderService;
     private final MenuPlanPrompt menuPlanPrompt;
     private final ProductService productService;
     private final QuoteEditPrompt quoteEditPrompt;
@@ -75,6 +82,31 @@ public class ChatMessageCommandService {
         return replyTo(roomId, userId, List.of(), text, message -> StartChatResponse.of(roomId, message));
     }
 
+    // 견적 카드는 저장된 그대로 두고, 목록을 줄 때마다 방의 현재 견적(Redis)과 주문을 보고 카드마다 상태를 붙인다.
+    // 카드가 여러 장이어도 현재 견적 1번, 주문 1번만 조회하고, 카드가 없으면 둘 다 조회하지 않는다
+    public GetChatMessagesResponse getMessages(Long roomId, Long userId, SearchChatMessageCondition condition) {
+        GetChatMessagesResponse response = chatMessageService.getMessages(roomId, userId, condition);
+        Map<Long, String> quoteIds = new HashMap<>();
+        for (ChatMessageResponse message : response.messages()) {
+            chatMessageService.findQuoteCardId(message.payload())
+                    .ifPresent(quoteId -> quoteIds.put(message.messageId(), quoteId));
+        }
+        if (quoteIds.isEmpty()) {
+            return response;
+        }
+
+        String currentQuoteId = quoteService.findQuote(roomId).map(Quote::quoteId).orElse(null);
+        Set<String> orderedQuoteIds = orderService.findOrderedQuoteIds(quoteIds.values());
+        List<ChatMessageResponse> messages = response.messages().stream()
+                .map(message -> {
+                    String quoteId = quoteIds.get(message.messageId());
+                    return quoteId == null ? message
+                            : message.withQuoteCardStatus(QuoteCardStatus.of(quoteId, currentQuoteId, orderedQuoteIds));
+                })
+                .toList();
+        return GetChatMessagesResponse.of(messages, response.nextCursor(), response.hasNext());
+    }
+
     // 메시지가 장보기 요청인지, 견적 수정인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
     // 견적 발급·수정은 LLM이 아니라 서버가 직접 부른다(매번 같은 순서라 예측·테스트할 수 있고, LLM 재시도와 얽히지 않는다)
     private <T> T replyTo(Long roomId, Long userId, List<ChatMessage> history, String text,
@@ -94,7 +126,11 @@ public class ChatMessageCommandService {
             case GENERAL_QUESTION -> chatMessageService.createAssistantMessage(roomId, userId,
                     explain(roomId, userId, chatPrompt.systemPrompt(), history, text, toResponse).text());
         };
-        return toResponse.apply(ChatMessageResponse.from(assistantMessage));
+        // 방금 만든 카드는 방의 현재 견적이다
+        QuoteCardStatus quoteCardStatus = chatMessageService.findQuoteCardId(assistantMessage.getPayload())
+                .map(quoteId -> QuoteCardStatus.ACTIVE)
+                .orElse(null);
+        return toResponse.apply(ChatMessageResponse.from(assistantMessage, quoteCardStatus));
     }
 
     // 현재 견적 메뉴는 "4인분으로"처럼 메뉴를 말하지 않은 요청과, 같은 메뉴에서 재료만 고치는 요청을 구분하는 데 쓴다

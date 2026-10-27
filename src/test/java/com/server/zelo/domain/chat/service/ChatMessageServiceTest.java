@@ -24,6 +24,7 @@ import com.server.zelo.domain.quote.model.QuoteItem;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -405,6 +406,26 @@ class ChatMessageServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         then(chatMessageRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 견적_카드_메시지면_카드의_견적_ID를_준다() {
+        // given: DB(jsonb)는 키 순서를 바꿔 돌려준다
+        String payload = "{\"quoteId\": \"quote-1\", \"type\": \"QUOTE_CARD\", \"totalAmount\": 12000}";
+
+        // when
+        Optional<String> quoteId = chatMessageService.findQuoteCardId(payload);
+
+        // then
+        assertThat(quoteId).contains("quote-1");
+    }
+
+    @Test
+    void 견적_카드가_아니면_견적_ID가_없다() {
+        // when & then
+        assertThat(chatMessageService.findQuoteCardId(null)).isEmpty();
+        assertThat(chatMessageService.findQuoteCardId("{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}")).isEmpty();
+        assertThat(chatMessageService.findQuoteCardId("{\"type\":\"PAYMENT_CARD\",\"orderId\":3}")).isEmpty();
     }
 
     private PaymentCardPayload paymentCard(PaymentStatus status, String reason) {

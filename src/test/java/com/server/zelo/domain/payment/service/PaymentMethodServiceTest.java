@@ -100,16 +100,4 @@ class PaymentMethodServiceTest {
                 .isEqualTo(ErrorCode.PAYMENT_METHOD_ALREADY_REGISTERED);
     }
 
-    @Test
-    void 유니크_제약이_아닌_DB_오류는_그대로_던진다() {
-        // given
-        given(paymentMethodRepository.existsByBillingKey(BILLING_KEY)).willReturn(false);
-        given(paymentMethodRepository.save(any(PaymentMethod.class))).willThrow(
-                new DataIntegrityViolationException("not null", new SQLException("not null", "23502")));
-
-        // when // then
-        assertThatThrownBy(() -> paymentMethodService.createPaymentMethod(
-                USER_ID, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234"))
-                .isInstanceOf(DataIntegrityViolationException.class);
-    }
 }

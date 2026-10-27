@@ -72,7 +72,8 @@ class AdminProductControllerTest {
     @ValueSource(strings = {
             "{\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}",
             "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":-1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}",
-            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":0,\"unitLabel\":\"1kg\"}"
+            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":0,\"unitLabel\":\"1kg\"}",
+            "{\"productCode\":\"A/B\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}"
     })
     void 등록_요청이_잘못되면_400을_반환한다(String body) throws Exception {
         // when & then

@@ -18,9 +18,12 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
+// 관리자가 가격을 바꿀 때 판매량까지 옛 값으로 덮어쓰지 않게 바뀐 컬럼만 UPDATE
 @Getter
 @Entity
+@DynamicUpdate
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "products", indexes = {
         @Index(name = "idx_products_ingredient_status", columnList = "ingredient_id, status"),

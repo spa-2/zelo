@@ -1,5 +1,6 @@
 package com.server.zelo.domain.user.service;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -203,8 +204,8 @@ class SocialCommandServiceTest {
         given(userAddressService.createUserAddress(
                 any(User.class), anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean()))
                 .willReturn(userAddress);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
     }
 
     // ===== 소셜 로그인 =====
@@ -218,8 +219,8 @@ class SocialCommandServiceTest {
         // given
         givenProfileFromGoogle(PROFILE);
         givenSocialAccountExists(99L);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         SocialLoginResult result = socialCommandService.login("google", LOGIN_REQUEST);
@@ -237,14 +238,14 @@ class SocialCommandServiceTest {
         // given
         givenProfileFromGoogle(PROFILE);
         givenSocialAccountExists(99L);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         socialCommandService.login("google", LOGIN_REQUEST);
 
         // then
-        then(jwtUtil).should(never()).createAccessToken(99L);
+        then(jwtUtil).should(never()).createAccessToken(99L, UserRole.BASIC);
         then(refreshTokenService).should(never()).saveRefreshToken(eq(99L), anyString());
     }
 
@@ -272,8 +273,8 @@ class SocialCommandServiceTest {
         SocialProfile noEmail = SocialProfile.of(SocialProvider.GOOGLE, "1234567890", null, false, "지은");
         givenProfileFromGoogle(noEmail);
         givenSocialAccountExists(99L);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         SocialLoginResult result = socialCommandService.login("google", LOGIN_REQUEST);
@@ -467,8 +468,8 @@ class SocialCommandServiceTest {
         given(userAddressService.createUserAddress(
                 any(User.class), anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean()))
                 .willReturn(userAddress);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         socialCommandService.signup(REQUEST, noName);
@@ -486,8 +487,8 @@ class SocialCommandServiceTest {
         given(userAddressService.createUserAddress(
                 any(User.class), anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean()))
                 .willReturn(userAddress);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         socialCommandService.signup(REQUEST, longName);

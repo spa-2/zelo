@@ -10,6 +10,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -35,5 +37,14 @@ public class PaymentMethodService {
     public PaymentMethod getOwnedMethod(Long paymentMethodId, Long userId) {
         return paymentMethodRepository.findByIdAndUserId(paymentMethodId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_METHOD_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentMethod> findPaymentMethods(Long userId) {
+        return paymentMethodRepository.findAllByUserIdOrderByIdAsc(userId);
+    }
+
+    public void deletePaymentMethod(Long paymentMethodId) {
+        paymentMethodRepository.deleteById(paymentMethodId);
     }
 }

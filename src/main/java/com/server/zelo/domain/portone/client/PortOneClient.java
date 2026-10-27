@@ -11,4 +11,6 @@ public interface PortOneClient {
     void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount, Long currentCancellableAmount, String reason);
 
     PortOneBillingKey getBillingKey(String billingKey);
+
+    void deleteBillingKey(String billingKey);
 }

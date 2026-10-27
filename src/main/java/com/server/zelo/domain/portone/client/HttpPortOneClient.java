@@ -27,6 +27,7 @@ public class HttpPortOneClient implements PortOneClient {
     private static final String IDEMPOTENCY_KEY_PREFIX = "cancel-";
     private static final String ALREADY_CANCELLED = "PAYMENT_ALREADY_CANCELLED";
     private static final String IDEMPOTENCY_OUTSTANDING = "IDEMPOTENCY_OUTSTANDING_REQUEST";
+    private static final String BILLING_KEY_ALREADY_DELETED = "BILLING_KEY_ALREADY_DELETED";
 
     @Override
     public PortOnePayment getPayment(String portoneId) {
@@ -86,6 +87,35 @@ public class HttpPortOneClient implements PortOneClient {
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
             log.warn("포트원 빌링키 조회 응답 없음 cause={}", e.getMostSpecificCause().getClass().getSimpleName());
+            if (e.contains(SocketTimeoutException.class)) {
+                throw new BusinessException(ErrorCode.PG_TIMEOUT);
+            }
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        }
+    }
+    // 이미 지워졌거나 없는 빌링키는 삭제 목표를 이룬 것이므로 성공으로 본다 (포트원 삭제 후 DB 삭제가 실패해 다시 시도하는 경우)
+    @Override
+    public void deleteBillingKey(String billingKey) {
+        try {
+            portOneRestClient.delete()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/billing-keys/{billingKey}")
+                            .queryParam("storeId", portOneProperties.storeId())
+                            .build(billingKey))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 404 || isBillingKeyAlreadyDeleted(e)) {
+                return;
+            }
+            log.error("포트원 빌링키 삭제 거절 status={}", e.getStatusCode());
+            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
+        } catch (RestClientResponseException e) {
+            log.error("포트원 빌링키 삭제 실패 status={}", e.getStatusCode());
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        } catch (ResourceAccessException e) {
+            // 예외 메시지에 요청 URI(빌링키 포함)가 들어가므로 예외 객체 대신 원인 종류만 남긴다
+            log.warn("포트원 빌링키 삭제 응답 없음 cause={}", e.getMostSpecificCause().getClass().getSimpleName());
             if (e.contains(SocketTimeoutException.class)) {
                 throw new BusinessException(ErrorCode.PG_TIMEOUT);
             }
@@ -170,6 +200,15 @@ public class HttpPortOneClient implements PortOneClient {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
             return error != null && IDEMPOTENCY_OUTSTANDING.equals(error.type());
+        } catch (RuntimeException parseError) {
+            return false;
+        }
+    }
+
+    private boolean isBillingKeyAlreadyDeleted(HttpClientErrorException e) {
+        try {
+            PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
+            return error != null && BILLING_KEY_ALREADY_DELETED.equals(error.type());
         } catch (RuntimeException parseError) {
             return false;
         }

@@ -391,4 +391,79 @@ class HttpPortOneClientTest {
                 .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
         assertThat(output).doesNotContain(BILLING_KEY);
     }
+
+    @Test
+    void 빌링키를_삭제하면_포트원에_DELETE_요청을_보낸다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andExpect(method(HttpMethod.DELETE))
+                .andRespond(withSuccess());
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void 포트원에_없는_빌링키를_삭제하면_성공으로_본다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 이미_삭제된_빌링키를_삭제하면_성공으로_본다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"BILLING_KEY_ALREADY_DELETED","message":"이미 삭제된 빌링키"}
+                                """));
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 포트원이_빌링키_삭제를_거절하면_PG_REQUEST_REJECTED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_REJECTED);
+    }
+
+    @Test
+    void 빌링키_삭제_중_포트원_서버_오류면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_삭제_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).doesNotContain(BILLING_KEY);
+    }
 }

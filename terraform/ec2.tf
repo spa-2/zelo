@@ -8,11 +8,12 @@ data "aws_ssm_parameter" "al2023_ami" {
 
 locals {
   deploy_script = templatefile("${path.module}/templates/zelo-deploy.sh.tftpl", {
-    region          = var.region
-    prefix          = local.ssm_prefix
-    repository_url  = aws_ecr_repository.app.repository_url
-    app_port        = var.app_port
-    management_port = var.management_port
+    region            = var.region
+    prefix            = local.ssm_prefix
+    repository_url    = aws_ecr_repository.app.repository_url
+    app_port          = var.app_port
+    management_port   = var.management_port
+    health_check_path = var.health_check_path
   })
 }
 

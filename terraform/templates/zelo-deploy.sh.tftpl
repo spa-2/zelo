@@ -14,12 +14,47 @@ fi
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$${REPOSITORY%%/*}"
 docker pull "$REPOSITORY:$TAG"
-docker rm -f zelo 2>/dev/null || true
+
+# 새 컨테이너가 정상이라고 확인되기 전에는 기존 컨테이너를 지우지 않고 멈춰만 둔다 (실패하면 되살리기 위해)
+# 포트를 같이 쓰므로 새 컨테이너가 뜨는 동안의 짧은 중단은 피할 수 없다
+docker rm -f zelo-old 2>/dev/null || true
+if docker inspect zelo > /dev/null 2>&1; then
+  docker stop zelo
+  docker rename zelo zelo-old
+fi
+
 # 설정(DB, Redis, 시크릿)은 앱이 기동할 때 Spring Cloud AWS가 SSM에서 직접 읽는다
 docker run -d --name zelo --restart unless-stopped \
   -e SPRING_CONFIG_IMPORT="aws-parameterstore:$PREFIX/" \
   -e SPRING_CLOUD_AWS_REGION_STATIC="$REGION" \
   -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
   -p ${app_port}:8080 -p ${management_port}:9292 "$REPOSITORY:$TAG"
+
+HEALTHY=false
+for _ in $(seq 1 40); do
+  if curl -fs "http://localhost:${management_port}${health_check_path}" > /dev/null; then
+    HEALTHY=true
+    break
+  fi
+  # 컨테이너가 이미 종료됐으면 더 기다리지 않는다
+  if [ "$(docker inspect -f '{{.State.Running}}' zelo)" != "true" ]; then
+    break
+  fi
+  sleep 5
+done
+
+if [ "$HEALTHY" != "true" ]; then
+  echo "새 컨테이너($TAG)가 정상 기동하지 못함. 로그:"
+  docker logs --tail 50 zelo || true
+  docker rm -f zelo
+  if docker inspect zelo-old > /dev/null 2>&1; then
+    docker rename zelo-old zelo
+    docker start zelo
+    echo "기존 컨테이너로 복구함"
+  fi
+  exit 1
+fi
+
+docker rm -f zelo-old 2>/dev/null || true
 docker image prune -f > /dev/null
 echo "배포 완료: $TAG"

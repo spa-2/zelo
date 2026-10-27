@@ -33,11 +33,11 @@ resource "aws_db_instance" "main" {
   apply_immediately          = true
   deletion_protection        = false
 
-  skip_final_snapshot       = var.db_skip_final_snapshot
-  final_snapshot_identifier = var.db_skip_final_snapshot ? null : "${local.name}-final-${formatdate("YYYYMMDDhhmm", timestamp())}"
+  skip_final_snapshot = var.db_skip_final_snapshot
+  # skip_final_snapshot을 나중에 false로 바꿔도 destroy가 스냅샷 이름을 갖도록 항상 지정한다 (random_id는 한 번 만들면 plan마다 바뀌지 않는다)
+  final_snapshot_identifier = "${local.name}-final-${random_id.db_snapshot.hex}"
+}
 
-  lifecycle {
-    # timestamp()가 매 plan마다 달라 보이는 것을 막는다
-    ignore_changes = [final_snapshot_identifier]
-  }
+resource "random_id" "db_snapshot" {
+  byte_length = 4
 }

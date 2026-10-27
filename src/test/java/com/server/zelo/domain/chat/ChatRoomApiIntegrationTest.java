@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,7 +38,7 @@ class ChatRoomApiIntegrationTest {
     @Test
     void 토큰의_사용자로_채팅방이_저장되고_생성_시각이_채워진다() throws Exception {
         // given
-        String token = jwtUtil.createAccessToken(1L);
+        String token = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when
         String body = mockMvc.perform(post("/api/chat/rooms").header("Authorization", "Bearer " + token))
@@ -57,7 +58,7 @@ class ChatRoomApiIntegrationTest {
     @Test
     void 같은_사용자가_두_번_생성하면_서로_다른_방이_만들어진다() throws Exception {
         // given
-        String token = jwtUtil.createAccessToken(1L);
+        String token = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when
         String first = mockMvc.perform(post("/api/chat/rooms").header("Authorization", "Bearer " + token))
@@ -74,8 +75,8 @@ class ChatRoomApiIntegrationTest {
     @Test
     void 목록은_내_방만_나중에_대화한_순서로_반환한다() throws Exception {
         // given: 로컬 DB에 쌓인 데이터와 섞이지 않도록 실제로 쓰이지 않을 사용자 ID를 쓴다
-        String myToken = jwtUtil.createAccessToken(9_000_011L);
-        String otherToken = jwtUtil.createAccessToken(9_000_012L);
+        String myToken = jwtUtil.createAccessToken(9_000_011L, UserRole.BASIC);
+        String otherToken = jwtUtil.createAccessToken(9_000_012L, UserRole.BASIC);
         Long firstRoomId = createRoom(myToken);
         createRoom(otherToken);
         Long secondRoomId = createRoom(myToken);
@@ -93,7 +94,7 @@ class ChatRoomApiIntegrationTest {
     @Test
     void 방이_없는_사용자가_목록을_조회하면_빈_배열을_반환한다() throws Exception {
         // given
-        String token = jwtUtil.createAccessToken(9_000_013L);
+        String token = jwtUtil.createAccessToken(9_000_013L, UserRole.BASIC);
 
         // when & then
         mockMvc.perform(get("/api/chat/rooms").header("Authorization", "Bearer " + token))

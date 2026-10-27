@@ -1,5 +1,6 @@
 package com.server.zelo.domain.payment.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.ErrorCode;
@@ -107,6 +108,6 @@ class PaymentControllerTest {
 
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

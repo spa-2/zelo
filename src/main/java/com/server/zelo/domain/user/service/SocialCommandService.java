@@ -12,6 +12,7 @@ import com.server.zelo.domain.user.dto.response.SocialLoginResult;
 import com.server.zelo.domain.user.entity.SocialAccount;
 import com.server.zelo.domain.user.entity.SocialProvider;
 import com.server.zelo.domain.user.entity.User;
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.domain.user.social.SocialLoginClient;
 import com.server.zelo.domain.user.social.SocialProfile;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +50,7 @@ public class SocialCommandService {
                 socialUser, request.place(), socialUser.getName(), socialUser.getPhoneNumber(),
                 request.zipCode(), request.addresses(), true);
 
-        return loginWithSocial(socialUser.getId());
+        return loginWithSocial(socialUser.getId(), socialUser.getRole());
     }
 
     public SocialLoginResult login(String provider, SocialLoginRequest request) {
@@ -68,7 +69,7 @@ public class SocialCommandService {
         // 가입한 이력이 있다면 로그인 토큰을 만들어서 줌
         Optional<SocialAccount> socialAccount = socialAccountService.findByProviderAndProviderId(profile.provider(), profile.providerId());
         if (socialAccount.isPresent()){
-            LoginResult result = loginWithSocial(socialAccount.get().getUser().getId());
+            LoginResult result = loginWithSocial(socialAccount.get().getUser().getId(), socialAccount.get().getUser().getRole());
             return new ExistingMemberResult(result.accessToken(), result.refreshToken());
         }
 
@@ -86,9 +87,9 @@ public class SocialCommandService {
         return new NewMemberResult(signupToken, profile.email(), profile.displayName());
     }
 
-    private LoginResult loginWithSocial(Long userId) {
-        String accessToken = jwtUtil.createAccessToken(userId);
-        String refreshToken = jwtUtil.createRefreshToken(userId);
+    private LoginResult loginWithSocial(Long userId, UserRole role) {
+        String accessToken = jwtUtil.createAccessToken(userId, role);
+        String refreshToken = jwtUtil.createRefreshToken(userId, role);
         // 저장하지 않으면 재발급과 로그아웃, 다른 기기 로그인 감지가 이 토큰으로는 동작하지 않음
         refreshTokenService.saveRefreshToken(userId, refreshToken);
         return LoginResult.of(accessToken, refreshToken);

@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
@@ -383,6 +384,6 @@ class ChatMessageControllerTest {
 
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

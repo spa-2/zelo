@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
@@ -132,7 +133,7 @@ class ChatQuoteApiIntegrationTest {
 
         // when & then: 최신순이라 첫 번째가 AI 메시지
         mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId)
-                        .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID)))
+                        .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.messages[0].payload.type").value("QUOTE_CARD"))
                 .andExpect(jsonPath("$.data.messages[0].payload.items[0].productName").value("백김치"))
@@ -241,7 +242,7 @@ class ChatQuoteApiIntegrationTest {
 
     private ResultActions send(Long roomId, String text) throws Exception {
         return mockMvc.perform(post("/api/chat/rooms/{roomId}/messages", roomId)
-                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID))
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"text\":\"" + text + "\"}"));
     }

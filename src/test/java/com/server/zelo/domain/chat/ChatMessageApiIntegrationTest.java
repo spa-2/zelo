@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -297,14 +298,14 @@ class ChatMessageApiIntegrationTest {
 
     private ResultActions send(Long userId, Long roomId, String text) throws Exception {
         return mockMvc.perform(post("/api/chat/rooms/{roomId}/messages", roomId)
-                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId))
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId, UserRole.BASIC))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"text\":\"" + text + "\"}"));
     }
 
     private ResultActions list(Long userId, Long roomId, Long before, Integer size) throws Exception {
         MockHttpServletRequestBuilder request = get("/api/chat/rooms/{roomId}/messages", roomId)
-                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId));
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(userId, UserRole.BASIC));
         if (before != null) {
             request.param("before", before.toString());
         }

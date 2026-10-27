@@ -32,7 +32,9 @@ public enum ErrorCode {
     INVALID_PRICE(HttpStatus.BAD_REQUEST, "PRODUCT_003", "가격은 0 이상이어야 합니다."),
     INVALID_STOCK(HttpStatus.BAD_REQUEST, "PRODUCT_004", "재고는 0 이상이어야 합니다."),
     INVALID_PRICE_RANGE(HttpStatus.BAD_REQUEST, "PRODUCT_005", "최소가격은 최대가격보다 작아야 합니다."),
-
+    DUPLICATE_PRODUCT_CODE(HttpStatus.CONFLICT, "PRODUCT_006", "이미 있는 상품 코드입니다."),
+    INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_007", "재료를 찾을 수 없습니다."),
+    INVALID_PRODUCT_STATUS(HttpStatus.CONFLICT, "PRODUCT_008", "지금 상품 상태에서는 할 수 없습니다."),
     // Quote
     QUOTE_EXPIRED(HttpStatus.CONFLICT, "QUOTE_001", "견적이 만료되었습니다. 견적을 다시 받아 주세요."),
     QUOTE_NOT_CURRENT(HttpStatus.CONFLICT, "QUOTE_002", "견적이 수정되었습니다. 최신 견적을 확인해 주세요."),
@@ -63,6 +65,7 @@ public enum ErrorCode {
     PG_REQUEST_REJECTED(HttpStatus.BAD_GATEWAY, "PAYMENT_009", "결제사가 요청을 거절했습니다."),
     PAYMENT_METHOD_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_010", "결제 수단을 찾을 수 없습니다."),
     PAYMENT_METHOD_ALREADY_REGISTERED(HttpStatus.CONFLICT, "PAYMENT_011", "이미 등록된 결제 수단입니다."),
+    INVALID_BILLING_KEY(HttpStatus.BAD_REQUEST, "PAYMENT_012", "유효하지 않은 빌링키입니다."),
 
     // Refund
     REFUND_IN_PROGRESS(HttpStatus.CONFLICT, "REFUND_003", "이미 진행 중인 환불이 있습니다."),

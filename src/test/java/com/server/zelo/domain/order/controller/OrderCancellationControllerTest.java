@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
@@ -169,6 +170,6 @@ class OrderCancellationControllerTest {
 
     private void authenticate() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
-                AuthUser.of(USER_ID), null, AuthorityUtils.NO_AUTHORITIES));
+                AuthUser.of(USER_ID, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

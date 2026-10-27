@@ -1,5 +1,6 @@
 package com.server.zelo.common.auth;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import io.jsonwebtoken.Claims;
@@ -70,7 +71,7 @@ class JwtUtilTest {
     @Test
     void 정상_토큰은_검증에_성공한다() {
         // given
-        String token = jwtUtil.createAccessToken(1L);
+        String token = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when
         boolean result = jwtUtil.validateToken(token);
@@ -93,7 +94,7 @@ class JwtUtilTest {
     void 만료된_토큰은_검증에_실패한다() {
         // given
         ReflectionTestUtils.setField(jwtUtil, "accessTokenTime", -1_000L);
-        String token = jwtUtil.createAccessToken(1L);
+        String token = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when
         boolean result = jwtUtil.validateToken(token);
@@ -105,8 +106,8 @@ class JwtUtilTest {
     @Test
     void 페이로드가_변조된_토큰은_검증에_실패한다() {
         // given
-        String[] userOne = jwtUtil.createAccessToken(1L).split("\\.");
-        String[] userTwo = jwtUtil.createAccessToken(2L).split("\\.");
+        String[] userOne = jwtUtil.createAccessToken(1L, UserRole.BASIC).split("\\.");
+        String[] userTwo = jwtUtil.createAccessToken(2L, UserRole.BASIC).split("\\.");
         // 다른 유저의 페이로드에 기존 서명을 붙여서 서명이 안 맞게 만듦
         String forged = userOne[0] + "." + userTwo[1] + "." + userOne[2];
 
@@ -136,7 +137,7 @@ class JwtUtilTest {
     @Test
     void 액세스_토큰은_액세스_타입으로_판별된다() {
         // given
-        String token = jwtUtil.createAccessToken(1L);
+        String token = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when & then
         assertThat(jwtUtil.isAccessToken(token)).isTrue();
@@ -146,7 +147,7 @@ class JwtUtilTest {
     @Test
     void 리프레시_토큰은_리프레시_타입으로_판별된다() {
         // given
-        String token = jwtUtil.createRefreshToken(1L);
+        String token = jwtUtil.createRefreshToken(1L, UserRole.BASIC);
 
         // when & then
         assertThat(jwtUtil.isRefreshToken(token)).isTrue();
@@ -171,7 +172,7 @@ class JwtUtilTest {
     @Test
     void 토큰에서_유저_id를_꺼낼_수_있다() {
         // given
-        String token = jwtUtil.createAccessToken(7L);
+        String token = jwtUtil.createAccessToken(7L, UserRole.BASIC);
 
         // when
         Long id = jwtUtil.getUserId(token);
@@ -181,10 +182,21 @@ class JwtUtilTest {
     }
 
     @Test
+    void 토큰에서_유저_role을_꺼낼_수_있다() {
+        // given
+        String basic = jwtUtil.createAccessToken(1L, UserRole.BASIC);
+        String admin = jwtUtil.createRefreshToken(2L, UserRole.ADMIN);
+
+        // when & then
+        assertThat(jwtUtil.getUserRole(basic)).isEqualTo(UserRole.BASIC);
+        assertThat(jwtUtil.getUserRole(admin)).isEqualTo(UserRole.ADMIN);
+    }
+
+    @Test
     void 리프레시_토큰의_만료시간이_액세스_토큰보다_길다() {
         // given
-        String access = jwtUtil.createAccessToken(1L);
-        String refresh = jwtUtil.createRefreshToken(1L);
+        String access = jwtUtil.createAccessToken(1L, UserRole.BASIC);
+        String refresh = jwtUtil.createRefreshToken(1L, UserRole.BASIC);
 
         // when
         Date accessExp = parse(access);
@@ -197,7 +209,7 @@ class JwtUtilTest {
     @Test
     void 토큰에는_UUID_형식의_jti가_들어있다() {
         // given
-        String token = jwtUtil.createRefreshToken(1L);
+        String token = jwtUtil.createRefreshToken(1L, UserRole.BASIC);
 
         // when
         String jti = parseClaims(token).getId();
@@ -211,8 +223,8 @@ class JwtUtilTest {
     void 같은_유저로_연속_발급해도_리프레시_토큰이_서로_다르다() {
         // given
         // 발급 시각이 초 단위라 jti가 없으면 같은 초에 만든 토큰이 완전히 같아짐
-        String first = jwtUtil.createRefreshToken(1L);
-        String second = jwtUtil.createRefreshToken(1L);
+        String first = jwtUtil.createRefreshToken(1L, UserRole.BASIC);
+        String second = jwtUtil.createRefreshToken(1L, UserRole.BASIC);
 
         // when & then
         assertThat(first).isNotEqualTo(second);
@@ -222,8 +234,8 @@ class JwtUtilTest {
     @Test
     void 같은_유저로_연속_발급해도_액세스_토큰이_서로_다르다() {
         // given
-        String first = jwtUtil.createAccessToken(1L);
-        String second = jwtUtil.createAccessToken(1L);
+        String first = jwtUtil.createAccessToken(1L, UserRole.BASIC);
+        String second = jwtUtil.createAccessToken(1L, UserRole.BASIC);
 
         // when & then
         assertThat(first).isNotEqualTo(second);

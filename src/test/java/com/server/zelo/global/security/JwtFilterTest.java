@@ -1,5 +1,6 @@
 package com.server.zelo.global.security;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
@@ -133,6 +134,7 @@ class JwtFilterTest {
         given(jwtUtil.validateToken("accessToken")).willReturn(true);
         given(jwtUtil.isAccessToken("accessToken")).willReturn(true);
         given(jwtUtil.getUserId("accessToken")).willReturn(1L);
+        given(jwtUtil.getUserRole("accessToken")).willReturn(UserRole.BASIC);
 
         // when
         jwtFilter.doFilter(request, response, filterChain);
@@ -140,8 +142,27 @@ class JwtFilterTest {
         // then
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authentication).isNotNull();
-        assertThat(authentication.getPrincipal()).isEqualTo(AuthUser.of(1L));
+        assertThat(authentication.getPrincipal()).isEqualTo(AuthUser.of(1L, UserRole.BASIC));
         assertThat(request.getAttribute("exception")).isNull();
         assertThat(filterChain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void 토큰의_role이_ADMIN이면_ROLE_ADMIN_권한이_설정된다() throws ServletException, IOException {
+        // given
+        request.addHeader("Authorization", "Bearer accessToken");
+        given(jwtUtil.substringToken("Bearer accessToken")).willReturn("accessToken");
+        given(jwtUtil.validateToken("accessToken")).willReturn(true);
+        given(jwtUtil.isAccessToken("accessToken")).willReturn(true);
+        given(jwtUtil.getUserId("accessToken")).willReturn(1L);
+        given(jwtUtil.getUserRole("accessToken")).willReturn(UserRole.ADMIN);
+
+        // when
+        jwtFilter.doFilter(request, response, filterChain);
+
+        // then
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authentication.getPrincipal()).isEqualTo(AuthUser.of(1L, UserRole.ADMIN));
+        assertThat(authentication.getAuthorities()).extracting(Object::toString).containsExactly("ROLE_ADMIN");
     }
 }

@@ -8,6 +8,7 @@ import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.payment.service.PaymentMethodCommandService;
+import com.server.zelo.domain.user.entity.UserRole;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -134,6 +135,6 @@ class PaymentMethodControllerTest {
 
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

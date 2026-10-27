@@ -79,6 +79,7 @@ public class OrderCommandService {
         for(OrderItem orderItem : getItemsInProductOrder(order)) {
             orderItem.deduct(); // StockState: RESERVED → DEDUCTED
             inventoryService.deduct(orderItem.getProduct().getId(), orderItem.getQuantity());
+            // TODO: 판매량 반영 - productService.increaseSalesCount(productId, quantity) (견적 점수 판매량이 지금 계속 0)
         }
     }
 
@@ -132,6 +133,7 @@ public class OrderCommandService {
 
                     orderItem.restore();
                     inventoryService.restore(orderItem.getProduct().getId(), remainingQuantity);
+                    // TODO: 결제 후 취소라 판매량 되돌리기 - productService.decreaseSalesCount(productId, remainingQuantity)
                 }
 
                 case RESTORED -> {
@@ -332,6 +334,7 @@ public class OrderCommandService {
 
             orderItem.cancelQuantity(requestedQuantity);
             inventoryService.restore(orderItem.getProduct().getId(), requestedQuantity);
+            // TODO: 부분 취소·환불 수량만큼 판매량 내리기 - productService.decreaseSalesCount(productId, requestedQuantity)
         }
 
         // 재고 복원이 끝났으므로 주문 상태만 변경
@@ -521,6 +524,7 @@ public class OrderCommandService {
                     throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
                 }
 
+                // TODO: 판매중지(STOP_SALE) 상품이면 주문 막기 (관리자 API로 판매중지가 생김)
                 if (!product.getPrice().equals(item.unitPrice())) {
                     throw new BusinessException(ErrorCode.PRICE_CHANGED);
                 }

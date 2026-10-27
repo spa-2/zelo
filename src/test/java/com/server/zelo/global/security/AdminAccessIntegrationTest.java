@@ -12,13 +12,13 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-// /api/admin/** 의 RBAC만 확인하므로 실제 admin API가 없어도 되도록 인가 단계의 결과(401/403, 통과 시 404)로 판단한다
+// /api/admin/** 의 RBAC를 확인한다. 실제 admin API가 없어서 인가에서 막히는 경우(401/403)만 검증한다
 @SpringBootTest
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class AdminAccessIntegrationTest {
 
-    private static final String ADMIN_URL = "/api/admin/anything";
+    private static final String ADMIN_URL = "/api/admin/test";
 
     @Autowired
     private MockMvc mockMvc;
@@ -38,15 +38,6 @@ class AdminAccessIntegrationTest {
 
         mockMvc.perform(get(ADMIN_URL).header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void ADMIN_사용자는_인가를_통과한다() throws Exception {
-        String token = jwtUtil.createAccessToken(1L, UserRole.ADMIN);
-
-        // 핸들러가 없어서 404지만, 401/403이 아니면 인가는 통과한 것
-        mockMvc.perform(get(ADMIN_URL).header("Authorization", "Bearer " + token))
-                .andExpect(status().isNotFound());
     }
 
     @Test

@@ -77,6 +77,13 @@ dependencies {
     runtimeOnly "io.jsonwebtoken:jjwt-impl:0.12.6"
     runtimeOnly "io.jsonwebtoken:jjwt-jackson:0.12.6"
     testImplementation "io.jsonwebtoken:jjwt-api:0.12.6"
+
+    // Actuator & Prometheus
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+    // aws SSM
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store:4.0.2'
 }
 
 tasks.named('test') {

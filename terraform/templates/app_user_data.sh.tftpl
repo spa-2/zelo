@@ -1,0 +1,15 @@
+#!/bin/bash
+# 앱 서버 부팅 스크립트(user_data): Docker를 설치하고 배포 스크립트를 심은 뒤 실행한다.
+# 처음 뜨는 서버든 ASG가 교체해서 뜬 서버든 같은 과정으로 앱이 올라온다.
+exec > >(tee /var/log/zelo-bootstrap.log) 2>&1
+set -euo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+cat > /usr/local/bin/zelo-deploy.sh <<'DEPLOY_EOF'
+${deploy_script}
+DEPLOY_EOF
+chmod 755 /usr/local/bin/zelo-deploy.sh
+
+/usr/local/bin/zelo-deploy.sh

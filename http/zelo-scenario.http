@@ -81,11 +81,15 @@ Content-Type: application/json
     const data = response.body.data;
     client.global.set("roomId", data.roomId);
     const card = data.message.payload;
-    client.test("견적 카드가 옴", () => client.assert(card && card.type === "QUOTE_CARD", "견적 카드가 없어요: " + data.message.content));
-    client.test("담긴 상품이 있음", () => client.assert(card.items.length > 0, "담긴 상품이 없어요"));
-    client.global.set("firstQuoteId", card.quoteId);
-    // LLM이 고른 재료가 매번 달라서, 견적에 실제로 담긴 첫 상품을 빼 달라고 한다
-    client.global.set("removeName", card.items[0].productName);
+    // LLM 오류 때는 payload가 FALLBACK 카드라서 type까지 봐야 한다
+    const isQuote = card && card.type === "QUOTE_CARD";
+    client.test("견적 카드가 옴", () => client.assert(isQuote, "견적 카드가 없어요: " + data.message.content));
+    client.test("담긴 상품이 있음", () => client.assert(isQuote && card.items.length > 0, "담긴 상품이 없어요"));
+    if (isQuote && card.items.length > 0) {
+        client.global.set("firstQuoteId", card.quoteId);
+        // LLM이 고른 재료가 매번 달라서, 견적에 실제로 담긴 첫 상품을 빼 달라고 한다
+        client.global.set("removeName", card.items[0].productName);
+    }
 %}
 
 ### A-2. 견적 수정: 새 견적 카드 (quoteId가 바뀌어야 함)
@@ -99,8 +103,9 @@ Content-Type: application/json
 
 > {%
     const card = response.body.data.payload;
-    client.test("수정된 견적 카드가 옴", () => client.assert(card && card.type === "QUOTE_CARD", "견적 카드가 없어요: " + response.body.data.content));
-    if (card) {
+    const isQuote = card && card.type === "QUOTE_CARD";
+    client.test("수정된 견적 카드가 옴", () => client.assert(isQuote, "견적 카드가 없어요: " + response.body.data.content));
+    if (isQuote) {
         client.test("quoteId가 새로 발급됨", () => client.assert(card.quoteId !== client.global.get("firstQuoteId"), "quoteId가 그대로예요"));
         client.global.set("quoteId", card.quoteId);
     }
@@ -153,7 +158,7 @@ Authorization: Bearer {{token}}
 > {%
     const order = response.body.data.content.find(o => o.orderId === client.global.get("orderId"));
     client.test("주문이 목록에 있음", () => client.assert(order, "목록에 주문이 없어요"));
-    client.test("주문 상태 PAID", () => client.assert(order.status === "PAID", order && order.status));
+    client.test("주문 상태 PAID", () => client.assert(order && order.status === "PAID", order && order.status));
 %}
 
 
@@ -262,8 +267,9 @@ Content-Type: application/json
 
 > {%
     const card = response.body.data.message.payload;
-    client.test("견적 카드가 옴", () => client.assert(card && card.type === "QUOTE_CARD", response.body.data.message.content));
-    const excluded = card ? card.excludedItems : [];
+    const isQuote = card && card.type === "QUOTE_CARD";
+    client.test("견적 카드가 옴", () => client.assert(isQuote, response.body.data.message.content));
+    const excluded = isQuote ? card.excludedItems : [];
     const blocked = excluded.find(i => i.name === "맥주" && i.reason === "CATEGORY_NOT_ALLOWED");
     client.test("주류가 빠짐", () => client.assert(blocked, JSON.stringify(excluded)));
 %}
@@ -281,8 +287,13 @@ Content-Type: application/json
 }
 
 > {%
+    const card = response.body.data.message.payload;
+    const isQuote = card && card.type === "QUOTE_CARD";
+    client.test("견적 카드가 옴", () => client.assert(isQuote, response.body.data.message.content));
     client.global.set("cancelRoomId", response.body.data.roomId);
-    client.global.set("cancelQuoteId", response.body.data.message.payload.quoteId);
+    if (isQuote) {
+        client.global.set("cancelQuoteId", card.quoteId);
+    }
 %}
 
 ### E-2. 구매 확인

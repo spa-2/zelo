@@ -1,0 +1,196 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - 'terraform/**'
+      - '**.md'
+
+# 배포가 겹치면 진행 중인 배포는 끝까지 두고, 기다리는 배포는 가장 최근 하나만 남긴다
+# (cancel-in-progress를 켜면 서버 교체가 중간에 끊겨 태그와 서버 상태가 어긋날 수 있다)
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # AWS OIDC 로그인용
+  contents: read
+
+jobs:
+  deploy:
+    name: Build image and deploy
+    # 저장소 변수 DEPLOY_ENABLED가 true일 때만 배포한다 (인프라를 내려 둔 동안 실패 알림이 쌓이지 않게)
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: zelo
+      ASG_NAME: zelo-dev-app-asg
+      IMAGE_TAG_PARAMETER: /zelo/dev/deploy/image_tag
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@aded0d722166a37980e030aa969dda0bfe6b6947 # v2.1.7
+
+      # 서버가 ARM이라 arm64 이미지를 만든다. 실행 이미지 단계의 짧은 명령만 에뮬레이션된다
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Define image tag
+        id: tag
+        run: echo "value=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: . # 도커 파일을 빌드에서 사용
+          platforms: linux/arm64 # 최종 이미지
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      # 태그를 바꾸고 ASG에게 서버 교체를 시킨다. 새 서버는 부팅할 때 이 태그의 이미지를 실행한다
+      - name: Deploy (instance refresh)
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          # 기본 bash는 명령 하나가 실패하면 스크립트가 바로 끝나서 복구 코드가 실행되지 않는다. 실패를 직접 처리하려고 -e를 끈다
+          set +e
+
+          # Terraform의 instance_refresh 설정은 이 호출에 적용되지 않으므로 옵션을 직접 넘긴다
+          PREFERENCES='{"MinHealthyPercentage":100,"MaxHealthyPercentage":200,"InstanceWarmup":300}'
+
+          PREVIOUS=$(aws ssm get-parameter --name "$IMAGE_TAG_PARAMETER" --query Parameter.Value --output text)
+          if [ -z "$PREVIOUS" ]; then
+            echo "이전 image_tag를 읽지 못해 배포를 시작하지 않는다"
+            exit 1
+          fi
+
+          set_tag() {
+            aws ssm put-parameter --name "$IMAGE_TAG_PARAMETER" --type String --overwrite --value "$1"
+          }
+
+          describe_status() {
+            aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" --instance-refresh-ids "$1" \
+              --query 'InstanceRefreshes[0].Status' --output text
+          }
+
+          # 새로고침이 끝날 때까지 20초마다 상태를 본다. 결과는 RESULT에 담는다
+          # 조회가 일시적으로 실패하는 것은 넘어가고, 연속 5번 실패하면 상태를 알 수 없는 것으로 본다
+          wait_refresh() {
+            local id=$1 max=$2 errors=0 status
+            for _ in $(seq 1 "$max"); do
+              if status=$(describe_status "$id"); then
+                errors=0
+                echo "status: $status"
+                case "$status" in
+                  Successful)
+                    RESULT=Successful
+                    return 0
+                    ;;
+                  Failed|Cancelled|RollbackFailed|RollbackSuccessful)
+                    RESULT="$status"
+                    return 1
+                    ;;
+                esac
+              else
+                errors=$((errors + 1))
+                echo "상태 조회 실패($errors/5)"
+                if [ "$errors" -ge 5 ]; then
+                  RESULT=Unknown
+                  return 1
+                fi
+              fi
+              sleep 20
+            done
+            RESULT=Timeout
+            return 1
+          }
+
+          # 취소한 새로고침이 완전히 멈출 때까지 기다린다 (진행 중이면 새 새로고침을 시작할 수 없다)
+          wait_settled() {
+            local status
+            for _ in $(seq 1 30); do
+              if status=$(describe_status "$1"); then
+                case "$status" in
+                  Pending|InProgress|Cancelling|Baking) ;;
+                  *) return 0 ;;
+                esac
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          # 실패 복구: 진행 중인 새로고침을 멈추고, 태그를 되돌리고, 이미 새 이미지로 바뀐 서버까지 이전 이미지로 다시 교체한다
+          recover() {
+            echo "복구 시작: 이전 태그($PREVIOUS)로 되돌린다"
+            aws autoscaling cancel-instance-refresh --auto-scaling-group-name "$ASG_NAME" || echo "취소할 새로고침이 없거나 취소에 실패함"
+            wait_settled "$REFRESH_ID" || echo "새로고침이 아직 멈추지 않았다"
+
+            if ! set_tag "$PREVIOUS"; then
+              echo "!! image_tag를 되돌리지 못했다. 수동으로 $IMAGE_TAG_PARAMETER 를 $PREVIOUS 로 되돌려야 한다"
+              return 1
+            fi
+
+            if [ "$PREVIOUS" = "none" ]; then
+              echo "이전에 배포된 이미지가 없어 서버 재교체는 하지 않는다"
+              return 0
+            fi
+
+            if ! RECOVERY_ID=$(aws autoscaling start-instance-refresh \
+              --auto-scaling-group-name "$ASG_NAME" --preferences "$PREFERENCES" \
+              --query InstanceRefreshId --output text); then
+              echo "!! 복구용 새로고침을 시작하지 못했다. 서버가 새 이미지와 이전 이미지로 섞여 있을 수 있어 수동 확인이 필요하다"
+              return 1
+            fi
+            echo "복구용 instance refresh 시작: $RECOVERY_ID"
+
+            if wait_refresh "$RECOVERY_ID" 45; then
+              echo "이전 이미지($PREVIOUS)로 복구 완료"
+              return 0
+            fi
+            echo "!! 복구용 새로고침이 $RESULT 로 끝났다. 서버 상태를 수동으로 확인해야 한다"
+            return 1
+          }
+
+          if ! set_tag "$TAG"; then
+            echo "image_tag를 바꾸지 못해 배포를 중단한다"
+            exit 1
+          fi
+
+          if ! REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" --preferences "$PREFERENCES" \
+            --query InstanceRefreshId --output text); then
+            echo "instance refresh를 시작하지 못했다"
+            set_tag "$PREVIOUS" || echo "!! image_tag를 되돌리지 못했다. 수동 복원 필요"
+            exit 1
+          fi
+          echo "instance refresh 시작: $REFRESH_ID"
+
+          # 새 서버가 부팅하고 헬스체크를 통과해 옛 서버가 내려갈 때까지 기다린다 (최대 30분)
+          if wait_refresh "$REFRESH_ID" 90; then
+            echo "배포 완료: $TAG"
+            exit 0
+          fi
+
+          echo "배포 실패($RESULT)"
+          recover
+          exit 1

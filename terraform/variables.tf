@@ -148,3 +148,14 @@ variable "db_skip_final_snapshot" {
   type    = bool
   default = true
 }
+
+# CD가 AWS 역할을 받을 수 있는 저장소와 브랜치. 신뢰 조건에 그대로 들어간다
+variable "github_repository" {
+  type    = string
+  default = "spa-2/zelo"
+}
+
+variable "github_deploy_branch" {
+  type    = string
+  default = "dev"
+}

@@ -1,5 +1,6 @@
-# 빌드 단계: 테스트는 CI에서 이미 돌렸으므로 건너뛴다
-FROM eclipse-temurin:21-jdk AS build
+# 빌드 단계: 테스트는 CI에서 이미 돌렸으므로 건너뛴다.
+# jar는 CPU 종류와 무관하므로 빌드 실행 환경(BUILDPLATFORM)에서 그대로 돌려 arm64 에뮬레이션 없이 빠르게 만든다
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle gradle

@@ -18,6 +18,9 @@ import lombok.NoArgsConstructor;
 )
 public class PaymentMethod extends BaseTimeEntity {
 
+    private static final int BILLING_KEY_MAX_LENGTH = 200;
+    private static final int DISPLAY_NAME_MAX_LENGTH = 50;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -30,12 +33,12 @@ public class PaymentMethod extends BaseTimeEntity {
     @Column(name = "type", nullable = false, length = 20)
     private PaymentMethodType type;
 
-    @Column(name = "billing_key", nullable = false, unique = true, length = 200)
+    @Column(name = "billing_key", nullable = false, unique = true, length = BILLING_KEY_MAX_LENGTH)
     private String billingKey;
 
-    // 화면 표시용 (예: 신한카드 1234). 카드번호 전체는 저장하지 않는다
-    @Column(name = "display_name", nullable = false, length = 50)
+    @Column(name = "display_name", nullable = false, length = DISPLAY_NAME_MAX_LENGTH)
     private String displayName;
+
 
     private PaymentMethod(Long userId, PaymentMethodType type, String billingKey, String displayName) {
         if (userId == null || type == null) {
@@ -46,6 +49,10 @@ public class PaymentMethod extends BaseTimeEntity {
         }
         if (displayName == null || displayName.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "결제 수단 표시 이름이 필요합니다.");
+        }
+        // 컬럼 길이를 넘기면 저장할 때 DB 오류(500)가 나므로 미리 막는다
+        if (billingKey.length() > BILLING_KEY_MAX_LENGTH || displayName.length() > DISPLAY_NAME_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "빌링키나 표시 이름이 너무 깁니다.");
         }
         this.userId = userId;
         this.type = type;

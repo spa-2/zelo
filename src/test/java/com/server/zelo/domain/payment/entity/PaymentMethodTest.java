@@ -54,4 +54,21 @@ class PaymentMethodTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT);
     }
+
+    @Test
+    void 빌링키나_표시_이름이_컬럼_길이를_넘으면_예외가_발생한다() {
+        // given
+        String longBillingKey = "k".repeat(201);
+        String longDisplayName = "n".repeat(51);
+
+        // when // then
+        assertThatThrownBy(() -> PaymentMethod.of(1L, PaymentMethodType.CARD, longBillingKey, "신한카드 1234"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+        assertThatThrownBy(() -> PaymentMethod.of(1L, PaymentMethodType.CARD, "billing-key-1", longDisplayName))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+    }
 }

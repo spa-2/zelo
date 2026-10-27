@@ -10,7 +10,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,5 +83,33 @@ class PaymentMethodServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PAYMENT_METHOD_NOT_FOUND);
+    }
+
+    @Test
+    void 동시에_같은_빌링키가_저장되어_유니크_제약에_걸리면_이미_등록된_결제_수단_예외로_바꾼다() {
+        // given
+        given(paymentMethodRepository.existsByBillingKey(BILLING_KEY)).willReturn(false);
+        given(paymentMethodRepository.save(any(PaymentMethod.class))).willThrow(
+                new DataIntegrityViolationException("duplicate", new SQLException("duplicate", "23505")));
+
+        // when // then
+        assertThatThrownBy(() -> paymentMethodService.createPaymentMethod(
+                USER_ID, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PAYMENT_METHOD_ALREADY_REGISTERED);
+    }
+
+    @Test
+    void 유니크_제약이_아닌_DB_오류는_그대로_던진다() {
+        // given
+        given(paymentMethodRepository.existsByBillingKey(BILLING_KEY)).willReturn(false);
+        given(paymentMethodRepository.save(any(PaymentMethod.class))).willThrow(
+                new DataIntegrityViolationException("not null", new SQLException("not null", "23502")));
+
+        // when // then
+        assertThatThrownBy(() -> paymentMethodService.createPaymentMethod(
+                USER_ID, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234"))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

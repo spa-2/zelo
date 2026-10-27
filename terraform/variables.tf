@@ -150,9 +150,11 @@ variable "db_skip_final_snapshot" {
 }
 
 # CD가 AWS 역할을 받을 수 있는 저장소와 브랜치. 신뢰 조건에 그대로 들어간다
+# 저장소가 OIDC 불변 subject(use_immutable_subject)를 쓰면 토큰의 sub가 "소유자@ID/저장소@ID" 형식이라 ID까지 맞춰야 한다
+# 값은 gh api repos/<소유자>/<저장소>/actions/oidc/customization/sub 의 sub_claim_prefix에서 "repo:"를 뺀 것
 variable "github_repository" {
   type    = string
-  default = "spa-2/zelo"
+  default = "spa-2@342884922/zelo@1420323810"
 }
 
 variable "github_deploy_branch" {

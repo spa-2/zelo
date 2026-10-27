@@ -16,6 +16,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
+import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.QuoteCardStatus;
@@ -102,6 +103,44 @@ class ChatMessageControllerTest {
                 .andExpect(jsonPath("$.data.payload.type").value("QUOTE_CARD"))
                 .andExpect(jsonPath("$.data.payload.totalAmount").value(28900))
                 .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
+    }
+
+    @Test
+    void 카드_버튼_수정은_201과_AI_메시지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 2L, 0)))
+                .willReturn(new ChatMessageResponse(105L, ChatSender.ASSISTANT, "계란 (10구) 상품을 뺐어요.",
+                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quoteId\":\"quote-1\",\"productId\":2,\"quantity\":0}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("계란 (10구) 상품을 뺐어요."))
+                .andExpect(jsonPath("$.data.payload.quoteId").value("quote-2"))
+                .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "{\"quoteId\":\"quote-1\",\"productId\":2,\"quantity\":11}",
+            "{\"quoteId\":\"quote-1\",\"productId\":2,\"quantity\":-1}",
+            "{\"quoteId\":\"quote-1\",\"productId\":2}",
+            "{\"quoteId\":\" \",\"productId\":2,\"quantity\":1}",
+            "{\"quoteId\":\"quote-1\",\"productId\":0,\"quantity\":1}"})
+    void 카드_버튼_수정_요청이_범위를_벗어나면_400과_INVALID_INPUT을_반환하고_고치지_않는다(String body) throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageCommandService).should(never()).updateQuoteItem(anyLong(), anyLong(), any());
     }
 
     @Test

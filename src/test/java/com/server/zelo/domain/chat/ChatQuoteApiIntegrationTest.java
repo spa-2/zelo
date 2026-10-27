@@ -204,6 +204,37 @@ class ChatQuoteApiIntegrationTest {
         then(quoteCommandService).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 카드_버튼으로_빼면_LLM_없이_새_견적_카드를_201로_돌려준다() throws Exception {
+        // given
+        Long roomId = createRoom();
+        saveCurrentQuote(quote(roomId, "quote-1", List.of(KIMCHI_ITEM, EGG_ITEM), List.of()));
+        given(quoteCommandService.removeItem(OWNER_ID, roomId, 1L))
+                .willReturn(quote(roomId, "quote-2", List.of(EGG_ITEM), List.of()));
+
+        // when & then
+        pressItemButton(roomId, "quote-1", 1L, 0)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("백김치 (1kg) 상품을 뺐어요."))
+                .andExpect(jsonPath("$.data.payload.quoteId").value("quote-2"))
+                .andExpect(jsonPath("$.data.payload.items.length()").value(1))
+                .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
+    }
+
+    @Test
+    void 지난_카드의_버튼을_누르면_견적을_고치지_않고_정해진_문장으로_답한다() throws Exception {
+        // given: 지금 견적은 quote-2인데 화면은 quote-1 카드의 버튼을 눌렀다
+        Long roomId = createRoom();
+        saveCurrentQuote(quote(roomId, "quote-2", List.of(KIMCHI_ITEM), List.of()));
+
+        // when & then
+        pressItemButton(roomId, "quote-1", 1L, 0)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요."))
+                .andExpect(jsonPath("$.data.payload").doesNotExist());
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
     private Long createRoom() {
         return chatRoomRepository.save(ChatRoom.of(OWNER_ID)).getId();
     }
@@ -213,6 +244,13 @@ class ChatQuoteApiIntegrationTest {
                 .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"text\":\"" + text + "\"}"));
+    }
+
+    private ResultActions pressItemButton(Long roomId, String quoteId, Long productId, int quantity) throws Exception {
+        return mockMvc.perform(post("/api/chat/rooms/{roomId}/quote-items", roomId)
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"quoteId\":\"" + quoteId + "\",\"productId\":" + productId + ",\"quantity\":" + quantity + "}"));
     }
 
     private void saveCurrentQuote(Quote quote) {

@@ -5,6 +5,7 @@ import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.SendChatMessageRequest;
+import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
@@ -52,6 +53,16 @@ public class ChatMessageController {
             @PathVariable Long roomId,
             @Valid @RequestBody SendChatMessageRequest request) {
         ChatMessageResponse response = chatMessageCommandService.sendMessage(roomId, authUser.id(), request.text());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
+    // 견적 카드의 ✕, −/+ 버튼. 결과를 AI 메시지(새 카드 또는 안내 문장)로 저장해 돌려준다
+    @PostMapping("/rooms/{roomId}/quote-items")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> updateQuoteItem(
+            @Auth AuthUser authUser,
+            @PathVariable Long roomId,
+            @Valid @RequestBody UpdateQuoteItemRequest request) {
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 }

@@ -6,8 +6,12 @@ import com.server.zelo.domain.product.model.ProductDetail;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.cache.Cache;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -21,10 +25,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 // 테스트는 캐시가 테스트끼리 남아서 결과가 꼬이지 않게 zelo.cache.enabled=false 로 끔
 // 캐시를 트랜잭션 바깥에서 처리해서 관리자 수정이 커밋된 뒤에 상세 캐시를 지움 (커밋 전에 지우면 옛 값이 다시 캐시될 수 있음)
+@Slf4j
 @Configuration
 @EnableCaching(order = Ordered.HIGHEST_PRECEDENCE)
 @ConditionalOnProperty(name = "zelo.cache.enabled", havingValue = "true", matchIfMissing = true)
-public class CacheConfig {
+public class CacheConfig implements CachingConfigurer {
 
     public static final String CATEGORIES = "categories";
     public static final String INGREDIENT_UNITS = "ingredientUnits";
@@ -47,6 +52,34 @@ public class CacheConfig {
                 .withCacheConfiguration(INGREDIENT_UNITS, cacheConfiguration(jsonMapper, ingredientUnits))
                 .withCacheConfiguration(PRODUCT_DETAIL, cacheConfiguration(jsonMapper, productDetail))
                 .build();
+    }
+
+    // Redis가 안 돼도 조회는 DB로 계속 되게 캐시 오류는 로그만 남김
+    // 삭제 실패는 옛 값이 TTL 동안 남을 수 있어서 error로 남김. 주문은 DB 가격으로 다시 확인해서 결제 금액은 안 틀어짐
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new CacheErrorHandler() {
+
+            @Override
+            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+                log.warn("캐시 조회 실패 cache={}, error={}", cache.getName(), exception.getMessage());
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+                log.warn("캐시 저장 실패 cache={}, error={}", cache.getName(), exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+                log.error("캐시 삭제 실패 cache={}, key={}", cache.getName(), key, exception);
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+                log.error("캐시 비우기 실패 cache={}", cache.getName(), exception);
+            }
+        };
     }
 
     private RedisCacheConfiguration cacheConfiguration(JsonMapper jsonMapper, JavaType type) {

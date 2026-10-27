@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByQuoteId(String quoteId);
 
     boolean existsByUser_IdAndStatus(Long userId, OrderStatus status);
+
+    // 채팅 견적 카드 여러 장의 주문 여부를 한 번에 확인. 주문 상태와 관계없이 그 견적으로 만든 주문이 있으면 포함
+    @Query("select o.quoteId from Order o where o.quoteId in :quoteIds")
+    List<String> findQuoteIdsByQuoteIdIn(@Param("quoteIds") Collection<String> quoteIds);
 
     // 확인 중이거나 결제 완료된 결제가 있는 주문은 만료 후보에서 제외
     @Query("""

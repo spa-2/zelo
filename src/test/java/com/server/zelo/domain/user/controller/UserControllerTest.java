@@ -1,5 +1,6 @@
 package com.server.zelo.domain.user.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.auth.RefreshTokenCookieFactory;
 import com.server.zelo.common.auth.AuthArgumentResolver;
@@ -244,7 +245,7 @@ class UserControllerTest {
 
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.server.zelo.domain.user.service;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -51,8 +52,8 @@ class UserCommandServiceTest {
         User user = User.of("jieun@example.com", "encodedPassword", "지은", "010-1234-5678");
         ReflectionTestUtils.setField(user, "id", 1L);
         given(userService.getUserByEmailAndPassword("jieun@example.com", "DemoPass!2026")).willReturn(user);
-        given(jwtUtil.createAccessToken(1L)).willReturn("accessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("refreshToken");
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
         LoginResult result = userCommandService.login(request);
@@ -84,8 +85,9 @@ class UserCommandServiceTest {
         given(jwtUtil.validateToken("oldRefreshToken")).willReturn(true);
         given(jwtUtil.isRefreshToken("oldRefreshToken")).willReturn(true);
         given(jwtUtil.getUserId("oldRefreshToken")).willReturn(1L);
-        given(jwtUtil.createAccessToken(1L)).willReturn("newAccessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("newRefreshToken");
+        given(jwtUtil.getUserRole("oldRefreshToken")).willReturn(UserRole.BASIC);
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("newRefreshToken");
 
         // when
         LoginResult result = userCommandService.reissue("oldRefreshToken");
@@ -95,6 +97,24 @@ class UserCommandServiceTest {
         assertThat(result.refreshToken()).isEqualTo("newRefreshToken");
         // 새 토큰이 아니라 사용자가 보낸 토큰으로 일치 여부를 확인해야 함
         then(refreshTokenService).should().rotateToken(1L, "oldRefreshToken", "newRefreshToken");
+    }
+
+    @Test
+    void 재발급하면_리프레시_토큰의_role을_새_토큰에_그대로_담는다() {
+        // given
+        given(jwtUtil.validateToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.isRefreshToken("oldRefreshToken")).willReturn(true);
+        given(jwtUtil.getUserId("oldRefreshToken")).willReturn(1L);
+        given(jwtUtil.getUserRole("oldRefreshToken")).willReturn(UserRole.ADMIN);
+        given(jwtUtil.createAccessToken(1L, UserRole.ADMIN)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.ADMIN)).willReturn("newRefreshToken");
+
+        // when
+        LoginResult result = userCommandService.reissue("oldRefreshToken");
+
+        // then
+        assertThat(result.accessToken()).isEqualTo("newAccessToken");
+        assertThat(result.refreshToken()).isEqualTo("newRefreshToken");
     }
 
     @Test
@@ -132,8 +152,9 @@ class UserCommandServiceTest {
         given(jwtUtil.validateToken("oldRefreshToken")).willReturn(true);
         given(jwtUtil.isRefreshToken("oldRefreshToken")).willReturn(true);
         given(jwtUtil.getUserId("oldRefreshToken")).willReturn(1L);
-        given(jwtUtil.createAccessToken(1L)).willReturn("newAccessToken");
-        given(jwtUtil.createRefreshToken(1L)).willReturn("newRefreshToken");
+        given(jwtUtil.getUserRole("oldRefreshToken")).willReturn(UserRole.BASIC);
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("newAccessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("newRefreshToken");
         willThrow(new BusinessException(ErrorCode.TOKEN_REUSED))
                 .given(refreshTokenService).rotateToken(1L, "oldRefreshToken", "newRefreshToken");
 

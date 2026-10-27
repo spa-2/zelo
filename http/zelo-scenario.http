@@ -66,9 +66,8 @@ Authorization: Bearer {{token}}
 %}
 
 
-# ===== 시나리오 A. 메뉴 추천에서 결제까지 =====
-
 ### A-1. 채팅 시작: 견적 카드 받기 (roomId, quoteId 저장)
+# ===== 시나리오 A. 메뉴 추천에서 결제까지 =====
 POST {{host}}/api/chat/messages
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -162,9 +161,8 @@ Authorization: Bearer {{token}}
 %}
 
 
-# ===== 시나리오 C. 사고 방지 =====
-
 ### C-1. 같은 주문 요청을 다시 보내도 주문은 1건 (새로 만들지 않고 기존 주문을 돌려줌)
+# ===== 시나리오 C. 사고 방지 =====
 POST {{host}}/api/orders
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -254,9 +252,8 @@ Content-Type: application/json
 %}
 
 
-# ===== 시나리오 D. 제한 품목 (주류) =====
-
 ### D-1. 맥주를 같이 요청하면 견적에서 빠짐
+# ===== 시나리오 D. 제한 품목 (주류) =====
 POST {{host}}/api/chat/messages
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -275,9 +272,8 @@ Content-Type: application/json
 %}
 
 
-# ===== 시나리오 E. 결제 전 주문 취소 =====
-
 ### E-1. 새 견적 받기
+# ===== 시나리오 E. 결제 전 주문 취소 =====
 POST {{host}}/api/chat/messages
 Authorization: Bearer {{token}}
 Content-Type: application/json

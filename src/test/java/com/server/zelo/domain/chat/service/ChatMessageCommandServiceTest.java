@@ -29,6 +29,8 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.lock.LockDistributeService;
+import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
@@ -51,10 +53,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -74,6 +78,8 @@ class ChatMessageCommandServiceTest {
     private static final String ASK_EDIT_AGAIN = "어떤 상품을 어떻게 바꿀지 다시 말씀해 주세요.";
     private static final String NOT_IN_QUOTE = "견적 카드에 없는 상품이라 고치지 못했어요. 카드에 있는 상품 이름으로 다시 말씀해 주세요.";
     private static final String NOT_ENOUGH_STOCK = "재고가 부족해서 그 수량으로 바꿀 수 없어요. 수량을 줄여서 다시 말씀해 주세요.";
+    private static final String QUOTE_CHANGED = "견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요.";
+    private static final String EDIT_IN_PROGRESS = "이 견적의 다른 수정을 처리하고 있어요. 잠시 후 다시 말씀해 주세요.";
 
     @Mock
     private LlmGateway llmGateway;
@@ -92,6 +98,9 @@ class ChatMessageCommandServiceTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private LockDistributeService lockDistributeService;
 
     // 실제 프롬프트 파일과 견적 글이 LLM으로 가는지 보려고 진짜 객체를 쓴다
     @Spy
@@ -114,6 +123,9 @@ class ChatMessageCommandServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(productService.findIngredientUnits()).thenReturn(INGREDIENT_UNITS);
+        // 락은 잡았다고 보고 넘긴 작업을 그대로 실행한다
+        lenient().when(lockDistributeService.execute(anyString(), ArgumentMatchers.<Supplier<Object>>any()))
+                .thenAnswer(invocation -> invocation.<Supplier<?>>getArgument(1).get());
         lenient().when(llmGateway.planMenu(anyString(), anyList(), anyString(), anyMap()))
                 .thenReturn(planResult(plan(MenuPlanIntent.GENERAL_QUESTION)));
     }
@@ -588,6 +600,78 @@ class ChatMessageCommandServiceTest {
         assertThat(response.content()).isEqualTo(NOT_ENOUGH_STOCK);
         then(llmGateway).should(never()).explain(any(), any(), any());
         then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 견적_수정은_LLM_계획_뒤_방_단위_락_안에서_적용하고_안내_문장은_락_밖에서_만든다() {
+        // given
+        Quote current = quote(List.of(KIMCHI_ITEM, EGG_ITEM), List.of());
+        Quote removed = quote("quote-2", List.of(EGG_ITEM));
+        givenEditRequest(current, QuoteEditPlan.of(List.of(remove(1L)), ""));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willReturn(removed);
+        given(llmGateway.explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString()))
+                .willReturn(LlmReply.of("김치를 뺐어요.", "gpt-test", 1, 1));
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "김치를 뺐어요.", QuoteCardPayload.from(removed)))
+                .willReturn(cardMessage("김치를 뺐어요."));
+
+        // when
+        chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
+
+        // then
+        InOrder order = inOrder(llmGateway, lockDistributeService, quoteCommandService);
+        order.verify(llmGateway).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
+        order.verify(lockDistributeService).execute(eq(LockKey.editQuote(10L)), ArgumentMatchers.<Supplier<Object>>any());
+        order.verify(quoteCommandService).removeItem(1L, 10L, 1L);
+        order.verify(llmGateway).explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString());
+    }
+
+    @Test
+    void 계획하는_사이에_견적이_바뀌면_고치지_않고_정해진_문장으로_답한다() {
+        // given: 계획은 quote-1을 보고 세웠는데, 적용할 때는 다른 요청이 quote-9로 바꿔 놓았다
+        givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
+        given(quoteService.findQuote(10L))
+                .willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())), Optional.of(quote("quote-9", List.of(KIMCHI_ITEM))));
+        givenAssistantMessage(QUOTE_CHANGED);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_CHANGED);
+        then(quoteCommandService).should(never()).removeItem(any(), any(), any());
+        then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 계획하는_사이에_견적이_만료되면_고치지_않고_정해진_문장으로_답한다() {
+        // given
+        givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
+        given(quoteService.findQuote(10L))
+                .willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())), Optional.empty());
+        givenAssistantMessage(NO_QUOTE_TO_EDIT);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
+
+        // then
+        assertThat(response.content()).isEqualTo(NO_QUOTE_TO_EDIT);
+        then(quoteCommandService).should(never()).removeItem(any(), any(), any());
+    }
+
+    @Test
+    void 같은_방의_다른_수정이_락을_잡고_있으면_고치지_않고_잠시_후_다시_말하라고_답한다() {
+        // given
+        givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
+        given(lockDistributeService.execute(eq(LockKey.editQuote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        givenAssistantMessage(EDIT_IN_PROGRESS);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
+
+        // then
+        assertThat(response.content()).isEqualTo(EDIT_IN_PROGRESS);
+        then(quoteCommandService).should(never()).removeItem(any(), any(), any());
     }
 
     @Test

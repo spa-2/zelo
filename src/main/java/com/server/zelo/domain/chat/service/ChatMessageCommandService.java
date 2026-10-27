@@ -11,6 +11,8 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.lock.LockDistributeService;
+import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
@@ -48,9 +50,13 @@ public class ChatMessageCommandService {
     private static final String ASK_EDIT_AGAIN = "어떤 상품을 어떻게 바꿀지 다시 말씀해 주세요.";
     private static final String NOT_IN_QUOTE = "견적 카드에 없는 상품이라 고치지 못했어요. 카드에 있는 상품 이름으로 다시 말씀해 주세요.";
     private static final String NOT_ENOUGH_STOCK = "재고가 부족해서 그 수량으로 바꿀 수 없어요. 수량을 줄여서 다시 말씀해 주세요.";
-    // 견적 수정 메서드의 오류 중 사용자가 다시 말하면 되는 것. 그 밖의 오류(Redis 장애 등)는 그대로 던진다
+    private static final String QUOTE_CHANGED = "견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요.";
+    private static final String EDIT_IN_PROGRESS = "이 견적의 다른 수정을 처리하고 있어요. 잠시 후 다시 말씀해 주세요.";
+    // 견적 수정 메서드의 오류 중 사용자가 다시 말하면 되는 것. 그 밖의 오류(Redis 장애 등)는 그대로 던진다.
+    // QUOTE_NOT_CURRENT는 수정 메서드가 아니라 계획 뒤 견적이 바뀌었을 때 applyEdits가 쓴다
     private static final Map<ErrorCode, String> EDIT_FAILURE_REPLIES = Map.of(
             ErrorCode.QUOTE_EXPIRED, NO_QUOTE_TO_EDIT,
+            ErrorCode.QUOTE_NOT_CURRENT, QUOTE_CHANGED,
             ErrorCode.PRODUCT_NOT_FOUND, NOT_IN_QUOTE,
             ErrorCode.INSUFFICIENT_STOCK, NOT_ENOUGH_STOCK);
 
@@ -64,6 +70,7 @@ public class ChatMessageCommandService {
     private final ChatMessageService chatMessageService;
     private final QuoteExplainPrompt quoteExplainPrompt;
     private final QuoteCommandService quoteCommandService;
+    private final LockDistributeService lockDistributeService;
 
     public ChatMessageResponse sendMessage(Long roomId, Long userId, String text) {
         // LLM이 실패해도 사용자가 보낸 말은 남아 있어야 하므로 먼저 저장(커밋)
@@ -167,6 +174,36 @@ public class ChatMessageCommandService {
             return chatMessageService.createAssistantMessage(roomId, userId, NOT_IN_QUOTE);
         }
 
+        // 계획을 세우는 동안(LLM, 수 초) 같은 방의 견적이 바뀌었을 수 있어, 계획 때 본 견적이 아직 현재 견적일 때만 고친다.
+        // 확인과 적용 사이에 다른 요청이 끼지 않게 그 구간만 방 단위로 잠근다. LLM 호출까지 잠그면 같은 방의 다음 메시지가 락 대기(3초)를 넘겨 실패하므로, 안내 문장(LLM)과 메시지 저장은 락이 풀린 뒤에 한다
+        EditResult result;
+        try {
+            result = lockDistributeService.execute(LockKey.editQuote(roomId), () -> applyEdits(userId, roomId, quote, editPlan));
+        } catch (BusinessException e) {
+            if (e.getErrorCode() != ErrorCode.TIMEOUT_EXCEPTION) {
+                throw e;
+            }
+            return chatMessageService.createAssistantMessage(roomId, userId, EDIT_IN_PROGRESS);
+        }
+
+        if (result.appliedEdits().isEmpty()) {
+            return chatMessageService.createAssistantMessage(roomId, userId, EDIT_FAILURE_REPLIES.get(result.failure()));
+        }
+        String editedText = quoteExplainPrompt.editedText(quote, result.edited(), result.appliedEdits(),
+                result.failedEdit(), result.failure());
+        return replyWithQuoteCard(roomId, userId, result.edited(), editedText, toResponse);
+    }
+
+    // 락 안에서 실행한다. 현재 견적이 계획 때 본 견적(quoteId)과 다르면 아무것도 고치지 않는다
+    private EditResult applyEdits(Long userId, Long roomId, Quote quote, QuoteEditPlan editPlan) {
+        Optional<String> currentQuoteId = quoteService.findQuote(roomId).map(Quote::quoteId);
+        if (currentQuoteId.isEmpty()) {
+            return EditResult.notApplied(quote, ErrorCode.QUOTE_EXPIRED);
+        }
+        if (!currentQuoteId.get().equals(quote.quoteId())) {
+            return EditResult.notApplied(quote, ErrorCode.QUOTE_NOT_CURRENT);
+        }
+
         // 수정마다 새 견적 ID로 저장되므로 마지막 견적으로 카드를 한 번만 만든다
         Quote edited = quote;
         List<QuoteEdit> appliedEdits = new ArrayList<>();
@@ -178,19 +215,13 @@ public class ChatMessageCommandService {
                 // 고친 것이 없으면 정해진 문장으로 답하거나(안내할 수 없는 오류는 그대로 던진다),
                 // 앞의 수정이 이미 저장됐으면 오류 종류와 관계없이 그 견적을 보여 주며 못 한 수정을 알린다.
                 // 그래야 채팅에 남는 카드가 저장된 견적(새 견적 ID)과 어긋나지 않는다
-                if (appliedEdits.isEmpty()) {
-                    String reply = EDIT_FAILURE_REPLIES.get(e.getErrorCode());
-                    if (reply == null) {
-                        throw e;
-                    }
-                    return chatMessageService.createAssistantMessage(roomId, userId, reply);
+                if (appliedEdits.isEmpty() && !EDIT_FAILURE_REPLIES.containsKey(e.getErrorCode())) {
+                    throw e;
                 }
-                String editedText = quoteExplainPrompt.editedText(quote, edited, appliedEdits, edit, e.getErrorCode());
-                return replyWithQuoteCard(roomId, userId, edited, editedText, toResponse);
+                return new EditResult(edited, appliedEdits, edit, e.getErrorCode());
             }
         }
-        String editedText = quoteExplainPrompt.editedText(quote, edited, appliedEdits, null, null);
-        return replyWithQuoteCard(roomId, userId, edited, editedText, toResponse);
+        return new EditResult(edited, appliedEdits, null, null);
     }
 
     private <T> QuoteEditPlan planQuoteEdit(Long roomId, Long userId, List<ChatMessage> history, String text,
@@ -249,5 +280,13 @@ public class ChatMessageCommandService {
         ChatMessage fallbackMessage = chatMessageService.createFallbackMessage(roomId, userId, e.getErrorCode());
         T data = toResponse.apply(ChatMessageResponse.from(fallbackMessage));
         return new BusinessException(e.getErrorCode(), e.getMessage(), data);
+    }
+
+    // 락 안에서 고친 결과. 고치지 못한 경우 failure에 그 이유를 담아, 안내 문장·카드는 락이 풀린 뒤에 만든다
+    private record EditResult(Quote edited, List<QuoteEdit> appliedEdits, QuoteEdit failedEdit, ErrorCode failure) {
+
+        static EditResult notApplied(Quote quote, ErrorCode failure) {
+            return new EditResult(quote, List.of(), null, failure);
+        }
     }
 }

@@ -10,6 +10,7 @@ public class LockKey {
     private static final String USER_ADDRESS = "lock:user:address:";
     private static final String ORDER_CREATE = "lock:order:create:";
     private static final String REFUND = "lock:refund:";
+    private static final String QUOTE_EDIT = "lock:quote:edit:";
 
     // 같은 이메일로 동시에 가입해도 중복 검사를 같이 통과하지 못하게 이메일 단위로 락을 잡음
     public static String createUser(String email) {
@@ -36,4 +37,9 @@ public class LockKey {
 
     // 같은 주문의 환불 요청이 겹쳐 포트원 취소가 두 번 나가지 않도록 주문 단위로 락을 잡음
     public static String refund(Long orderId) {return REFUND + orderId;}
+
+    // 견적은 채팅방마다 하나라 방 단위로 잠가, 같은 방의 견적 수정이 확인과 적용 사이에 끼어들지 못하게 함
+    public static String editQuote(Long roomId) {
+        return QUOTE_EDIT + roomId;
+    }
 }

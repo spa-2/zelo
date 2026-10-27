@@ -3,9 +3,7 @@ package com.server.zelo.domain.portone.client;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.portone.dto.request.PortOneCancelRequest;
-import com.server.zelo.domain.portone.dto.response.PortOneErrorResponse;
-import com.server.zelo.domain.portone.dto.response.PortOnePayment;
-import com.server.zelo.domain.portone.dto.response.PortOnePaymentResponse;
+import com.server.zelo.domain.portone.dto.response.*;
 import com.server.zelo.domain.portone.config.PortOneProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +63,36 @@ public class HttpPortOneClient implements PortOneClient {
                 PortOneCancelRequest.of(portOneProperties.storeId(), reason), true);
     }
 
+    // 빌링키는 이 키만으로 결제할 수 있는 값이라 로그에 남기지 않는다
+    @Override
+    public PortOneBillingKey getBillingKey(String billingKey) {
+        try {
+            PortOneBillingKeyResponse response = portOneRestClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/billing-keys/{billingKey}")
+                            .queryParam("storeId", portOneProperties.storeId())
+                            .build(billingKey))
+                    .retrieve()
+                    .body(PortOneBillingKeyResponse.class);
+
+            if (response == null) {
+                throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+            }
+            return PortOneBillingKey.from(response);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new BusinessException(ErrorCode.INVALID_BILLING_KEY);
+        } catch (RestClientResponseException e) {
+            log.error("포트원 빌링키 조회 실패 status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        } catch (ResourceAccessException e) {
+            log.warn("포트원 빌링키 조회 응답 없음", e);
+            if (e.contains(SocketTimeoutException.class)) {
+                throw new BusinessException(ErrorCode.PG_TIMEOUT);
+            }
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        }
+    }
+
     @Override
     public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
                                         Long currentCancellableAmount, String reason) {
@@ -76,6 +104,7 @@ public class HttpPortOneClient implements PortOneClient {
                         amount,
                         currentCancellableAmount),
                 false);
+
     }
 
     // 전액 취소는 이미 취소된 결제면 목표를 이룬 것이지만, 금액 지정 취소는 이번 금액이 취소된 게 아니므로 실패로 본다

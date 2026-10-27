@@ -31,11 +31,17 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private String phoneNumber;
 
+    // 회원가입 시 기본 역할인 Basic이고 Admin은 sql을 통해 삽입한다.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false,length = 20)
+    private UserRole role;
+
     private User(String email, String password, String name, String phoneNumber) {
         this.email = normalizeEmail(email);
         this.password = password;
         this.name = name;
         this.phoneNumber = phoneNumber;
+        role = UserRole.BASIC;
     }
 
     public static User of(String email, String password, String name, String phoneNumber) {

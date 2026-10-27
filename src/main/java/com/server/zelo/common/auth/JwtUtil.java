@@ -2,6 +2,7 @@ package com.server.zelo.common.auth;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.entity.UserRole;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -30,6 +31,7 @@ public class JwtUtil {
     @Value("${jwt.refresh-expiration}")
     private long refreshTokenTime;
 
+    private static final String ROLE_CLAIM = "role";
     private static final String TOKEN_TYPE = "type";
     private static final String ACCESS_TYPE = "access";
     private static final String REFRESH_TYPE = "refresh";
@@ -41,22 +43,23 @@ public class JwtUtil {
         key = Keys.hmacShaKeyFor(bytes);
     }
 
-    public String createAccessToken(Long id) {
-        return createToken(id, accessTokenTime, ACCESS_TYPE);
+    public String createAccessToken(Long id, UserRole role) {
+        return createToken(id,role,accessTokenTime,ACCESS_TYPE);
     }
 
-    public String createRefreshToken(Long id) {
-        return createToken(id, refreshTokenTime, REFRESH_TYPE);
+    public String createRefreshToken(Long id, UserRole role) {
+        return createToken(id,role,refreshTokenTime,REFRESH_TYPE);
     }
 
     // Bearer 접두사는 안 붙이고 순수 토큰만 반환함 (헤더에 담을 때 붙임)
-    private String createToken(Long id, long tokenTime, String type) {
+    private String createToken(Long id, UserRole role , long tokenTime, String type) {
         Date date = new Date();
 
         return Jwts.builder()
                 .subject(String.valueOf(id))
                 // jti (jwt Id) 설정을 주어서 동시간대 로그인 요청이 들어와도 다른 값의 토큰이 나옴
                 .id(UUID.randomUUID().toString())
+                .claim(ROLE_CLAIM, role.name())
                 // 서명키가 같아서 type이 없으면 리프레시 토큰으로 API를 호출할 수 있음
                 .claim(TOKEN_TYPE, type)
                 .expiration(new Date(date.getTime() + tokenTime))
@@ -100,6 +103,10 @@ public class JwtUtil {
 
     public Long getUserId(String token) {
         return Long.parseLong(extractClaims(token).getSubject());
+    }
+
+    public UserRole getUserRole(String token) {
+        return UserRole.valueOf(extractClaims(token).get(ROLE_CLAIM, String.class));
     }
 
     // 액세스 토큰인지 확인 (리프레시 토큰은 재발급 용도로만 써야 함)

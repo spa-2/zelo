@@ -5,8 +5,8 @@ const CONFIG = {
   apiHost: "",
 
   // 포트원 콘솔(테스트 모드) > 상점 ID
-  storeId: "store-cde4a037-0f30-4bb9-8fc3-8181c2d143b2",
+  storeId: "",
 
   // 포트원 콘솔 > 결제 연동 > 채널 관리 > KG이니시스 테스트 채널(INIpayTest)의 채널 키
-  channelKey: "channel-key-f153b6d2-b942-43d7-95de-3f4b68dd7030",
+  channelKey: "",
 };

@@ -12,6 +12,6 @@ import java.util.Optional;
 public interface SocialAccountRepository extends JpaRepository<SocialAccount, Long> {
 
     // role을 get해야 되서 N+1 방지를 위해 추가
-    @EntityGraph(attributePaths = "users")
+    @EntityGraph(attributePaths = "user")
     Optional<SocialAccount> findByProviderAndProviderId(SocialProvider socialProvider, String providerId);
 }

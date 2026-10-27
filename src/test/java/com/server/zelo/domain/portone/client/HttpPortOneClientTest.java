@@ -1,13 +1,18 @@
 package com.server.zelo.domain.portone.client;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.payment.entity.PaymentMethodType;
+import com.server.zelo.domain.portone.dto.response.PortOneBillingKey;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -26,6 +31,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+@ExtendWith(OutputCaptureExtension.class)
 class HttpPortOneClientTest {
 
     private static final String BASE_URL = "https://api.portone.io";
@@ -33,6 +39,8 @@ class HttpPortOneClientTest {
     private static final String PAYMENT_URL = BASE_URL + "/payments/" + PORTONE_ID + "?storeId=store-1";
     private static final String CANCEL_URL = BASE_URL + "/payments/" + PORTONE_ID + "/cancel";
     private static final String CANCEL_REASON = "결제 금액 불일치";
+    private static final String BILLING_KEY = "billing-key-1";
+    private static final String BILLING_KEY_URL = BASE_URL + "/billing-keys/" + BILLING_KEY + "?storeId=store-1";
     private MockRestServiceServer server;
     private HttpPortOneClient portOneClient;
 
@@ -292,5 +300,95 @@ class HttpPortOneClientTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         server.verify();
+    }
+
+    @Test
+    void 발급된_카드_빌링키를_조회하면_종류_표시_이름_발급_고객을_반환한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"status":"ISSUED","billingKey":"billing-key-1",
+                         "methods":[{"type":"BillingKeyPaymentMethodCard","card":{"name":"신한카드","number":"53275000****1234"}}],
+                         "customer":{"id":"1"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        // when
+        PortOneBillingKey billingKey = portOneClient.getBillingKey(BILLING_KEY);
+
+        // then
+        assertThat(billingKey.type()).isEqualTo(PaymentMethodType.CARD);
+        assertThat(billingKey.displayName()).isEqualTo("신한카드 1234");
+        assertThat(billingKey.isOwnedBy(1L)).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void 포트원에_빌링키가_없으면_INVALID_BILLING_KEY_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키_조회_응답이_비어_있으면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withSuccess());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_조회_중_포트원_서버_오류면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_조회_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).contains("포트원 빌링키 조회 응답 없음");
+        assertThat(output).doesNotContain(BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키_조회_중_연결에_실패하면_PG_REQUEST_FAILED_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new ConnectException("Connection refused");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+        assertThat(output).doesNotContain(BILLING_KEY);
     }
 }

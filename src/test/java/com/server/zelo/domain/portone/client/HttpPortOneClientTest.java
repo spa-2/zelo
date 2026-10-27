@@ -8,8 +8,11 @@ import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,6 +31,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+@ExtendWith(OutputCaptureExtension.class)
 class HttpPortOneClientTest {
 
     private static final String BASE_URL = "https://api.portone.io";
@@ -356,7 +360,7 @@ class HttpPortOneClientTest {
     }
 
     @Test
-    void 빌링키_조회_응답이_없으면_PG_TIMEOUT_예외가_발생한다() {
+    void 빌링키_조회_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
         // given
         server.expect(requestTo(BILLING_KEY_URL))
                 .andRespond(request -> {
@@ -368,10 +372,12 @@ class HttpPortOneClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).contains("포트원 빌링키 조회 응답 없음");
+        assertThat(output).doesNotContain(BILLING_KEY);
     }
 
     @Test
-    void 빌링키_조회_중_연결에_실패하면_PG_REQUEST_FAILED_예외가_발생한다() {
+    void 빌링키_조회_중_연결에_실패하면_PG_REQUEST_FAILED_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
         // given
         server.expect(requestTo(BILLING_KEY_URL))
                 .andRespond(request -> {
@@ -383,5 +389,6 @@ class HttpPortOneClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+        assertThat(output).doesNotContain(BILLING_KEY);
     }
 }

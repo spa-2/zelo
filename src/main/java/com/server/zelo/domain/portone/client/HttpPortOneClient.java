@@ -85,7 +85,7 @@ public class HttpPortOneClient implements PortOneClient {
             log.error("포트원 빌링키 조회 실패 status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
-            log.warn("포트원 빌링키 조회 응답 없음", e);
+            log.warn("포트원 빌링키 조회 응답 없음 cause={}", e.getMostSpecificCause().getClass().getSimpleName());
             if (e.contains(SocketTimeoutException.class)) {
                 throw new BusinessException(ErrorCode.PG_TIMEOUT);
             }

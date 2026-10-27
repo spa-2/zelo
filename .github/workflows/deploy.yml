@@ -23,7 +23,7 @@ jobs:
     # 저장소 변수 DEPLOY_ENABLED가 true일 때만 배포한다 (인프라를 내려 둔 동안 실패 알림이 쌓이지 않게)
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       AWS_REGION: ap-northeast-2
       ECR_REPOSITORY: zelo

@@ -263,7 +263,7 @@ Content-Type: application/json
 > {%
     const card = response.body.data.message.payload;
     client.test("견적 카드가 옴", () => client.assert(card && card.type === "QUOTE_CARD", response.body.data.message.content));
-    const blocked = card.excludedItems.find(i => i.reason === "CATEGORY_NOT_ALLOWED");
+    const blocked = card.excludedItems.find(i => i.name === "맥주" && i.reason === "CATEGORY_NOT_ALLOWED");
     client.test("주류가 빠짐", () => client.assert(blocked, JSON.stringify(card.excludedItems)));
 %}
 
@@ -335,5 +335,5 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("결제된 주문은 거부", () => client.assert(response.status >= 400, "status " + response.status));
+    client.test("결제된 주문은 거부", () => client.assert(response.status === 400 && response.body.code === "ORDER_002", JSON.stringify(response.body)));
 %}

@@ -36,6 +36,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @EntityGraph(attributePaths = {"category"})
     Optional<Product> findByProductCode(String productCode);
+    boolean existsByProductCode(String productCode);
 
     // 주문이 동시에 와도 안 꼬이게 읽고 더하지 않고 UPDATE 한 번으로 처리
     // clearAutomatically는 안 씀. 주문 트랜잭션 안에서 불려서 비우면 주문 쪽 엔티티 변경이 날아감

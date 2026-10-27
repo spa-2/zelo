@@ -21,7 +21,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
-
+import com.server.zelo.domain.product.model.ProductDetail;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -143,6 +143,22 @@ class ProductServiceTest {
         assertThatThrownBy(() -> productService.getProduct("P-99"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    @Test
+    void 상품_상세는_키워드를_정렬해서_재고_없이_만든다() {
+        // given
+        given(productRepository.findByProductCode("P-1")).willReturn(Optional.of(product(1L)));
+        given(productKeywordRepository.findAllByProduct_IdIn(List.of(1L))).willReturn(List.of(
+                ProductKeyword.of(product(1L), Keyword.NOT_SPICY), ProductKeyword.of(product(1L), Keyword.DOMESTIC)));
+
+        // when
+        ProductDetail detail = productService.getProductDetail("P-1");
+
+        // then
+        assertThat(detail.productId()).isEqualTo(1L);
+        assertThat(detail.categoryName()).isEqualTo("김치·젓갈");
+        assertThat(detail.keywords()).containsExactly(Keyword.NOT_SPICY, Keyword.DOMESTIC);
     }
 
     @Test

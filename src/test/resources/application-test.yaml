@@ -27,6 +27,9 @@ zelo:
       client-id: test-client-id
       client-secret: test-client-secret
 
+  # 테스트끼리 Redis 캐시가 남아서 앞 테스트 데이터가 보이지 않게 끈다
+  cache:
+    enabled: false
 
   delivery:
     scheduler:

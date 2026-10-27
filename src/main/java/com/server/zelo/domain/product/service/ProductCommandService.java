@@ -5,11 +5,10 @@ import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
-import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.model.ProductDetail;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -34,9 +33,8 @@ public class ProductCommandService {
 
     @Transactional(readOnly = true)
     public GetProductResponse getProduct(String productCode) {
-        Product product = productService.getProduct(productCode);
-        Set<Keyword> keywords = productService.findKeywords(List.of(product.getId())).getOrDefault(product.getId(), Set.of());
-        Integer stock = inventoryService.findAvailableQuantities(List.of(product.getId())).getOrDefault(product.getId(), 0);
-        return GetProductResponse.of(product, keywords, stock);
+        ProductDetail detail = productService.getProductDetail(productCode);
+        Integer stock = inventoryService.findAvailableQuantities(List.of(detail.productId())).getOrDefault(detail.productId(), 0);
+        return GetProductResponse.of(detail, stock);
     }
 }

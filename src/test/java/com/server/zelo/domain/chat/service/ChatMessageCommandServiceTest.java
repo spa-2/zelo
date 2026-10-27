@@ -79,7 +79,7 @@ class ChatMessageCommandServiceTest {
     private static final String NOT_IN_QUOTE = "견적 카드에 없는 상품이라 고치지 못했어요. 카드에 있는 상품 이름으로 다시 말씀해 주세요.";
     private static final String NOT_ENOUGH_STOCK = "재고가 부족해서 그 수량으로 바꿀 수 없어요. 수량을 줄여서 다시 말씀해 주세요.";
     private static final String QUOTE_CHANGED = "견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요.";
-    private static final String EDIT_IN_PROGRESS = "이 견적의 다른 수정을 처리하고 있어요. 잠시 후 다시 말씀해 주세요.";
+    private static final String QUOTE_IN_PROGRESS = "이 채팅방의 견적을 처리하고 있는 다른 요청이 있어요. 잠시 후 다시 말씀해 주세요.";
 
     @Mock
     private LlmGateway llmGateway;
@@ -364,6 +364,46 @@ class ChatMessageCommandServiceTest {
     }
 
     @Test
+    void 견적_발급도_같은_방_락_안에서_하고_안내_문장은_락_밖에서_만든다() {
+        // given
+        MenuPlan menuPlan = plan(MenuPlanIntent.SHOPPING_REQUEST);
+        Quote quote = quote(List.of(KIMCHI_ITEM), List.of());
+        givenUserMessageAndPlan(menuPlan);
+        given(quoteCommandService.createQuote(1L, 10L, menuPlan)).willReturn(quote);
+        given(llmGateway.explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString()))
+                .willReturn(LlmReply.of("김치를 골랐어요.", "gpt-test", 1, 1));
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "김치를 골랐어요.", QuoteCardPayload.from(quote)))
+                .willReturn(cardMessage("김치를 골랐어요."));
+
+        // when
+        chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료 준비해 줘");
+
+        // then
+        InOrder order = inOrder(llmGateway, lockDistributeService, quoteCommandService);
+        order.verify(llmGateway).planMenu(anyString(), anyList(), anyString(), anyMap());
+        order.verify(lockDistributeService).execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any());
+        order.verify(quoteCommandService).createQuote(1L, 10L, menuPlan);
+        order.verify(llmGateway).explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString());
+    }
+
+    @Test
+    void 같은_방의_다른_요청이_락을_잡고_있으면_견적을_발급하지_않고_잠시_후_다시_말하라고_답한다() {
+        // given
+        givenUserMessageAndPlan(plan(MenuPlanIntent.SHOPPING_REQUEST));
+        given(lockDistributeService.execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        givenAssistantMessage(QUOTE_IN_PROGRESS);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료 준비해 줘");
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
+        then(quoteCommandService).should(never()).createQuote(any(), any(), any());
+        then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
     void 견적_안내_문장을_받지_못해도_카드는_정해진_문장으로_저장하고_성공으로_응답한다() {
         // given
         MenuPlan menuPlan = plan(MenuPlanIntent.SHOPPING_REQUEST);
@@ -620,7 +660,7 @@ class ChatMessageCommandServiceTest {
         // then
         InOrder order = inOrder(llmGateway, lockDistributeService, quoteCommandService);
         order.verify(llmGateway).planQuoteEdit(anyString(), anyList(), anyString(), anyMap());
-        order.verify(lockDistributeService).execute(eq(LockKey.editQuote(10L)), ArgumentMatchers.<Supplier<Object>>any());
+        order.verify(lockDistributeService).execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any());
         order.verify(quoteCommandService).removeItem(1L, 10L, 1L);
         order.verify(llmGateway).explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString());
     }
@@ -662,15 +702,15 @@ class ChatMessageCommandServiceTest {
     void 같은_방의_다른_수정이_락을_잡고_있으면_고치지_않고_잠시_후_다시_말하라고_답한다() {
         // given
         givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
-        given(lockDistributeService.execute(eq(LockKey.editQuote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
+        given(lockDistributeService.execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
                 .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
-        givenAssistantMessage(EDIT_IN_PROGRESS);
+        givenAssistantMessage(QUOTE_IN_PROGRESS);
 
         // when
         ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
 
         // then
-        assertThat(response.content()).isEqualTo(EDIT_IN_PROGRESS);
+        assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
         then(quoteCommandService).should(never()).removeItem(any(), any(), any());
     }
 

@@ -369,11 +369,31 @@ public class OrderCommandService {
         return GetOrderDetailResponse.from(order, payment, delivery, refund);
     }
 
+    // Facade의 공통 결제 락 안에서 호출하여 취소 트랜잭션이 끝날 때까지 보호
+    public boolean cancelExpiredOrder(Long orderId, LocalDateTime cutoff) {
+        orderService.getOrderWithItemsForUpdate(orderId);
+
+        // 이미 처리됐거나 결제 확인 중이면 재고를 변경하지 않음
+        if (!orderService.isExpiredOrder(orderId, cutoff)) {
+            return false;
+        }
+
+        cancelIfPossible(orderId);
+
+        log.info("결제 대기 만료 주문 자동 취소 orderId={}", orderId);
+        return true;
+    }
+
+    // Redis 락을 기다리기 전에 조회를 끝내 DB 트랜잭션이 길어지지 않도록 함
+    @Transactional(readOnly = true)
+    public Optional<String> findPortOneIdForExpiration(Long orderId) {
+        return paymentService.findLatestPayment(orderId).map(Payment::getPortoneId);
+    }
+
     private List<OrderItem> getItemsInProductOrder(Order order) {
         // 여러 상품을 처리하는 모든 요청의 잠금 순서를 맞춰 교착 가능성을 줄임
         return order.getOrderItems().stream()
-                .sorted(Comparator.comparing(item ->
-                        item.getProduct().getId()))
+                .sorted(Comparator.comparing(item -> item.getProduct().getId()))
                 .toList();
     }
 

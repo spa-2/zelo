@@ -2,14 +2,19 @@ package com.server.zelo.domain.order.repository;
 
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderStatus;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -37,4 +42,46 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByQuoteId(String quoteId);
 
     boolean existsByUser_IdAndStatus(Long userId, OrderStatus status);
+
+    // 확인 중이거나 결제 완료된 결제가 있는 주문은 만료 후보에서 제외
+    @Query("""
+        select o.id
+        from Order o
+        where o.status = :status
+          and o.createdAt <= :cutoff
+          and not exists (
+              select p.id
+              from Payment p
+              where p.orderId = o.id
+                and p.status in :excludedPaymentStatuses
+          )
+        order by o.createdAt asc, o.id asc
+        """)
+    List<Long> findExpiredOrderIds(
+            @Param("status") OrderStatus status,
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("excludedPaymentStatuses") List<PaymentStatus> excludedPaymentStatuses,
+            Pageable pageable
+    );
+
+    // 후보 조회 이후 상태가 달라졌을 수 있으므로 취소 직전에 다시 확인
+    @Query("""
+        select case when count(o) > 0 then true else false end
+        from Order o
+        where o.id = :orderId
+          and o.status = :status
+          and o.createdAt <= :cutoff
+          and not exists (
+              select p.id
+              from Payment p
+              where p.orderId = o.id
+                and p.status in :excludedPaymentStatuses
+          )
+        """)
+    boolean existsExpiredOrder(
+            @Param("orderId") Long orderId,
+            @Param("status") OrderStatus status,
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("excludedPaymentStatuses") List<PaymentStatus> excludedPaymentStatuses
+    );
 }

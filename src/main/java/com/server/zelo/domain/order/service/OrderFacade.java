@@ -8,6 +8,7 @@ import com.server.zelo.domain.order.model.CreateOrderResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Component
@@ -36,6 +37,21 @@ public class OrderFacade {
         return lockDistributeService.execute(
                 LockKey.confirmPayment(portoneId.get()),
                 () -> orderCommandService.cancelBeforePayment(userId, orderId)
+        );
+    }
+
+    public boolean cancelExpiredOrder(Long orderId, LocalDateTime cutoff) {
+        Optional<String> portoneId = orderCommandService.findPortOneIdForExpiration(orderId);
+
+        // 결제 기록이 없는 주문은 Command의 주문 행 잠금으로 보호
+        if (portoneId.isEmpty()) {
+            return orderCommandService.cancelExpiredOrder(orderId, cutoff);
+        }
+
+        // 결제 확인과 같은 락을 사용하고, 취소 트랜잭션 커밋까지 유지
+        return lockDistributeService.execute(
+                LockKey.confirmPayment(portoneId.get()),
+                () -> orderCommandService.cancelExpiredOrder(orderId, cutoff)
         );
     }
 }

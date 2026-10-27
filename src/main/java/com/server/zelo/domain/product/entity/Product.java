@@ -129,4 +129,26 @@ public class Product extends BaseTimeEntity {
         return new Product(productCode, ingredient, brand, name, description, price, contentAmount, unitLabel);
     }
 
+    // 이미 발급된 견적은 주문할 때 가격 비교에서 PRICE_CHANGED로 걸림
+    public void update(Long price, String description) {
+        if (price == null || price < 0) {
+            throw new BusinessException(ErrorCode.INVALID_PRICE);
+        }
+        this.price = price;
+        this.description = description;
+    }
+
+    public void stopSale() {
+        if (status == ProductStatus.STOP_SALE) {
+            throw new BusinessException(ErrorCode.INVALID_PRODUCT_STATUS);
+        }
+        this.status = ProductStatus.STOP_SALE;
+    }
+
+    public void resumeSale() {
+        if (status == ProductStatus.ON_SALE) {
+            throw new BusinessException(ErrorCode.INVALID_PRODUCT_STATUS);
+        }
+        this.status = ProductStatus.ON_SALE;
+    }
 }

@@ -1,39 +1,37 @@
 package com.server.zelo.domain.product.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.ProductSort;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Category;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Keyword;
-import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.product.entity.ProductKeyword;
-import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.dto.request.UpdateProductRequest;
+import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.repository.IngredientRepository;
 import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -161,6 +159,100 @@ class ProductServiceTest {
 
         // then
         then(productRepository).should().decreaseSalesCount(1L, 3);
+    }
+
+    @Test
+    void 상품을_등록하면_재료의_카테고리로_판매중_상품을_만든다() {
+        // given
+        given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
+        given(ingredientRepository.findById(3L)).willReturn(Optional.of(kimchi));
+        given(productRepository.saveAndFlush(any(Product.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        Product product = productService.createProduct(createRequest());
+
+        // then
+        assertThat(product.getProductCode()).isEqualTo("P-NEW");
+        assertThat(product.getCategory().getName()).isEqualTo("김치·젓갈");
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.ON_SALE);
+    }
+
+    @Test
+    void 이미_있는_상품_코드면_예외가_발생한다() {
+        // given
+        given(productRepository.existsByProductCode("P-NEW")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> productService.createProduct(createRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.DUPLICATE_PRODUCT_CODE);
+    }
+
+    @Test
+    void 확인한_사이에_같은_코드가_먼저_저장되면_중복_예외로_바꾼다() {
+        // given
+        given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
+        given(ingredientRepository.findById(3L)).willReturn(Optional.of(kimchi));
+        given(productRepository.saveAndFlush(any(Product.class))).willThrow(new DataIntegrityViolationException("duplicate"));
+
+        // when & then
+        assertThatThrownBy(() -> productService.createProduct(createRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.DUPLICATE_PRODUCT_CODE);
+    }
+
+    @Test
+    void 없는_재료로_등록하면_예외가_발생한다() {
+        // given
+        given(productRepository.existsByProductCode("P-NEW")).willReturn(false);
+        given(ingredientRepository.findById(3L)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> productService.createProduct(createRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INGREDIENT_NOT_FOUND);
+    }
+
+    @Test
+    void 상품_가격과_설명을_바꾼다() {
+        // given
+        given(productRepository.findByProductCode("P-1")).willReturn(Optional.of(product(1L)));
+
+        // when
+        Product product = productService.updateProduct("P-1", new UpdateProductRequest(9900L, "새 설명"));
+
+        // then
+        assertThat(product.getPrice()).isEqualTo(9900L);
+        assertThat(product.getDescription()).isEqualTo("새 설명");
+    }
+
+    @Test
+    void 상품을_판매중지하고_다시_판매한다() {
+        // given
+        given(productRepository.findByProductCode("P-1")).willReturn(Optional.of(product(1L)));
+
+        // when
+        ProductStatus stopped = productService.stopSale("P-1").getStatus();
+        ProductStatus resumed = productService.resumeSale("P-1").getStatus();
+
+        // then
+        assertThat(stopped).isEqualTo(ProductStatus.STOP_SALE);
+        assertThat(resumed).isEqualTo(ProductStatus.ON_SALE);
+    }
+
+    @Test
+    void 없는_상품을_바꾸면_예외가_발생한다() {
+        // given
+        given(productRepository.findByProductCode("P-404")).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> productService.stopSale("P-404"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    private CreateProductRequest createRequest() {
+        return new CreateProductRequest("P-NEW", 3L, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg");
     }
 
     private Product product(Long id) {

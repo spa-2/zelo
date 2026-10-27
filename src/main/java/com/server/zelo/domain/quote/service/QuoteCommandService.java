@@ -11,6 +11,7 @@ import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.quote.model.BudgetOption;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -23,9 +24,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -52,8 +55,12 @@ public class QuoteCommandService {
         Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
         Quote quote = businessMetrics.time(BusinessMetric.QUOTE_CREATE_TIME, () -> {
             Selection selection = select(menuPlan.ingredients(), conditions);
+            List<BudgetOption> budgetOptions = selection.items().stream()
+                    .filter(item -> selection.cheaperItems().containsKey(item.productId()))
+                    .map(item -> new BudgetOption(item.productId(), selection.cheaperItems().get(item.productId())))
+                    .toList();
             return save(userId, roomId, menuPlan.menuName(), selection.items(), selection.excludedItems(), conditions,
-                    selection.substitutes());
+                    selection.substitutes(), menuPlan.budget(), budgetOptions);
         });
         businessMetrics.count(BusinessMetric.QUOTE_CREATED);
         quote.excludedItems().forEach(item -> businessMetrics.count(BusinessMetric.QUOTE_EXCLUDED, "reason", item.reason()));
@@ -64,7 +71,8 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         QuoteItem target = getItem(quote, productId);
         List<QuoteItem> items = quote.items().stream().filter(item -> item != target).toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
+                quote.budget(), keepOptions(quote, items));
     }
 
     @Transactional(readOnly = true)
@@ -80,7 +88,8 @@ public class QuoteCommandService {
         List<QuoteItem> items = quote.items().stream()
                 .map(item -> item == target ? withQuantity(item, quantity) : item)
                 .toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes());
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
+                quote.budget(), keepOptions(quote, items));
     }
 
     // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
@@ -116,7 +125,8 @@ public class QuoteCommandService {
                 .filter(substitute -> !substitute.name().equals(ingredientName))
                 .toList());
         substitutes.addAll(selection.substitutes());
-        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes);
+        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes,
+                quote.budget(), keepOptions(quote, items));
     }
 
     // 후보를 보여준 사이에 팔렸을 수 있어서 재고를 다시 봄. 모자라면 addItem처럼 품절로 돌려줌
@@ -137,7 +147,8 @@ public class QuoteCommandService {
         } else {
             items.set(items.indexOf(same), withQuantity(same, quantity));
         }
-        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), without(quote, target));
+        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), without(quote, target),
+                quote.budget(), keepOptions(quote, items));
     }
 
     public Quote rejectSubstitute(Long userId, Long roomId, String name) {
@@ -146,7 +157,26 @@ public class QuoteCommandService {
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
         excludedItems.add(new ExcludedItem(name, "OUT_OF_STOCK"));
         return save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
-                without(quote, target));
+                without(quote, target), quote.budget(), quote.budgetOptions());
+    }
+
+    // 고른 상품 하나만 더 싼 걸로 바꿈. 바꿔도 예산을 넘으면 나머지 후보는 남음
+    @Transactional(readOnly = true)
+    public Quote applyBudgetOption(Long userId, Long roomId, Long productId) {
+        Quote quote = getQuote(userId, roomId);
+        BudgetOption target = quote.budgetOptions().stream()
+                .filter(option -> option.productId().equals(productId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+        QuoteItem cheaper = target.item();
+        if (inventoryService.findAvailableQuantities(List.of(cheaper.productId())).getOrDefault(cheaper.productId(), 0) < cheaper.quantity()) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+        }
+        List<QuoteItem> items = quote.items().stream()
+                .map(item -> item.productId().equals(productId) ? cheaper : item)
+                .toList();
+        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
+                quote.budget(), keepOptions(quote, items));
     }
 
     private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions) {
@@ -161,6 +191,7 @@ public class QuoteCommandService {
         List<QuoteItem> items = new ArrayList<>();
         List<ExcludedItem> excludedItems = new ArrayList<>();
         List<SubstituteItem> substitutes = new ArrayList<>();
+        Map<Long, QuoteItem> cheaperItems = new HashMap<>();
         for (MenuPlanIngredient ingredient : ingredients) {
             List<Product> candidates = products.stream()
                     .filter(product -> product.getIngredient().getName().equals(ingredient.name()))
@@ -185,32 +216,54 @@ public class QuoteCommandService {
             Product first = pick(ingredient, candidates, conditions, keywords, reviews);
             boolean firstInStock = stocks.getOrDefault(first.getId(), 0) >= quantity(ingredient, first);
             Product product = firstInStock ? first : pick(ingredient, inStock, conditions, keywords, reviews);
-            int quantity = quantity(ingredient, product);
-            Set<Keyword> matched = new HashSet<>(keywords.getOrDefault(product.getId(), Set.of()));
-            matched.retainAll(conditions);
-            // 품절 상품까지 포함해서 봐야 "조건 상품이 품절이라 다른 걸 골랐다"를 알 수 있음
-            boolean conditionProductExists = candidates.stream()
-                    .anyMatch(candidate -> !Collections.disjoint(keywords.getOrDefault(candidate.getId(), Set.of()), conditions));
-            QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()),
-                    matched, conditionProductExists);
-            QuoteItem item = new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
-                    product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason);
-            if (firstInStock) {
-                items.add(item);
-            } else {
+            QuoteItem item = toItem(ingredient, product, candidates, conditions, keywords, reviews);
+            if (!firstInStock) {
                 substitutes.add(new SubstituteItem(ingredient.name(), first.getName(), item));
+                continue;
             }
+            items.add(item);
+            findCheaper(ingredient, product, inStock, conditions, keywords).ifPresent(cheaper -> cheaperItems.put(
+                    product.getId(), toItem(ingredient, cheaper, candidates, conditions, keywords, reviews)));
         }
-        return new Selection(items, excludedItems, substitutes);
+        return new Selection(items, excludedItems, substitutes, cheaperItems);
+    }
+
+    private QuoteItem toItem(MenuPlanIngredient ingredient, Product product, List<Product> candidates, Set<Keyword> conditions,
+                             Map<Long, Set<Keyword>> keywords, Map<Long, ProductReviewEvidence> reviews) {
+        int quantity = quantity(ingredient, product);
+        Set<Keyword> matched = new HashSet<>(keywords.getOrDefault(product.getId(), Set.of()));
+        matched.retainAll(conditions);
+        // 품절 상품까지 포함해서 봐야 "조건 상품이 품절이라 다른 걸 골랐다"를 알 수 있음
+        boolean conditionProductExists = candidates.stream()
+                .anyMatch(candidate -> !Collections.disjoint(keywords.getOrDefault(candidate.getId(), Set.of()), conditions));
+        QuoteItemReason reason = QuoteItemReason.of(product.getSalesCount(), reviews.get(product.getId()),
+                matched, conditionProductExists);
+        return new QuoteItem(product.getId(), product.getProductCode(), product.getName(),
+                product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason);
+    }
+
+    // 조건 맞는 상품을 골랐으면 더 싼 것도 조건 맞는 것 중에서만 (예산 때문에 매운 김치로 바뀌면 안 돼서)
+    private Optional<Product> findCheaper(MenuPlanIngredient ingredient, Product picked, List<Product> inStock,
+                                          Set<Keyword> conditions, Map<Long, Set<Keyword>> keywords) {
+        boolean pickedMatched = !Collections.disjoint(keywords.getOrDefault(picked.getId(), Set.of()), conditions);
+        return inStock.stream()
+                .filter(product -> !pickedMatched
+                        || !Collections.disjoint(keywords.getOrDefault(product.getId(), Set.of()), conditions))
+                .filter(product -> totalPrice(ingredient, product) < totalPrice(ingredient, picked))
+                .min(Comparator.comparingLong((Product product) -> totalPrice(ingredient, product))
+                        .thenComparing(Product::getId));
     }
 
     // 수정할 때마다 quoteId를 새로 발급해서 수정 전 카드로는 주문 못 하게 함
     private Quote save(Long userId, Long roomId, String menuName, List<QuoteItem> items, List<ExcludedItem> excludedItems,
-                       Set<Keyword> conditions, List<SubstituteItem> substitutes) {
+                       Set<Keyword> conditions, List<SubstituteItem> substitutes, Long budget,
+                       List<BudgetOption> budgetOptions) {
         long totalAmount = items.stream().mapToLong(QuoteItem::lineAmount).sum();
+        // 예산 안이면 바꿀 이유가 없어서 후보를 안 줌
+        List<BudgetOption> options = budget != null && totalAmount > budget ? budgetOptions : List.of();
         LocalDateTime now = LocalDateTime.now();
-        Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName,
-                items, excludedItems, totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions, substitutes);
+        Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName, items, excludedItems,
+                totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions, substitutes, budget, options);
         quoteRepository.save(quote);
         return quote;
     }
@@ -240,6 +293,14 @@ public class QuoteCommandService {
 
     private List<SubstituteItem> without(Quote quote, SubstituteItem target) {
         return quote.substitutes().stream().filter(substitute -> substitute != target).toList();
+    }
+
+    // 바뀐 상품의 후보는 수량이 안 맞아서 버림 (안 바뀐 상품은 같은 QuoteItem이라 contains로 확인)
+    private List<BudgetOption> keepOptions(Quote quote, List<QuoteItem> items) {
+        return quote.budgetOptions().stream()
+                .filter(option -> quote.items().stream()
+                        .anyMatch(item -> item.productId().equals(option.productId()) && items.contains(item)))
+                .toList();
     }
 
     private QuoteItem withQuantity(QuoteItem item, int quantity) {
@@ -291,6 +352,7 @@ public class QuoteCommandService {
         return product.getPrice() * quantity(ingredient, product);
     }
 
-    private record Selection(List<QuoteItem> items, List<ExcludedItem> excludedItems, List<SubstituteItem> substitutes) {
+    private record Selection(List<QuoteItem> items, List<ExcludedItem> excludedItems, List<SubstituteItem> substitutes,
+                             Map<Long, QuoteItem> cheaperItems) {
     }
 }

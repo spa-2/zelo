@@ -28,7 +28,7 @@ public class MockPortOneClient implements PortOneClient {
     public PortOnePayment getPayment(String portoneId) {
         Payment payment = paymentRepository.findByPortoneId(portoneId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
-        return PortOnePayment.of(portoneId, PortOnePaymentStatus.PAID, payment.getAmount(), LocalDateTime.now());
+        return PortOnePayment.of(portoneId, PortOnePaymentStatus.PAID, payment.getAmount(), LocalDateTime.now(), "TEST_CARD");
     }
 
     @Override
@@ -54,7 +54,7 @@ public class MockPortOneClient implements PortOneClient {
     public void deleteBillingKey(String billingKey) {
         log.info("[FAKE] 포트원 빌링키 삭제");
     }
-    
+
     @Override
     public void payWithBillingKey(String portoneId, String billingKey, String orderName, Long amount) {
         log.info("[FAKE] 포트원 빌링키 결제 portoneId={}, amount={}", portoneId, amount);

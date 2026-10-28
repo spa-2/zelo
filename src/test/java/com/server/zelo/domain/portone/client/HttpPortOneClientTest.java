@@ -61,7 +61,8 @@ class HttpPortOneClientTest {
         server.expect(requestTo(PAYMENT_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("""
-                        {"id":"payment-1","status":"PAID","amount":{"total":15000},"paidAt":"2026-10-20T01:00:00Z"}
+                        {"id":"payment-1","status":"PAID","amount":{"total":15000},"paidAt":"2026-10-20T01:00:00Z",
+                         "method":{"type":"PaymentMethodCard","card":{"name":"신한카드"}}}
                         """, MediaType.APPLICATION_JSON));
 
         // when
@@ -71,6 +72,7 @@ class HttpPortOneClientTest {
         assertThat(payment.status()).isEqualTo(PortOnePaymentStatus.PAID);
         assertThat(payment.amount()).isEqualTo(15000L);
         assertThat(payment.paidAt()).isEqualTo(LocalDateTime.of(2026, 10, 20, 10, 0));
+        assertThat(payment.methodName()).isEqualTo("신한카드");
         server.verify();
     }
 

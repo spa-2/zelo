@@ -17,6 +17,7 @@ import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.dto.response.PortOnePaymentResponse;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.user.entity.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,15 +90,14 @@ class PaymentCommandServiceTest {
         // given
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
-        givenOrderedBy();
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT, "신한카드"));
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
 
         // then
         assertThat(status).isEqualTo(PaymentStatus.PAID);
-        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
+        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT, "신한카드");
         then(orderCommandService).should().completePayment(ORDER_ID);
         then(deliveryService).should().createDelivery(ORDER_ID, SHIPPING_ADDRESS);
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
@@ -119,7 +119,7 @@ class PaymentCommandServiceTest {
         then(portOneClient).should().cancelPayment(anyString(), anyString());
         then(paymentService).should().cancel(PORTONE_ID, 1_000L);
         then(orderCommandService).should().cancel(ORDER_ID);
-        then(paymentService).should(never()).complete(any(), any(), any());
+        then(paymentService).should(never()).complete(any(), any(), any(), any());
         then(deliveryService).shouldHaveNoInteractions();
     }
 
@@ -138,7 +138,7 @@ class PaymentCommandServiceTest {
         assertThat(status).isEqualTo(PaymentStatus.CANCELED);
         then(portOneClient).should().cancelPayment(anyString(), anyString());
         then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
-        then(paymentService).should(never()).complete(any(), any(), any());
+        then(paymentService).should(never()).complete(any(), any(), any(), any());
         then(orderCommandService).shouldHaveNoInteractions();
         then(deliveryService).shouldHaveNoInteractions();
     }
@@ -174,7 +174,7 @@ class PaymentCommandServiceTest {
 
         // then
         assertThat(status).isEqualTo(PaymentStatus.CONFIRM_PENDING);
-        then(paymentService).should(never()).complete(any(), any(), any());
+        then(paymentService).should(never()).complete(any(), any(), any(), any());
         then(paymentService).should(never()).fail(any());
         then(paymentService).should(never()).cancel(any(), any());
         then(orderCommandService).shouldHaveNoInteractions();
@@ -186,7 +186,7 @@ class PaymentCommandServiceTest {
         // given
         Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
         payment.startConfirm();
-        payment.complete(AMOUNT, PAID_AT);
+        payment.complete(AMOUNT, PAID_AT, "TEST_CARD");
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
 
         // when
@@ -294,7 +294,7 @@ class PaymentCommandServiceTest {
 
         // then
         assertThat(status).isEqualTo(PaymentStatus.PAID);
-        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
+        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT, PortOnePaymentResponse.ETC);
     }
 
     @Test
@@ -390,7 +390,7 @@ class PaymentCommandServiceTest {
         assertThat(status).isEqualTo(PaymentStatus.PAID);
         then(paymentService).should().startBillingPayment(PORTONE_ID);
         then(portOneClient).should().payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
-        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
+        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT, PortOnePaymentResponse.ETC);
     }
 
     @Test

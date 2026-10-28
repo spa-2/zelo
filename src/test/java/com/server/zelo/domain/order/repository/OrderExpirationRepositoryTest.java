@@ -353,7 +353,7 @@ class OrderExpirationRepositoryTest {
             case CONFIRM_PENDING -> payment.startConfirm();
             case PAID -> {
                 payment.startConfirm();
-                payment.complete(3_000L, CUTOFF);
+                payment.complete(3_000L, CUTOFF, "TEST_CARD");
             }
             case FAILED -> payment.fail();
             case CANCELED -> {

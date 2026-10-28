@@ -100,6 +100,7 @@ class QuoteExplainPromptTest {
                 new ExcludedItem("트러플", "PRODUCT_NOT_FOUND"),
                 new ExcludedItem("계란", "OUT_OF_STOCK"),
                 new ExcludedItem("대파", "REJECTED_BY_USER"),
+                new ExcludedItem("땅콩", "BLOCKED_BY_USER"),
                 new ExcludedItem("쌀", "NEW_REASON"))));
 
         // then
@@ -109,6 +110,7 @@ class QuoteExplainPromptTest {
                 .contains("- 트러플: 판매하는 상품이 없음")
                 .contains("- 계란: 재고 부족")
                 .contains("- 대파: 사용자가 대체 후보를 고르지 않고 뺌")
+                .contains("- 땅콩: 사용자 설정으로 제외한 카테고리")
                 .contains("- 쌀: NEW_REASON");
     }
 

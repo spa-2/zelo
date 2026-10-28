@@ -119,7 +119,8 @@ public record QuoteCardPayload(
     ) {
     }
 
-    // reason: CATEGORY_NOT_ALLOWED, PRODUCT_NOT_FOUND, OUT_OF_STOCK, REJECTED_BY_USER(대체 후보를 [빼기]로 거절) (견적 담당 코드 그대로)
+    // reason: CATEGORY_NOT_ALLOWED, PRODUCT_NOT_FOUND, OUT_OF_STOCK, REJECTED_BY_USER(대체 후보를 [빼기]로 거절),
+    // BLOCKED_BY_USER(사용자가 막은 카테고리) (견적 담당 코드 그대로)
     public record Excluded(
             String name,
             String reason

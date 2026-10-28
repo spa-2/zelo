@@ -91,6 +91,7 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT, "신한카드"));
+        givenOrderedBy();
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);

@@ -1,5 +1,7 @@
 package com.server.zelo.domain.product.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.dto.response.GetCategoryResponse;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.repository.CategoryRepository;
@@ -34,5 +36,11 @@ public class CategoryService {
                 .map(parent -> GetCategoryResponse.from(parent,
                         childrenByParentId.getOrDefault(parent.getId(), List.of())))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Category getCategory(Long categoryId) {
+        return categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
     }
 }

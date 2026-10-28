@@ -1,14 +1,5 @@
 package com.server.zelo.domain.quote.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
-import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anySet;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.ai.plan.MenuPlanIntent;
@@ -16,27 +7,14 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.inventory.service.InventoryService;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Category;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Keyword;
-import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.service.ProductService;
-import com.server.zelo.domain.quote.model.ExcludedItem;
-import com.server.zelo.domain.quote.model.Quote;
-import com.server.zelo.domain.quote.model.QuoteItem;
-import com.server.zelo.domain.quote.model.QuoteItemReason;
-import com.server.zelo.domain.quote.model.SubstituteItem;
+import com.server.zelo.domain.quote.model.*;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
+import com.server.zelo.domain.user.service.UserBlockedCategoryService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -44,6 +22,18 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class QuoteCommandServiceTest {
@@ -59,6 +49,9 @@ class QuoteCommandServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    @Mock
+    private UserBlockedCategoryService userBlockedCategoryService;
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
@@ -469,6 +462,66 @@ class QuoteCommandServiceTest {
         assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(1L);
         assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
                 .containsExactly(tuple("김가루", "PRODUCT_NOT_FOUND"));
+    }
+    @Test
+    void 막은_카테고리_상품은_고르지_않고_사용자_설정으로_제외한다() {
+        // given
+        Category side = category(1L, "국·반찬", null);
+        Product pogi = product(1L, Ingredient.of(category(2L, "김치·젓갈", side), "김치", BaseUnit.G), "포기김치 500g", 5900L, 500, 100);
+        givenProducts(List.of(pogi), Map.of(1L, 100), Map.of());
+        given(userBlockedCategoryService.findBlockedCategoryIds(1L)).willReturn(Set.of(2L));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L,
+                menuPlan(List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of()));
+
+        // then
+        assertThat(quote.items()).isEmpty();
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("김치", "BLOCKED_BY_USER"));
+    }
+
+    @Test
+    void 대분류를_막으면_그_아래_소분류_상품도_고르지_않는다() {
+        // given
+        Category side = category(1L, "국·반찬", null);
+        Product pogi = product(1L, Ingredient.of(category(2L, "김치·젓갈", side), "김치", BaseUnit.G), "포기김치 500g", 5900L, 500, 100);
+        Product tofu = product(2L, Ingredient.of(category(3L, "두부·콩", category(4L, "가공식품", null)), "두부", BaseUnit.G),
+                "두부 300g", 1500L, 300, 100);
+        givenProducts(List.of(pogi, tofu), Map.of(1L, 100, 2L, 100), Map.of());
+        given(userBlockedCategoryService.findBlockedCategoryIds(1L)).willReturn(Set.of(1L));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(
+                MenuPlanIngredient.of("김치", 400, BaseUnit.G), MenuPlanIngredient.of("두부", 300, BaseUnit.G)), List.of()));
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productName).containsExactly("두부 300g");
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("김치", "BLOCKED_BY_USER"));
+    }
+
+    @Test
+    void 재료를_추가할_때도_막은_카테고리는_고르지_않는다() {
+        // given
+        givenQuote(List.of(item(9L, 3000L, 1)), List.of());
+        Product pogi = product(1L, Ingredient.of(category(2L, "김치·젓갈", category(1L, "국·반찬", null)), "김치", BaseUnit.G),
+                "포기김치 500g", 5900L, 500, 100);
+        givenProducts(List.of(pogi), Map.of(1L, 100), Map.of());
+        given(userBlockedCategoryService.findBlockedCategoryIds(1L)).willReturn(Set.of(2L));
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "김치", 400, BaseUnit.G);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L);
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::reason).containsExactly("BLOCKED_BY_USER");
+    }
+
+    private Category category(Long id, String name, Category parent) {
+        Category category = parent == null ? Category.of(name, true) : Category.of(parent, name);
+        ReflectionTestUtils.setField(category, "id", id);
+        return category;
     }
 
     private void givenQuote(List<QuoteItem> items, List<ExcludedItem> excludedItems) {

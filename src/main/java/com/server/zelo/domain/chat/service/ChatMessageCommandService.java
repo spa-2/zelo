@@ -14,6 +14,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
@@ -26,6 +27,7 @@ import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
 import java.util.ArrayList;
@@ -58,6 +60,10 @@ public class ChatMessageCommandService {
     private static final String ITEM_REMOVED = "%s 상품을 뺐어요.";
     private static final String ITEM_QUANTITY_CHANGED = "%s 상품을 %d개로 바꿨어요.";
     private static final String NO_ITEM_LEFT = " 견적에 남은 상품이 없어요. 만들 메뉴를 다시 말씀해 주세요.";
+    private static final String SUBSTITUTE_ACCEPTED = "%s 상품을 담았어요.";
+    private static final String SUBSTITUTE_SOLD_OUT = "%s 상품도 방금 품절돼서 %s 재료는 뺐어요.";
+    private static final String SUBSTITUTE_REJECTED = "%s 재료는 뺐어요.";
+    private static final String SUBSTITUTE_NOT_FOUND = "이미 고른 후보예요. 최신 견적 카드를 확인해 주세요.";
     private static final String QUOTE_IN_PROGRESS = "이 채팅방의 견적을 처리하고 있는 다른 요청이 있어요. 잠시 후 다시 말씀해 주세요.";
     // 견적 수정 메서드의 오류 중 사용자가 다시 말하면 되는 것. 그 밖의 오류(Redis 장애 등)는 그대로 던진다.
     // QUOTE_NOT_CURRENT는 수정 메서드가 아니라 계획 뒤 견적이 바뀌었을 때 applyEdits가 쓴다
@@ -151,11 +157,51 @@ public class ChatMessageCommandService {
 
         String reply = buttonEditReply(quote, request);
         Quote edited = result.edited();
-        // 마지막 상품을 빼면 주문할 것이 없어 카드 없이 알린다([주문하기] 버튼이 뜨지 않게)
-        if (edited.items().isEmpty()) {
+        // 마지막 상품을 빼고 남은 후보도 없으면 고를 것도 주문할 것도 없어 카드 없이 알린다
+        if (isEmpty(edited)) {
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, reply + NO_ITEM_LEFT));
         }
         return assistantResponse(chatMessageService.createQuoteCardMessage(roomId, userId, reply, QuoteCardPayload.from(edited)));
+    }
+
+    // 견적 카드 대체 후보의 [좋아요]·[빼기]. 카드 버튼 수정(updateQuoteItem)처럼 LLM 없이,
+    // 화면이 보던 카드가 지금 견적일 때만 같은 방 락 안에서 고르고 새 카드와 정해진 문장을 돌려준다
+    public ChatMessageResponse chooseSubstitute(Long roomId, Long userId, ChooseSubstituteRequest request) {
+        chatRoomService.getOwnedChatRoom(roomId, userId);
+        Optional<Quote> current = quoteService.findQuote(roomId);
+        if (current.isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT));
+        }
+        Quote quote = current.get();
+        if (!quote.quoteId().equals(request.quoteId())) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_CHANGED));
+        }
+        Optional<SubstituteItem> substitute = quote.substitutes().stream()
+                .filter(candidate -> candidate.name().equals(request.ingredientName()))
+                .findFirst();
+        if (substitute.isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, SUBSTITUTE_NOT_FOUND));
+        }
+
+        Optional<EditResult> locked = withQuoteLock(roomId, () -> applySubstituteChoice(userId, roomId, quote, request));
+        if (locked.isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_IN_PROGRESS));
+        }
+        EditResult result = locked.get();
+        if (result.failure() != null) {
+            // 견적 담당은 없는 후보를 PRODUCT_NOT_FOUND로 알린다(같은 후보를 두 번 누른 경우)
+            String reply = result.failure() == ErrorCode.PRODUCT_NOT_FOUND
+                    ? SUBSTITUTE_NOT_FOUND
+                    : EDIT_FAILURE_REPLIES.get(result.failure());
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, reply));
+        }
+
+        Quote chosen = result.edited();
+        String reply = substituteReply(quote, chosen, substitute.get(), request.accept());
+        if (isEmpty(chosen)) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, reply + NO_ITEM_LEFT));
+        }
+        return assistantResponse(chatMessageService.createQuoteCardMessage(roomId, userId, reply, QuoteCardPayload.from(chosen)));
     }
 
     // 메시지가 장보기 요청인지, 견적 수정인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
@@ -164,8 +210,8 @@ public class ChatMessageCommandService {
                           Function<ChatMessageResponse, T> toResponse) {
         // 재료 목록은 요청마다 재료 테이블에서 읽어, 프롬프트와 답의 단위 검증이 같은 목록을 쓰게 한다
         Map<String, BaseUnit> ingredientUnits = productService.findIngredientUnits();
-        // 상품이 하나도 없는 견적은 고칠 것도 주문할 것도 없어서 견적이 없는 것으로 본다
-        Optional<Quote> currentQuote = quoteService.findQuote(roomId).filter(quote -> !quote.items().isEmpty());
+        // 담은 상품도 대체 후보도 없는 견적은 고칠 것도 주문할 것도 없어서 견적이 없는 것으로 본다
+        Optional<Quote> currentQuote = quoteService.findQuote(roomId).filter(quote -> !isEmpty(quote));
         String currentMenuName = currentQuote.map(Quote::menuName).orElse(null);
         MenuPlan menuPlan = planMenu(roomId, userId, history, text, ingredientUnits, currentMenuName, toResponse);
         ChatMessage assistantMessage = switch (menuPlan.intent()) {
@@ -186,6 +232,22 @@ public class ChatMessageCommandService {
                 .map(quoteId -> QuoteCardStatus.ACTIVE)
                 .orElse(null);
         return ChatMessageResponse.from(assistantMessage, quoteCardStatus);
+    }
+
+    // 담은 상품도 고를 후보도 없으면 카드를 보여 줄 것이 없다
+    private static boolean isEmpty(Quote quote) {
+        return quote.items().isEmpty() && quote.substitutes().isEmpty();
+    }
+
+    // 견적 담당은 [좋아요]를 누른 사이 품절되면 담지 않고 빠진 재료에 품절로 넣는다. 빠진 재료가 늘었으면 그 경우다
+    private static String substituteReply(Quote before, Quote after, SubstituteItem substitute, boolean accept) {
+        if (!accept) {
+            return SUBSTITUTE_REJECTED.formatted(substitute.name());
+        }
+        String label = QuoteExplainPrompt.productLabel(substitute.item());
+        return after.excludedItems().size() > before.excludedItems().size()
+                ? SUBSTITUTE_SOLD_OUT.formatted(label, substitute.name())
+                : SUBSTITUTE_ACCEPTED.formatted(label);
     }
 
     // 버튼으로 견적 상품을 수정한 뒤, 채팅에 보여줄 안내 문장을 만듦
@@ -267,14 +329,23 @@ public class ChatMessageCommandService {
         }
     }
 
-    // 락 안에서 실행한다. 현재 견적이 계획 때 본 견적(quoteId)과 다르면 아무것도 고치지 않는다
-    private EditResult applyEdits(Long userId, Long roomId, Quote quote, QuoteEditPlan editPlan) {
+    // 락 안에서 실행한다. 계획·버튼 때 본 견적(quoteId)이 아직 방의 현재 견적인지 보고, 아니면 그 이유를 준다
+    private Optional<ErrorCode> staleReason(Long roomId, Quote quote) {
         Optional<String> currentQuoteId = quoteService.findQuote(roomId).map(Quote::quoteId);
         if (currentQuoteId.isEmpty()) {
-            return EditResult.notApplied(quote, ErrorCode.QUOTE_EXPIRED);
+            return Optional.of(ErrorCode.QUOTE_EXPIRED);
         }
         if (!currentQuoteId.get().equals(quote.quoteId())) {
-            return EditResult.notApplied(quote, ErrorCode.QUOTE_NOT_CURRENT);
+            return Optional.of(ErrorCode.QUOTE_NOT_CURRENT);
+        }
+        return Optional.empty();
+    }
+
+    // 락 안에서 실행한다. 현재 견적이 계획 때 본 견적(quoteId)과 다르면 아무것도 고치지 않는다
+    private EditResult applyEdits(Long userId, Long roomId, Quote quote, QuoteEditPlan editPlan) {
+        Optional<ErrorCode> stale = staleReason(roomId, quote);
+        if (stale.isPresent()) {
+            return EditResult.notApplied(quote, stale.get());
         }
 
         // 수정마다 새 견적 ID로 저장되므로 마지막 견적으로 카드를 한 번만 만든다
@@ -308,6 +379,25 @@ public class ChatMessageCommandService {
         }
     }
 
+    // 락 안에서 실행한다. 성공하면 failure가 없는 결과를 준다(후보 고르기는 수정 목록이 없다)
+    private EditResult applySubstituteChoice(Long userId, Long roomId, Quote quote, ChooseSubstituteRequest request) {
+        Optional<ErrorCode> stale = staleReason(roomId, quote);
+        if (stale.isPresent()) {
+            return EditResult.notApplied(quote, stale.get());
+        }
+        try {
+            Quote chosen = request.accept()
+                    ? quoteCommandService.acceptSubstitute(userId, roomId, request.ingredientName())
+                    : quoteCommandService.rejectSubstitute(userId, roomId, request.ingredientName());
+            return new EditResult(chosen, List.of(), null, null);
+        } catch (BusinessException e) {
+            if (!EDIT_FAILURE_REPLIES.containsKey(e.getErrorCode())) {
+                throw e;
+            }
+            return EditResult.notApplied(quote, e.getErrorCode());
+        }
+    }
+
     private Quote applyEdit(Long userId, Long roomId, QuoteEdit edit) {
         return switch (edit.action()) {
             case REMOVE -> quoteCommandService.removeItem(userId, roomId, edit.productId());
@@ -318,8 +408,8 @@ public class ChatMessageCommandService {
 
     private <T> ChatMessage replyWithQuoteCard(Long roomId, Long userId, Quote quote, String quoteText,
                                                Function<ChatMessageResponse, T> toResponse) {
-        if (quote.items().isEmpty()) {
-            // 주문할 상품이 없는데 [주문하기] 버튼이 뜨지 않도록 카드 없이 빠진 이유만 안내한다
+        if (isEmpty(quote)) {
+            // 담은 상품도 고를 후보도 없으면 카드 없이 빠진 이유만 안내한다. 후보만 있으면 고를 수 있게 카드를 저장한다
             String reason = explain(roomId, userId, quoteExplainPrompt.systemPrompt(), List.of(), quoteText, toResponse).text();
             return chatMessageService.createAssistantMessage(roomId, userId, reason);
         }

@@ -24,12 +24,14 @@ import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -234,6 +236,29 @@ class ChatQuoteApiIntegrationTest {
                 .andExpect(jsonPath("$.data.content").value("견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요."))
                 .andExpect(jsonPath("$.data.payload").doesNotExist());
         then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 후보의_좋아요를_누르면_LLM_없이_새_견적_카드를_201로_돌려준다() throws Exception {
+        // given
+        Long roomId = createRoom();
+        QuoteItem importedLeek = new QuoteItem(5L, "VEG-0102", "수입 대파", "1단", 2_500L, 1, 2_500L);
+        saveCurrentQuote(new Quote("quote-1", OWNER_ID, roomId, "김치볶음밥", List.of(KIMCHI_ITEM), List.of(), 12_000L,
+                CREATED_AT, CREATED_AT.plusMinutes(10), Set.of(), List.of(new SubstituteItem("대파", "국산 대파", importedLeek))));
+        given(quoteCommandService.acceptSubstitute(OWNER_ID, roomId, "대파"))
+                .willReturn(quote(roomId, "quote-2", List.of(KIMCHI_ITEM, importedLeek), List.of()));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/{roomId}/quote-substitutes", roomId)
+                        .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quoteId\":\"quote-1\",\"ingredientName\":\"대파\",\"accept\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("수입 대파 (1단) 상품을 담았어요."))
+                .andExpect(jsonPath("$.data.payload.quoteId").value("quote-2"))
+                .andExpect(jsonPath("$.data.payload.items.length()").value(2))
+                .andExpect(jsonPath("$.data.payload.substitutes").isEmpty())
+                .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
     }
 
     private Long createRoom() {

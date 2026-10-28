@@ -31,6 +31,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
@@ -47,6 +48,7 @@ import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
 import java.time.LocalDateTime;
@@ -74,6 +76,9 @@ class ChatMessageCommandServiceTest {
     private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of("김치", BaseUnit.G, "계란", BaseUnit.EA);
     private static final QuoteItem KIMCHI_ITEM = new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L);
     private static final QuoteItem EGG_ITEM = new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 1, 4_500L);
+    private static final QuoteItem LEEK_ITEM = new QuoteItem(5L, "VEG-0102", "수입 대파", "1단", 2_500L, 1, 2_500L);
+    private static final SubstituteItem LEEK_SUBSTITUTE = new SubstituteItem("대파", "국산 대파", LEEK_ITEM);
+    private static final String SUBSTITUTE_NOT_FOUND = "이미 고른 후보예요. 최신 견적 카드를 확인해 주세요.";
     private static final QuoteItem HAM_ITEM = new QuoteItem(3L, "MEA-0040", "햄", "200g", 3_900L, 1, 3_900L);
     private static final String NO_QUOTE_TO_EDIT = "고칠 견적이 없어요. 견적이 만료됐을 수 있으니 만들 메뉴를 다시 말씀해 주세요.";
     private static final String ASK_EDIT_AGAIN = "어떤 상품을 어떻게 바꿀지 다시 말씀해 주세요.";
@@ -891,6 +896,212 @@ class ChatMessageCommandServiceTest {
     }
 
     @Test
+    void 후보의_좋아요는_LLM_없이_락_안에서_담고_새_카드와_정해진_문장을_저장한다() {
+        // given
+        Quote accepted = quote("quote-2", List.of(KIMCHI_ITEM, LEEK_ITEM));
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(quoteCommandService.acceptSubstitute(1L, 10L, "대파")).willReturn(accepted);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "수입 대파 (1단) 상품을 담았어요.", QuoteCardPayload.from(accepted)))
+                .willReturn(cardMessage("수입 대파 (1단) 상품을 담았어요."));
+        given(chatMessageService.findQuoteCardId("{\"type\":\"QUOTE_CARD\"}")).willReturn(Optional.of("quote-2"));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        InOrder order = inOrder(chatRoomService, lockDistributeService, quoteCommandService);
+        order.verify(chatRoomService).getOwnedChatRoom(10L, 1L);
+        order.verify(lockDistributeService).execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any());
+        order.verify(quoteCommandService).acceptSubstitute(1L, 10L, "대파");
+        assertThat(response.content()).isEqualTo("수입 대파 (1단) 상품을 담았어요.");
+        assertThat(response.quoteCardStatus()).isEqualTo(QuoteCardStatus.ACTIVE);
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 후보의_빼기는_그_재료를_빼고_새_카드로_알린다() {
+        // given
+        Quote rejected = quote("quote-2", List.of(KIMCHI_ITEM));
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(quoteCommandService.rejectSubstitute(1L, 10L, "대파")).willReturn(rejected);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "대파 재료는 뺐어요.", QuoteCardPayload.from(rejected)))
+                .willReturn(cardMessage("대파 재료는 뺐어요."));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", false));
+
+        // then
+        assertThat(response.content()).isEqualTo("대파 재료는 뺐어요.");
+        then(quoteCommandService).should(never()).acceptSubstitute(any(), any(), any());
+    }
+
+    @Test
+    void 좋아요를_누르는_사이_후보도_품절되면_그_재료는_뺐다고_알린다() {
+        // given: 견적 담당은 품절이면 담지 않고 빠진 재료에 OUT_OF_STOCK으로 넣는다
+        Quote soldOut = quote("quote-2", List.of(KIMCHI_ITEM), List.of(new ExcludedItem("대파", "OUT_OF_STOCK")));
+        String reply = "수입 대파 (1단) 상품도 방금 품절돼서 대파 재료는 뺐어요.";
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(quoteCommandService.acceptSubstitute(1L, 10L, "대파")).willReturn(soldOut);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, reply, QuoteCardPayload.from(soldOut)))
+                .willReturn(cardMessage(reply));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(reply);
+    }
+
+    @Test
+    void 후보를_빼서_담은_상품도_후보도_없으면_카드_없이_알린다() {
+        // given
+        String reply = "대파 재료는 뺐어요. 견적에 남은 상품이 없어요. 만들 메뉴를 다시 말씀해 주세요.";
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of())));
+        given(quoteCommandService.rejectSubstitute(1L, 10L, "대파")).willReturn(quote("quote-2", List.of()));
+        givenAssistantMessage(reply);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", false));
+
+        // then
+        assertThat(response.content()).isEqualTo(reply);
+        then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 지난_카드의_후보_버튼이면_고르지_않고_정해진_문장으로_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-9", List.of(KIMCHI_ITEM))));
+        givenAssistantMessage(QUOTE_CHANGED);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_CHANGED);
+        then(lockDistributeService).shouldHaveNoInteractions();
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 지금_견적에_없는_후보면_이미_고른_후보라고_답한다() {
+        // given: 후보 없는 견적
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quote(List.of(KIMCHI_ITEM), List.of())));
+        givenAssistantMessage(SUBSTITUTE_NOT_FOUND);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(SUBSTITUTE_NOT_FOUND);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 락_안에서_후보가_이미_없으면_이미_고른_후보라고_답한다() {
+        // given: 같은 후보 버튼을 거의 동시에 두 번 누른 경우
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(quoteCommandService.acceptSubstitute(1L, 10L, "대파")).willThrow(new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+        givenAssistantMessage(SUBSTITUTE_NOT_FOUND);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(SUBSTITUTE_NOT_FOUND);
+    }
+
+    @Test
+    void 후보를_고를_때_락을_얻지_못하면_고르지_않고_잠시_후_다시_하라고_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(lockDistributeService.execute(eq(LockKey.quote(10L)), ArgumentMatchers.<Supplier<Object>>any()))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        givenAssistantMessage(QUOTE_IN_PROGRESS);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 후보를_고를_때_견적이_만료됐으면_고르지_않고_정해진_문장으로_답한다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.empty());
+        givenAssistantMessage(NO_QUOTE_TO_EDIT);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(10L, 1L,
+                new ChooseSubstituteRequest("quote-1", "대파", true));
+
+        // then
+        assertThat(response.content()).isEqualTo(NO_QUOTE_TO_EDIT);
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 장보기_견적에_담은_상품이_없어도_후보가_있으면_고를_수_있게_카드를_저장한다() {
+        // given
+        MenuPlan menuPlan = plan(MenuPlanIntent.SHOPPING_REQUEST);
+        Quote onlySubstitute = quoteWithSubstitutes("quote-1", List.of());
+        givenUserMessageAndPlan(menuPlan);
+        given(quoteCommandService.createQuote(1L, 10L, menuPlan)).willReturn(onlySubstitute);
+        given(llmGateway.explain(eq(quoteExplainPrompt.systemPrompt()), anyList(), anyString()))
+                .willReturn(LlmReply.of("국산 대파가 품절이라 수입 대파를 후보로 찾았어요.", "gpt-test", 1, 1));
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "국산 대파가 품절이라 수입 대파를 후보로 찾았어요.",
+                QuoteCardPayload.from(onlySubstitute)))
+                .willReturn(cardMessage("국산 대파가 품절이라 수입 대파를 후보로 찾았어요."));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "대파 사 줘");
+
+        // then
+        assertThat(response.content()).isEqualTo("국산 대파가 품절이라 수입 대파를 후보로 찾았어요.");
+        then(chatMessageService).should().createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void 카드_버튼으로_마지막_상품을_빼도_후보가_남으면_카드를_저장한다() {
+        // given
+        Quote removed = quoteWithSubstitutes("quote-2", List.of());
+        given(quoteService.findQuote(10L)).willReturn(Optional.of(quoteWithSubstitutes("quote-1", List.of(KIMCHI_ITEM))));
+        given(quoteCommandService.removeItem(1L, 10L, 1L)).willReturn(removed);
+        given(chatMessageService.createQuoteCardMessage(10L, 1L, "백김치 (1kg) 상품을 뺐어요.", QuoteCardPayload.from(removed)))
+                .willReturn(cardMessage("백김치 (1kg) 상품을 뺐어요."));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(10L, 1L,
+                new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        assertThat(response.content()).isEqualTo("백김치 (1kg) 상품을 뺐어요.");
+    }
+
+    @Test
+    void 후보만_있는_견적도_고칠_견적으로_본다() {
+        // given: 담은 상품 없이 후보만 있는 견적에 "김치 빼줘" — 견적이 없다고 하지 않고 카드에 없는 상품이라고 답한다
+        givenEditRequest(quoteWithSubstitutes("quote-1", List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
+        givenAssistantMessage(NOT_IN_QUOTE);
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "김치 빼줘");
+
+        // then
+        assertThat(response.content()).isEqualTo(NOT_IN_QUOTE);
+    }
+
+    @Test
     void 견적이_그사이_만료되면_정해진_문장으로_답한다() {
         // given
         givenEditRequest(quote(List.of(KIMCHI_ITEM), List.of()), QuoteEditPlan.of(List.of(remove(1L)), ""));
@@ -1127,6 +1338,13 @@ class ChatMessageCommandServiceTest {
 
     private static LlmResult<MenuPlan> planResult(MenuPlan menuPlan) {
         return LlmResult.of(menuPlan, "gpt-test", 1, 1);
+    }
+
+    private static Quote quoteWithSubstitutes(String quoteId, List<QuoteItem> items) {
+        long total = items.stream().mapToLong(QuoteItem::lineAmount).sum();
+        LocalDateTime now = LocalDateTime.of(2026, 10, 23, 12, 0);
+        return new Quote(quoteId, 1L, 10L, "김치볶음밥", items, List.of(), total, now, now.plusMinutes(10),
+                Set.of(), List.of(LEEK_SUBSTITUTE));
     }
 
     private static Quote quote(List<QuoteItem> items, List<ExcludedItem> excludedItems) {

@@ -6,6 +6,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -156,6 +157,31 @@ class QuoteCardPayloadTest {
         assertThat(shown.keywordMentions()).containsExactly(
                 new QuoteCardPayload.KeywordMention("맵지 않은", 15),
                 new QuoteCardPayload.KeywordMention("국내산", 3));
+    }
+
+    @Test
+    void 품절_대체_후보는_재료_이름과_원래_상품과_함께_보여_주고_합계에_넣지_않는다() {
+        // given: 국산 대파가 품절이라 수입 대파를 후보로 찾았다
+        QuoteItem importedLeek = new QuoteItem(5L, "VEG-0102", "수입 대파", "1단", 2_500L, 1, 2_500L);
+        Quote withSubstitute = new Quote("quote-1", 9L, 10L, "김치볶음밥",
+                List.of(new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L)), List.of(),
+                12_000L, CREATED_AT, CREATED_AT.plusMinutes(10), Set.of(),
+                List.of(new SubstituteItem("대파", "국산 대파", importedLeek)));
+
+        // when
+        QuoteCardPayload card = QuoteCardPayload.from(withSubstitute);
+
+        // then
+        assertThat(card.substitutes()).containsExactly(new QuoteCardPayload.Substitute("대파", "국산 대파",
+                new QuoteCardPayload.Item(5L, "수입 대파", "1단", 2_500L, 1, 2_500L, null)));
+        assertThat(card.items()).extracting(QuoteCardPayload.Item::productName).containsExactly("백김치");
+        assertThat(card.totalAmount()).isEqualTo(12_000L);
+    }
+
+    @Test
+    void 후보가_없으면_빈_목록이다() {
+        // when & then
+        assertThat(QuoteCardPayload.from(quote).substitutes()).isEmpty();
     }
 
     private static Quote quoteWith(Set<Keyword> conditions, QuoteItemReason reason) {

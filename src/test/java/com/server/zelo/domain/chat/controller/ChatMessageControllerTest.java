@@ -16,6 +16,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
@@ -142,6 +143,41 @@ class ChatMessageControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
         then(chatMessageCommandService).should(never()).updateQuoteItem(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 후보_버튼은_201과_AI_메시지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.chooseSubstitute(10L, 1L, new ChooseSubstituteRequest("quote-1", "대파", true)))
+                .willReturn(new ChatMessageResponse(106L, ChatSender.ASSISTANT, "수입 대파 (1단) 상품을 담았어요.",
+                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-substitutes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quoteId\":\"quote-1\",\"ingredientName\":\"대파\",\"accept\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("수입 대파 (1단) 상품을 담았어요."))
+                .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "{\"quoteId\":\"quote-1\",\"ingredientName\":\"대파\"}",
+            "{\"quoteId\":\" \",\"ingredientName\":\"대파\",\"accept\":true}",
+            "{\"quoteId\":\"quote-1\",\"ingredientName\":\" \",\"accept\":false}"})
+    void 후보_버튼_요청이_비어_있으면_400과_INVALID_INPUT을_반환하고_고르지_않는다(String body) throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-substitutes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageCommandService).should(never()).chooseSubstitute(anyLong(), anyLong(), any());
     }
 
     @Test

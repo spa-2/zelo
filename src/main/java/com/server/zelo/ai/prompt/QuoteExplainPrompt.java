@@ -9,6 +9,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -96,6 +97,14 @@ public class QuoteExplainPrompt {
             for (ExcludedItem excludedItem : quote.excludedItems()) {
                 lines.add("- " + excludedItem.name() + ": "
                         + EXCLUDED_REASONS.getOrDefault(excludedItem.reason(), excludedItem.reason()));
+            }
+        }
+        if (!quote.substitutes().isEmpty()) {
+            lines.add("대체 후보 (아직 담지 않음, 합계에 없음):");
+            for (SubstituteItem substitute : quote.substitutes()) {
+                QuoteItem item = substitute.item();
+                lines.add("- " + substitute.name() + ": " + substitute.soldOutProductName() + " 품절 → "
+                        + productLabel(item) + " " + item.quantity() + "개, " + won(item.lineAmount()));
             }
         }
         lines.add("합계: " + won(quote.totalAmount()));

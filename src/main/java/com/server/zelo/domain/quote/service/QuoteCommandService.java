@@ -112,10 +112,16 @@ public class QuoteCommandService {
                 .filter(excluded -> !excluded.name().equals(ingredientName))
                 .toList());
         excludedItems.addAll(selection.excludedItems());
+        List<BudgetOption> addedOptions = new ArrayList<>();
         for (QuoteItem added : selection.items()) {
             QuoteItem same = items.stream().filter(item -> item.productId().equals(added.productId())).findFirst().orElse(null);
             if (same == null) {
                 items.add(added);
+                // 새로 담은 상품도 예산을 넘기면 더 싼 후보를 줘야 해서 같이 챙김
+                QuoteItem cheaper = selection.cheaperItems().get(added.productId());
+                if (cheaper != null) {
+                    addedOptions.add(new BudgetOption(added.productId(), cheaper));
+                }
                 continue;
             }
             // select()는 이번에 더할 수량만 재고랑 비교해서 합친 수량으로 한 번 더 확인
@@ -130,8 +136,10 @@ public class QuoteCommandService {
                 .filter(substitute -> !substitute.name().equals(ingredientName))
                 .toList());
         substitutes.addAll(selection.substitutes());
+        List<BudgetOption> budgetOptions = new ArrayList<>(keepOptions(quote, items));
+        budgetOptions.addAll(addedOptions);
         return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes,
-                quote.budget(), keepOptions(quote, items));
+                quote.budget(), budgetOptions);
     }
 
     // 후보를 보여준 사이에 팔렸을 수 있어서 재고를 다시 봄. 모자라면 addItem처럼 품절로 돌려줌
@@ -178,8 +186,10 @@ public class QuoteCommandService {
         if (inventoryService.findAvailableQuantities(List.of(cheaper.productId())).getOrDefault(cheaper.productId(), 0) < cheaper.quantity()) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
         }
+        // 같은 상품이 두 줄이어도 재고는 한 줄 수량만 봤으니 한 줄만 바꿈
+        QuoteItem replaced = getItem(quote, productId);
         List<QuoteItem> items = quote.items().stream()
-                .map(item -> item.productId().equals(productId) ? cheaper : item)
+                .map(item -> item == replaced ? cheaper : item)
                 .toList();
         return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
                 quote.budget(), keepOptions(quote, items));

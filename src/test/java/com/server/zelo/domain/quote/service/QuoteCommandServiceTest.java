@@ -640,6 +640,36 @@ class QuoteCommandServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
     }
+    @Test
+    void 재료를_추가해서_예산을_넘으면_추가한_상품의_더_싼_후보도_준다() {
+        // given
+        givenBudgetQuote(List.of(item(9L, 3000L, 1)), 10000L, List.of());
+        Product pogi = product(1L, kimchi, "포기김치 1kg", 12000L, 1000, 100);
+        Product cheapKimchi = product(2L, kimchi, "썰은김치 1kg", 9000L, 1000, 10);
+        givenProducts(List.of(pogi, cheapKimchi), Map.of(1L, 10, 2L, 10), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "김치", 1000, BaseUnit.G);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L, 1L);
+        assertThat(quote.budgetOptions()).extracting(BudgetOption::productId, option -> option.item().productId())
+                .containsExactly(tuple(1L, 2L));
+    }
+
+    @Test
+    void 같은_상품이_두_줄이면_예산_후보를_골라도_한_줄만_바꾼다() {
+        // given
+        givenBudgetQuote(List.of(item(1L, 12000L, 1), item(1L, 12000L, 1)), 10000L,
+                List.of(new BudgetOption(1L, item(2L, 9000L, 1))));
+        given(inventoryService.findAvailableQuantities(List.of(2L))).willReturn(Map.of(2L, 1));
+
+        // when
+        Quote quote = quoteCommandService.applyBudgetOption(1L, 5L, 1L);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(2L, 1L);
+    }
 
     private void givenQuote(List<QuoteItem> items, List<ExcludedItem> excludedItems) {
         long total = items.stream().mapToLong(QuoteItem::lineAmount).sum();

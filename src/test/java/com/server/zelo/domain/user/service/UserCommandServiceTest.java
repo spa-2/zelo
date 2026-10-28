@@ -4,6 +4,7 @@ import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.exception.LoginLockedException;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
@@ -12,6 +13,7 @@ import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
@@ -45,6 +48,11 @@ class UserCommandServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    @Mock
+    private LoginAttemptService loginAttemptService;
+
+    private static final String CLIENT_IP = "203.0.113.7";
+
     @Test
     void 로그인하면_토큰을_발급하고_리프레시_토큰을_저장한다() {
         // given
@@ -56,7 +64,7 @@ class UserCommandServiceTest {
         given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
 
         // when
-        LoginResult result = userCommandService.login(request);
+        LoginResult result = userCommandService.login(request, CLIENT_IP);
 
         // then
         assertThat(result.accessToken()).isEqualTo("accessToken");
@@ -72,11 +80,80 @@ class UserCommandServiceTest {
                 .willThrow(new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         // when & then
-        assertThatThrownBy(() -> userCommandService.login(request))
+        assertThatThrownBy(() -> userCommandService.login(request, CLIENT_IP))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
         then(refreshTokenService).should(never()).saveRefreshToken(anyLong(), anyString());
+    }
+
+    @Test
+    void 로그인하면_자격_증명을_검증하기_전에_시도_횟수를_먼저_올린다() {
+        // given
+        LoginRequest request = new LoginRequest("jieun@example.com", "DemoPass!2026");
+        User user = User.of("jieun@example.com", "encodedPassword", "지은", "010-1234-5678");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        given(userService.getUserByEmailAndPassword("jieun@example.com", "DemoPass!2026")).willReturn(user);
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
+
+        // when
+        userCommandService.login(request, CLIENT_IP);
+
+        // then
+        // 검증 뒤에 올리면 동시에 보낸 요청이 모두 검증을 통과해서 횟수 제한을 넘길 수 있음
+        InOrder inOrder = inOrder(loginAttemptService, userService);
+        inOrder.verify(loginAttemptService).attempt("jieun@example.com", CLIENT_IP);
+        inOrder.verify(userService).getUserByEmailAndPassword("jieun@example.com", "DemoPass!2026");
+    }
+
+    @Test
+    void 로그인에_성공하면_시도_횟수를_지운다() {
+        // given
+        LoginRequest request = new LoginRequest("jieun@example.com", "DemoPass!2026");
+        User user = User.of("jieun@example.com", "encodedPassword", "지은", "010-1234-5678");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        given(userService.getUserByEmailAndPassword("jieun@example.com", "DemoPass!2026")).willReturn(user);
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
+
+        // when
+        userCommandService.login(request, CLIENT_IP);
+
+        // then
+        then(loginAttemptService).should().deleteAttempt("jieun@example.com", CLIENT_IP);
+    }
+
+    @Test
+    void 로그인에_실패하면_시도_횟수를_지우지_않는다() {
+        // given
+        LoginRequest request = new LoginRequest("jieun@example.com", "Wrong1!");
+        given(userService.getUserByEmailAndPassword("jieun@example.com", "Wrong1!"))
+                .willThrow(new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.login(request, CLIENT_IP))
+                .isInstanceOf(BusinessException.class);
+        then(loginAttemptService).should(never()).deleteAttempt(anyString(), anyString());
+    }
+
+    @Test
+    void 시도_횟수를_초과하면_자격_증명을_검증하지_않고_토큰도_발급하지_않는다() {
+        // given
+        LoginRequest request = new LoginRequest("jieun@example.com", "DemoPass!2026");
+        willThrow(new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540))
+                .given(loginAttemptService).attempt("jieun@example.com", CLIENT_IP);
+
+        // when & then
+        // 잠긴 동안에는 맞는 비밀번호여도 거절해야 하므로 검증 자체를 하지 않음
+        assertThatThrownBy(() -> userCommandService.login(request, CLIENT_IP))
+                .isInstanceOf(LoginLockedException.class)
+                .extracting(e -> ((LoginLockedException) e).getRetryAfterSeconds())
+                .isEqualTo(540L);
+        then(userService).shouldHaveNoInteractions();
+        then(jwtUtil).shouldHaveNoInteractions();
+        then(refreshTokenService).shouldHaveNoInteractions();
+        then(loginAttemptService).should(never()).deleteAttempt(anyString(), anyString());
     }
 
     @Test

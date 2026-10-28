@@ -58,6 +58,7 @@ class PopularKeywordRepositoryRedisTest {
     @AfterEach
     void cleanUp() {
         redisTemplate.delete(redisTemplate.keys("search:keyword:2099*"));
+        redisTemplate.delete("search:keyword:top");
     }
 
     @Test

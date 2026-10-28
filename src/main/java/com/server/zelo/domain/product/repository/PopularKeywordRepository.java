@@ -3,10 +3,11 @@ package com.server.zelo.domain.product.repository;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.connection.zset.Aggregate;
+import org.springframework.data.redis.connection.zset.Weights;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import org.springframework.stereotype.Repository;
@@ -18,10 +19,12 @@ import org.springframework.stereotype.Repository;
 public class PopularKeywordRepository {
 
     private static final String KEY_PREFIX = "search:keyword:";
+    private static final String TOP_KEY = "search:keyword:top";
     private static final DateTimeFormatter HOUR = DateTimeFormatter.ofPattern("yyyyMMddHH");
     private static final int WINDOW_HOURS = 24;
     // 합칠 때 24시간 전 키까지 남아 있게 한 시간 여유를 둠
     private static final Duration TTL = Duration.ofHours(WINDOW_HOURS + 1);
+    private static final Duration TOP_TTL = Duration.ofMinutes(1);
 
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -31,13 +34,15 @@ public class PopularKeywordRepository {
         stringRedisTemplate.expire(key, TTL);
     }
 
-    // 횟수가 같으면 검색어 순으로 정렬해서 순위가 매번 같게 나오게 함
+    // 전체 검색어를 가져오지 않게 Redis에서 합쳐 두고 앞에서 limit개만 읽음
+    // 점수에 -1을 곱해 두면 앞에서부터 읽을 때 많은 순, 같은 횟수면 검색어 순이 됨
     public List<TypedTuple<String>> findTop(LocalDateTime now, int limit) {
         List<String> keys = IntStream.range(0, WINDOW_HOURS).mapToObj(hour -> key(now.minusHours(hour))).toList();
-        return stringRedisTemplate.opsForZSet().unionWithScores(keys.get(0), keys.subList(1, keys.size())).stream()
-                .sorted(Comparator.comparing((TypedTuple<String> tuple) -> tuple.getScore()).reversed()
-                        .thenComparing(TypedTuple::getValue))
-                .limit(limit)
+        stringRedisTemplate.opsForZSet().unionAndStore(keys.get(0), keys.subList(1, keys.size()), TOP_KEY,
+                Aggregate.SUM, Weights.fromSetCount(WINDOW_HOURS).multiply(-1));
+        stringRedisTemplate.expire(TOP_KEY, TOP_TTL);
+        return stringRedisTemplate.opsForZSet().rangeWithScores(TOP_KEY, 0, limit - 1L).stream()
+                .map(tuple -> TypedTuple.of(tuple.getValue(), -tuple.getScore()))
                 .toList();
     }
 

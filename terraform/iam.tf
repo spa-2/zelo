@@ -65,6 +65,27 @@ data "aws_iam_policy_document" "redis_ssm_read" {
   }
 }
 
+# 앱이 SES로 메일을 보내는 권한. 보내는 사람 주소를 noreply@도메인으로 제한해서 다른 주소로 위장해 보낼 수 없게 한다.
+# 샌드박스에서는 받는 주소도 인증된 identity라서 resource를 identity 전체로 둔다 (프로덕션 액세스 후 도메인 하나로 좁힐 수 있다)
+data "aws_iam_policy_document" "app_ses_send" {
+  statement {
+    actions   = ["ses:SendEmail"]
+    resources = ["arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = [local.mail_from]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "app_ses_send" {
+  name   = "ses-send-email"
+  role   = aws_iam_role.ec2["app"].id
+  policy = data.aws_iam_policy_document.app_ses_send.json
+}
+
 resource "aws_iam_role_policy" "app_ssm_read" {
   name   = "ssm-parameter-read"
   role   = aws_iam_role.ec2["app"].id

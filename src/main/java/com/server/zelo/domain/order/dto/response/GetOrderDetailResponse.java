@@ -97,13 +97,19 @@ public record GetOrderDetailResponse(
     public record PaymentInfo(
             Long paymentId,
             String portoneId,
-            PaymentStatus paymentStatus
+            PaymentStatus paymentStatus,
+            Long amount,
+            String paymentMethodName,
+            LocalDateTime paidAt
     ) {
         public static PaymentInfo from(Payment payment) {
             return new PaymentInfo(
                     payment.getId(),
                     payment.getPortoneId(),
-                    payment.getStatus()
+                    payment.getStatus(),
+                    payment.getAmount(),
+                    payment.getPaymentMethodName(),
+                    payment.getPaidAt()
             );
         }
     }

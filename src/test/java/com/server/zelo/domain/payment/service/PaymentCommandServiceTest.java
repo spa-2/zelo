@@ -456,7 +456,12 @@ class PaymentCommandServiceTest {
     @Test
     void 이미_진행된_결제면_예외가_발생하고_결제를_요청하지_않는다() {
         // given
-        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(paymentMethodService.getOwnedMethod(PAYMENT_METHOD_ID, USER_ID))
+                .willReturn(PaymentMethod.of(USER_ID, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234"));
+        Order order = mock(Order.class);
+        given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
         given(paymentService.startBillingPayment(PORTONE_ID))
                 .willThrow(new BusinessException(ErrorCode.ALREADY_PROCESSED_PAYMENT));
 

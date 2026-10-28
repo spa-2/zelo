@@ -28,7 +28,9 @@ public class QuoteExplainPrompt {
     private static final Map<String, String> EXCLUDED_REASONS = Map.of(
             "CATEGORY_NOT_ALLOWED", "AI가 대신 살 수 없는 품목(주류 등)",
             "PRODUCT_NOT_FOUND", "판매하는 상품이 없음",
-            "OUT_OF_STOCK", "재고 부족");
+            "OUT_OF_STOCK", "재고 부족",
+            // 대체 후보를 [빼기]로 거절한 재료. 품절과 구분해야 "재고가 없어 뺐다"고 잘못 말하지 않는다
+            "REJECTED_BY_USER", "사용자가 대체 후보를 고르지 않고 뺌");
     // 견적 수정 메서드가 던진 오류 중 채팅이 안내하는 것. 그 밖의 오류는 ErrorCode 문구를 쓴다
     private static final Map<ErrorCode, String> EDIT_FAILURE_REASONS = Map.of(
             ErrorCode.INSUFFICIENT_STOCK, "재고 부족",

@@ -2,6 +2,7 @@ package com.server.zelo.domain.portone.client;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.portone.dto.request.PortOneBillingKeyRequest;
 import com.server.zelo.domain.portone.dto.request.PortOneCancelRequest;
 import com.server.zelo.domain.portone.dto.response.*;
 import com.server.zelo.domain.portone.config.PortOneProperties;
@@ -25,9 +26,11 @@ public class HttpPortOneClient implements PortOneClient {
     private final PortOneProperties portOneProperties;
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String IDEMPOTENCY_KEY_PREFIX = "cancel-";
+    private static final String ALREADY_PAID = "ALREADY_PAID";
     private static final String ALREADY_CANCELLED = "PAYMENT_ALREADY_CANCELLED";
     private static final String IDEMPOTENCY_OUTSTANDING = "IDEMPOTENCY_OUTSTANDING_REQUEST";
     private static final String BILLING_KEY_ALREADY_DELETED = "BILLING_KEY_ALREADY_DELETED";
+
 
     @Override
     public PortOnePayment getPayment(String portoneId) {
@@ -123,6 +126,36 @@ public class HttpPortOneClient implements PortOneClient {
         }
     }
 
+    // 결제 결과는 이후 결제 조회로 다시 확인하므로 응답 본문은 쓰지 않는다
+    @Override
+    public void payWithBillingKey(String portoneId, String billingKey, String orderName, Long amount) {
+        try {
+            portOneRestClient.post()
+                    .uri("/payments/{paymentId}/billing-key", portoneId)
+                    .body(PortOneBillingKeyRequest.of(portOneProperties.storeId(), billingKey, orderName, amount))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (HttpClientErrorException e) {
+            // 이전 요청이 응답 없이 끊겼지만 실제로는 결제된 경우라, 결제 조회로 이어서 반영한다
+            if (isErrorType(e, ALREADY_PAID)) {
+                log.info("포트원 빌링키 결제 이미 완료 portoneId={}", portoneId);
+                return;
+            }
+            log.warn("포트원 빌링키 결제 거절 portoneId={}, status={}", portoneId, e.getStatusCode());
+            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
+        } catch (RestClientResponseException e) {
+            log.error("포트원 빌링키 결제 실패 portoneId={}, status={}", portoneId, e.getStatusCode());
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        } catch (ResourceAccessException e) {
+            log.warn("포트원 빌링키 결제 응답 없음 portoneId={}, cause={}",
+                    portoneId, e.getMostSpecificCause().getClass().getSimpleName());
+            if (e.contains(SocketTimeoutException.class)) {
+                throw new BusinessException(ErrorCode.PG_TIMEOUT);
+            }
+            throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
+        }
+    }
+
     @Override
     public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
                                         Long currentCancellableAmount, String reason) {
@@ -209,6 +242,15 @@ public class HttpPortOneClient implements PortOneClient {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
             return error != null && BILLING_KEY_ALREADY_DELETED.equals(error.type());
+        } catch (RuntimeException parseError) {
+            return false;
+        }
+    }
+
+    private boolean isErrorType(HttpClientErrorException e, String type) {
+        try {
+            PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
+            return error != null && type.equals(error.type());
         } catch (RuntimeException parseError) {
             return false;
         }

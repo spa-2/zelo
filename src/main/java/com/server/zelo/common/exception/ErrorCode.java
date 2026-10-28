@@ -81,6 +81,7 @@ public enum ErrorCode {
     // Chat
     CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_001", "채팅방을 찾을 수 없습니다."),
     CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_002", "해당 채팅방에 접근할 권한이 없습니다."),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "CHAT_003", "같은 요청 키로 다른 메시지를 보낼 수 없습니다."),
 
     // Review
     REVIEW_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "REVIEW_001", "상품의 리뷰 요약을 찾을 수 없습니다."),

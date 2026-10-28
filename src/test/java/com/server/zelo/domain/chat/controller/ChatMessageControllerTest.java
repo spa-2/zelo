@@ -70,10 +70,51 @@ class ChatMessageControllerTest {
     }
 
     @Test
+    void Idempotency_Key_헤더를_메시지_전송과_새_대화에_넘긴다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70"))
+                .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "안녕하세요.", null, null, LocalDateTime.now()));
+        given(chatMessageCommandService.startChat(1L, "안녕", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70"))
+                .willReturn(StartChatResponse.of(77L,
+                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "안녕하세요.", null, null, LocalDateTime.now())));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/messages")
+                        .header("Idempotency-Key", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.messageId").value(101));
+        mockMvc.perform(post("/api/chat/messages")
+                        .header("Idempotency-Key", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.roomId").value(77));
+    }
+
+    @Test
+    void 같은_키가_처리_중이면_409와_COMMON_003을_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70"))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/messages")
+                        .header("Idempotency-Key", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COMMON_003"));
+    }
+
+    @Test
     void 메시지를_보내면_201과_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료", null))
                 .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "김치와 밥이 필요해요.", null, null, LocalDateTime.now()));
 
         // when & then
@@ -93,7 +134,7 @@ class ChatMessageControllerTest {
     void payload가_있으면_문자열이_아닌_JSON_객체로_내보낸다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageCommandService.sendMessage(10L, 1L, "견적"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "견적", null))
                 .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "견적이에요.",
                         "{\"type\":\"QUOTE_CARD\",\"totalAmount\":28900}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
 
@@ -191,7 +232,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"   \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any(), any());
     }
 
     @Test
@@ -206,7 +247,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"" + tooLong + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any(), any());
     }
 
     @Test
@@ -228,7 +269,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"안녕\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
-        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any());
+        then(chatMessageCommandService).should(never()).sendMessage(anyLong(), anyLong(), any(), any());
     }
 
     @Test
@@ -306,7 +347,7 @@ class ChatMessageControllerTest {
     void 새_대화를_시작하면_201과_새_방_ID와_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageCommandService.startChat(1L, "불고기 재료"))
+        given(chatMessageCommandService.startChat(1L, "불고기 재료", null))
                 .willReturn(StartChatResponse.of(77L,
                         new ChatMessageResponse(102L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요.", null, null, LocalDateTime.now())));
 
@@ -333,7 +374,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"  \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any(), any());
     }
 
     @Test
@@ -347,7 +388,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"" + "가".repeat(1001) + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any(), any());
     }
 
     @Test
@@ -358,7 +399,7 @@ class ChatMessageControllerTest {
                         .content("{\"text\":\"안녕\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
-        then(chatMessageCommandService).should(never()).startChat(anyLong(), any());
+        then(chatMessageCommandService).should(never()).startChat(anyLong(), any(), any());
     }
 
     @Test
@@ -367,7 +408,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
                 102L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}", null, LocalDateTime.now());
-        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", null))
                 .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT, ErrorCode.AI_TIMEOUT.getMessage(), fallback));
 
         // when & then
@@ -388,7 +429,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
                 103L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_008\"}", null, LocalDateTime.now());
-        given(chatMessageCommandService.startChat(1L, "안녕"))
+        given(chatMessageCommandService.startChat(1L, "안녕", null))
                 .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN, ErrorCode.AI_CIRCUIT_OPEN.getMessage(),
                         StartChatResponse.of(77L, fallback)));
 
@@ -406,7 +447,7 @@ class ChatMessageControllerTest {
     void data가_없는_비즈니스_예외는_기존처럼_data가_null이다() throws Exception {
         // given
         authenticate(1L);
-        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", null))
                 .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
 
         // when & then

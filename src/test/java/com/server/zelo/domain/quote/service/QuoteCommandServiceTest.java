@@ -231,7 +231,7 @@ class QuoteCommandServiceTest {
     }
 
     @Test
-    void 후보를_빼면_품절로_제외한다() {
+    void 후보를_빼면_사용자가_뺀_것으로_제외한다() {
         // given
         givenSubstituteQuote(List.of(item(9L, 3000L, 1)));
 
@@ -242,7 +242,7 @@ class QuoteCommandServiceTest {
         assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L);
         assertThat(quote.substitutes()).isEmpty();
         assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
-                .containsExactly(tuple("김치", "OUT_OF_STOCK"));
+                .containsExactly(tuple("김치", "REJECTED_BY_USER"));
     }
 
     @Test

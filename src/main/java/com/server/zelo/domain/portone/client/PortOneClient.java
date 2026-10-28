@@ -13,4 +13,6 @@ public interface PortOneClient {
     PortOneBillingKey getBillingKey(String billingKey);
 
     void deleteBillingKey(String billingKey);
+
+    void payWithBillingKey(String portoneId, String billingKey, String orderName, Long amount);
 }

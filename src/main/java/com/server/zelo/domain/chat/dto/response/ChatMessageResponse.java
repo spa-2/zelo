@@ -14,6 +14,7 @@ public record ChatMessageResponse(
         @JsonRawValue
         String payload,
         QuoteCardStatus quoteCardStatus, // 견적 카드 메시지만 값이 있고 나머지는 null
+        boolean retryable, // true면 화면이 [다시 시도] 버튼을 보여 준다. 방의 마지막 메시지인 FALLBACK 중 일시적 오류만 true
         LocalDateTime createdAt
 ) {
 
@@ -28,10 +29,15 @@ public record ChatMessageResponse(
                 chatMessage.getContent(),
                 chatMessage.getPayload(),
                 quoteCardStatus,
+                false,
                 chatMessage.getCreatedAt());
     }
 
     public ChatMessageResponse withQuoteCardStatus(QuoteCardStatus quoteCardStatus) {
-        return new ChatMessageResponse(messageId, sender, content, payload, quoteCardStatus, createdAt);
+        return new ChatMessageResponse(messageId, sender, content, payload, quoteCardStatus, retryable, createdAt);
+    }
+
+    public ChatMessageResponse withRetryable(boolean retryable) {
+        return new ChatMessageResponse(messageId, sender, content, payload, quoteCardStatus, retryable, createdAt);
     }
 }

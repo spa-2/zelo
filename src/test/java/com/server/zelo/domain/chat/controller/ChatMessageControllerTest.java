@@ -74,10 +74,10 @@ class ChatMessageControllerTest {
         // given
         authenticate(1L);
         given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70"))
-                .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "안녕하세요.", null, null, LocalDateTime.now()));
+                .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "안녕하세요.", null, null, false, LocalDateTime.now()));
         given(chatMessageCommandService.startChat(1L, "안녕", "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70"))
                 .willReturn(StartChatResponse.of(77L,
-                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "안녕하세요.", null, null, LocalDateTime.now())));
+                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "안녕하세요.", null, null, false, LocalDateTime.now())));
 
         // when & then
         mockMvc.perform(post("/api/chat/rooms/10/messages")
@@ -115,7 +115,7 @@ class ChatMessageControllerTest {
         // given
         authenticate(1L);
         given(chatMessageCommandService.sendMessage(10L, 1L, "김치볶음밥 재료", null))
-                .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "김치와 밥이 필요해요.", null, null, LocalDateTime.now()));
+                .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "김치와 밥이 필요해요.", null, null, false, LocalDateTime.now()));
 
         // when & then
         mockMvc.perform(post("/api/chat/rooms/10/messages")
@@ -136,7 +136,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         given(chatMessageCommandService.sendMessage(10L, 1L, "견적", null))
                 .willReturn(new ChatMessageResponse(101L, ChatSender.ASSISTANT, "견적이에요.",
-                        "{\"type\":\"QUOTE_CARD\",\"totalAmount\":28900}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
+                        "{\"type\":\"QUOTE_CARD\",\"totalAmount\":28900}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
         // when & then
         mockMvc.perform(post("/api/chat/rooms/10/messages")
@@ -154,7 +154,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         given(chatMessageCommandService.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 2L, 0)))
                 .willReturn(new ChatMessageResponse(105L, ChatSender.ASSISTANT, "계란 (10구) 상품을 뺐어요.",
-                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
+                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
         // when & then
         mockMvc.perform(post("/api/chat/rooms/10/quote-items")
@@ -192,7 +192,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         given(chatMessageCommandService.chooseSubstitute(10L, 1L, new ChooseSubstituteRequest("quote-1", "대파", true)))
                 .willReturn(new ChatMessageResponse(106L, ChatSender.ASSISTANT, "수입 대파 (1단) 상품을 담았어요.",
-                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, LocalDateTime.now()));
+                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
         // when & then
         mockMvc.perform(post("/api/chat/rooms/10/quote-substitutes")
@@ -279,8 +279,8 @@ class ChatMessageControllerTest {
         LocalDateTime now = LocalDateTime.now();
         given(chatMessageCommandService.getMessages(10L, 1L, new SearchChatMessageCondition(50L, 2)))
                 .willReturn(GetChatMessagesResponse.of(List.of(
-                        new ChatMessageResponse(42L, ChatSender.ASSISTANT, "답변", null, null, now),
-                        new ChatMessageResponse(41L, ChatSender.USER, "질문", null, null, now)), 41L, true));
+                        new ChatMessageResponse(42L, ChatSender.ASSISTANT, "답변", null, null, false, now),
+                        new ChatMessageResponse(41L, ChatSender.USER, "질문", null, null, false, now)), 41L, true));
 
         // when & then
         mockMvc.perform(get("/api/chat/rooms/10/messages").param("before", "50").param("size", "2"))
@@ -349,7 +349,7 @@ class ChatMessageControllerTest {
         authenticate(1L);
         given(chatMessageCommandService.startChat(1L, "불고기 재료", null))
                 .willReturn(StartChatResponse.of(77L,
-                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요.", null, null, LocalDateTime.now())));
+                        new ChatMessageResponse(102L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요.", null, null, false, LocalDateTime.now())));
 
         // when & then
         mockMvc.perform(post("/api/chat/messages")
@@ -407,7 +407,7 @@ class ChatMessageControllerTest {
         // given
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
-                102L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}", null, LocalDateTime.now());
+                102L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}", null, true, LocalDateTime.now());
         given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", null))
                 .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT, ErrorCode.AI_TIMEOUT.getMessage(), fallback));
 
@@ -420,7 +420,36 @@ class ChatMessageControllerTest {
                 .andExpect(jsonPath("$.code").value("AI_002"))
                 .andExpect(jsonPath("$.message").value(ErrorCode.AI_TIMEOUT.getMessage()))
                 .andExpect(jsonPath("$.data.messageId").value(102))
-                .andExpect(jsonPath("$.data.payload.type").value("FALLBACK"));
+                .andExpect(jsonPath("$.data.payload.type").value("FALLBACK"))
+                .andExpect(jsonPath("$.data.retryable").value(true));
+    }
+
+    @Test
+    void 다시_시도는_201과_새_AI_메시지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .willReturn(new ChatMessageResponse(43L, ChatSender.ASSISTANT, "김치와 밥이 필요해요.", null, null, false,
+                        LocalDateTime.now()));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/{roomId}/messages/{messageId}/retry", 10L, 42L))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.messageId").value(43))
+                .andExpect(jsonPath("$.data.retryable").value(false));
+    }
+
+    @Test
+    void 다시_시도할_수_없는_메시지면_409와_CHAT_004를_준다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .willThrow(new BusinessException(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/{roomId}/messages/{messageId}/retry", 10L, 42L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CHAT_004"));
     }
 
     @Test
@@ -428,7 +457,7 @@ class ChatMessageControllerTest {
         // given
         authenticate(1L);
         ChatMessageResponse fallback = new ChatMessageResponse(
-                103L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_008\"}", null, LocalDateTime.now());
+                103L, ChatSender.ASSISTANT, "지금은 답변을 드리기 어려워요.", "{\"type\":\"FALLBACK\",\"code\":\"AI_008\"}", null, true, LocalDateTime.now());
         given(chatMessageCommandService.startChat(1L, "안녕", null))
                 .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN, ErrorCode.AI_CIRCUIT_OPEN.getMessage(),
                         StartChatResponse.of(77L, fallback)));

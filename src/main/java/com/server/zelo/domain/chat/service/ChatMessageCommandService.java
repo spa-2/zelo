@@ -33,6 +33,7 @@ import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -143,6 +144,24 @@ public class ChatMessageCommandService {
         return replyTo(roomId, userId, List.of(), text, message -> StartChatResponse.of(roomId, message));
     }
 
+    // FALLBACK의 [다시 시도]. 바로 앞 사용자 메시지로 답변만 다시 만들고, 사용자 메시지는 새로 저장하지 않는다.
+    // 키는 화면이 아니라 서버가 FALLBACK 메시지 ID로 정해, 두 탭에서 눌러도 FALLBACK 하나당 한 번만 처리한다
+    // (처리 중에 다시 오면 409, 끝난 뒤에 오면 첫 응답을 그대로 준다)
+    public ChatMessageResponse retryMessage(Long roomId, Long userId, Long messageId) {
+        String retryKey = "retry:" + messageId;
+        String idempotencyKey = UUID.nameUUIDFromBytes(retryKey.getBytes(StandardCharsets.UTF_8)).toString();
+        return runOnce(userId, idempotencyKey, "room:" + roomId + ":" + retryKey,
+                onCommitted -> processRetry(roomId, userId, messageId),
+                response -> roomId, Function.identity(), (savedRoomId, message) -> message);
+    }
+
+    // 저장한 것 없이 답변만 다시 만들므로 onCommitted를 부르지 않는다. 그래서 응답 없이 실패하면 키가 지워져 다시 누를 수 있다
+    private ChatMessageResponse processRetry(Long roomId, Long userId, Long messageId) {
+        ChatMessage userMessage = chatMessageService.getRetryTarget(roomId, userId, messageId);
+        List<ChatMessage> history = chatMessageService.findHistory(roomId, userMessage.getId());
+        return replyTo(roomId, userId, history, userMessage.getContent(), Function.identity());
+    }
+
     // 견적 카드는 저장된 그대로 두고, 목록을 줄 때마다 방의 현재 견적(Redis)과 주문을 보고 카드마다 상태를 붙인다.
     // 카드가 여러 장이어도 현재 견적 1번, 주문 1번만 조회하고, 카드가 없으면 둘 다 조회하지 않는다
     public GetChatMessagesResponse getMessages(Long roomId, Long userId, SearchChatMessageCondition condition) {
@@ -220,7 +239,10 @@ public class ChatMessageCommandService {
             throw new BusinessException(record.failure());
         }
         ChatMessage message = chatMessageService.getMessage(record.messageId());
-        T response = rebuild.apply(record.roomId(), ChatMessageResponse.from(message, record.quoteCardStatus()));
+        // 첫 응답을 그대로 다시 주므로 retryable도 그때처럼 계산한다. 그 뒤 새 메시지가 왔으면 재시도 API가 거절한다
+        ChatMessageResponse first = ChatMessageResponse.from(message, record.quoteCardStatus())
+                .withRetryable(chatMessageService.isRetryable(message.getPayload()));
+        T response = rebuild.apply(record.roomId(), first);
         if (record.failure() != null) {
             throw new BusinessException(record.failure(), record.failure().getMessage(), response);
         }
@@ -577,7 +599,9 @@ public class ChatMessageCommandService {
     private <T> BusinessException fallback(Long roomId, Long userId, BusinessException e,
                                            Function<ChatMessageResponse, T> toResponse) {
         ChatMessage fallbackMessage = chatMessageService.createFallbackMessage(roomId, userId, e.getErrorCode());
-        T data = toResponse.apply(ChatMessageResponse.from(fallbackMessage));
+        // 방금 저장한 FALLBACK이 방의 마지막 메시지라 오류 코드만 보고 [다시 시도] 여부를 정한다
+        T data = toResponse.apply(ChatMessageResponse.from(fallbackMessage)
+                .withRetryable(chatMessageService.isRetryable(fallbackMessage.getPayload())));
         return new BusinessException(e.getErrorCode(), e.getMessage(), data);
     }
 

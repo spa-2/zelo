@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.client.RedisConnectionException;
 import org.redisson.client.RedisTimeoutException;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -18,6 +19,18 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @Slf4j(topic = "service")
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 로그인 시도 횟수 제한
+    @ExceptionHandler(LoginLockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLoginLockedException(LoginLockedException e) {
+        HttpHeaders headers = new HttpHeaders();
+        // 몇 초 후 재시도 가능한지 명요
+        headers.add("Retry-After", String.valueOf(e.getRetryAfterSeconds()));
+        ErrorCode errorCode = e.getErrorCode();
+        return ResponseEntity.status(errorCode.getStatus())
+                .headers(headers)
+                .body(ApiResponse.error(errorCode, e.getMessage()));
+    }
 
     /**
      * 비즈니스 예외를 해당 오류 코드의 HTTP 상태와 예외 메시지를 담은 응답으로 변환한다.

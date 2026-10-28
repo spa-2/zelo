@@ -116,6 +116,7 @@ public enum ErrorCode {
     SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "AUTH_011", "이미 가입된 이메일입니다. 기존 방식으로 로그인해 주세요."),
     UNSUPPORTED_SOCIAL_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_012", "지원하지 않는 소셜 로그인입니다."),
     SOCIAL_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_013", "소셜 로그인 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요."),
+    TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_014", "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요"),
 
     //Refund
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),

@@ -120,6 +120,7 @@ server:
   tomcat:
     mbeanregistry: # 서버의 상태와 동작 정보 활성화
       enabled: true
+  forward-headers-strategy: native # tomcat이 proxy가 보내는 x-forwarded-for을 해석한다.
 
 management:
   server:

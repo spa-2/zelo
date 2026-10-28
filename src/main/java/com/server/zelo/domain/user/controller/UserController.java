@@ -13,6 +13,7 @@ import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
 import com.server.zelo.domain.user.service.UserCommandService;
 import com.server.zelo.domain.user.service.UserFacade;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -44,10 +45,10 @@ public class UserController {
     }
 
     @PostMapping("/api/users/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest) {
         // 락이 필요 없는 요청은 Facade를 거치지 않고 Command를 바로 호출함
         // 이메일 단위 락을 걸면 남의 이메일로 로그인 요청을 계속 보내 정상 사용자를 막을 수 있고, 동시에 로그인해도 마지막 저장값이 남을 뿐 문제가 없음
-        LoginResult result = userCommandService.login(request);
+        LoginResult result = userCommandService.login(request, httpServletRequest.getRemoteAddr());
 
         ResponseCookie refreshTokenCookie = refreshTokenCookieFactory.create(result.refreshToken());
 

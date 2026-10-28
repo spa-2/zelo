@@ -1256,7 +1256,7 @@ class ChatMessageCommandServiceTest {
     }
 
     @Test
-    void 예상하지_못한_오류도_키를_지운다() {
+    void 사용자_메시지를_저장하기_전에_예상하지_못한_오류가_나면_키를_지운다() {
         // given
         given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
         given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willThrow(new IllegalStateException("redis down"));
@@ -1265,6 +1265,83 @@ class ChatMessageCommandServiceTest {
         assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
                 .isInstanceOf(IllegalStateException.class);
         then(chatIdempotencyRepository).should().delete(1L, KEY);
+    }
+
+    @Test
+    void 키_삭제가_실패해도_원래_예외를_던진다() {
+        // given: 방 권한 오류(커밋 전 실패)로 키를 지우려는데 Redis도 실패한다
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕"))
+                .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+        willThrow(new IllegalStateException("redis down")).given(chatIdempotencyRepository).delete(1L, KEY);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+    }
+
+    @Test
+    void 사용자_메시지를_저장한_뒤_응답_없이_실패하면_키를_지우지_않고_그_오류로_끝난_것으로_저장한다() {
+        // given: 사용자 메시지는 커밋됐고, 그 뒤 재료 목록 조회에서 오류(FALLBACK이 아닌 실패)
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
+        given(productService.findIngredientUnits()).willThrow(new BusinessException(ErrorCode.SERVICE_UNAVAILABLE));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SERVICE_UNAVAILABLE));
+        then(chatIdempotencyRepository).should()
+                .save(1L, KEY, ChatIdempotencyRecord.failed(hashUtil.hash("room:10:안녕"), ErrorCode.SERVICE_UNAVAILABLE));
+        then(chatIdempotencyRepository).should(never()).delete(any(), any());
+    }
+
+    @Test
+    void 사용자_메시지를_저장한_뒤_예상하지_못한_오류가_나면_서버_오류로_끝난_것으로_저장한다() {
+        // given
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
+        given(productService.findIngredientUnits()).willThrow(new IllegalStateException("db down"));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
+                .isInstanceOf(IllegalStateException.class);
+        then(chatIdempotencyRepository).should()
+                .save(1L, KEY, ChatIdempotencyRecord.failed(hashUtil.hash("room:10:안녕"), ErrorCode.INTERNAL_ERROR));
+        then(chatIdempotencyRepository).should(never()).delete(any(), any());
+    }
+
+    @Test
+    void 새_대화에서_방을_만든_뒤_실패하면_같은_키로_방을_또_만들지_않게_실패로_저장한다() {
+        // given
+        ChatMessage firstMessage = userMessage(77L, 5L, "불고기 재료");
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        given(chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료")).willReturn(firstMessage);
+        given(productService.findIngredientUnits()).willThrow(new BusinessException(ErrorCode.SERVICE_UNAVAILABLE));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.startChat(1L, "불고기 재료", KEY))
+                .isInstanceOf(BusinessException.class);
+        then(chatIdempotencyRepository).should()
+                .save(1L, KEY, ChatIdempotencyRecord.failed(hashUtil.hash("start:불고기 재료"), ErrorCode.SERVICE_UNAVAILABLE));
+    }
+
+    @Test
+    void 응답_없이_실패로_끝난_키가_다시_오면_같은_오류를_던지고_사용자_메시지를_또_저장하지_않는다() {
+        // given
+        String hash = hashUtil.hash("room:10:안녕");
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, KEY))
+                .willReturn(Optional.of(ChatIdempotencyRecord.failed(hash, ErrorCode.SERVICE_UNAVAILABLE)));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SERVICE_UNAVAILABLE);
+                    assertThat(exception.getData()).isNull();
+                });
+        then(chatMessageService).shouldHaveNoInteractions();
     }
 
     @Test

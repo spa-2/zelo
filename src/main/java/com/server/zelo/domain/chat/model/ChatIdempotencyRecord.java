@@ -10,9 +10,9 @@ public record ChatIdempotencyRecord(
         boolean done, // false면 아직 처리 중
         String requestHash, // 같은 키로 다른 요청(방·문장)이 오면 거절하려고 둔다
         Long roomId, // 새 대화는 이때 만든 방이라 응답에 다시 담아야 한다
-        Long messageId, // 응답한 AI 메시지(답변·카드 또는 FALLBACK 고정 문구)
+        Long messageId, // 응답한 AI 메시지(답변·카드 또는 FALLBACK 고정 문구). 응답 없이 실패로 끝났으면 null
         QuoteCardStatus quoteCardStatus, // 첫 응답에 붙었던 카드 상태
-        ErrorCode failure // FALLBACK으로 끝났으면 그 오류 코드, 성공이면 null
+        ErrorCode failure // 실패로 끝났으면 그 오류 코드(FALLBACK 포함), 성공이면 null
 ) {
 
     public static ChatIdempotencyRecord processing(String requestHash) {
@@ -23,5 +23,10 @@ public record ChatIdempotencyRecord(
                                              ErrorCode failure) {
         return new ChatIdempotencyRecord(true, requestHash, roomId, message.messageId(),
                 message.quoteCardStatus(), failure);
+    }
+
+    // 사용자 메시지(새 대화면 방까지)는 저장했는데 응답 메시지 없이 실패한 경우. 같은 키로 다시 와도 다시 저장하지 않고 같은 오류를 준다
+    public static ChatIdempotencyRecord failed(String requestHash, ErrorCode failure) {
+        return new ChatIdempotencyRecord(true, requestHash, null, null, null, failure);
     }
 }

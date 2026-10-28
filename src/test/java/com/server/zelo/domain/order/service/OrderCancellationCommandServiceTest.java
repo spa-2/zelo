@@ -329,7 +329,7 @@ class OrderCancellationCommandServiceTest {
             payment.startConfirm();
         }
         if (status == PaymentStatus.PAID) {
-            payment.complete(7_000L, LocalDateTime.of(2030, 1, 2, 12, 0));
+            payment.complete(7_000L, LocalDateTime.of(2030, 1, 2, 12, 0), "TEST_CARD");
         }
         return payment;
     }

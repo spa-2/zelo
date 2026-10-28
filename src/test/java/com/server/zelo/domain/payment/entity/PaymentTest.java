@@ -46,11 +46,12 @@ class PaymentTest {
         payment.startConfirm();
 
         // when
-        payment.complete(10_000L, paidAt);
+        payment.complete(10_000L, paidAt, "TEST_CARD");
 
         // then
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(payment.getPgAmount()).isEqualTo(10_000L);
+        assertThat(payment.getPaymentMethodName()).isEqualTo("TEST_CARD");
         assertThat(payment.getPaidAt()).isEqualTo(paidAt);
         assertThat(payment.isConfirmed()).isTrue();
     }
@@ -90,7 +91,7 @@ class PaymentTest {
         Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
 
         // when // then
-        assertThatThrownBy(() -> payment.complete(10_000L, LocalDateTime.now()))
+        assertThatThrownBy(() -> payment.complete(10_000L, LocalDateTime.now() ,"TEST_CARD"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_PAYMENT_STATUS);
@@ -114,7 +115,7 @@ class PaymentTest {
         payment.startConfirm();
 
         // when
-        payment.complete(10_000L, LocalDateTime.now());
+        payment.complete(10_000L, LocalDateTime.now(), "TEST_CARD");
 
         // then
         assertThat(payment.isPaid()).isTrue();

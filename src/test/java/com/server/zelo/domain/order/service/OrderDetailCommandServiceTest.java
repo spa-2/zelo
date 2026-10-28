@@ -292,7 +292,7 @@ class OrderDetailCommandServiceTest {
         Payment payment = Payment.of(ORDER_ID, "payment-detail-169", 3_000L);
         ReflectionTestUtils.setField(payment, "id", PAYMENT_ID);
         payment.startConfirm();
-        payment.complete(3_000L, PAID_AT);
+        payment.complete(3_000L, PAID_AT, "TEST_CARD");
         return payment;
     }
 

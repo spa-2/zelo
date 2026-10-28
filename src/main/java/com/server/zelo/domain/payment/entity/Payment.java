@@ -47,6 +47,9 @@ public class Payment extends BaseTimeEntity {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    @Column(name = "payment_method_name", length = 50)
+    private String paymentMethodName;
+
     private Payment(Long orderId, String portoneId, Long amount) {
         this.orderId = orderId;
         this.portoneId = portoneId;
@@ -62,10 +65,11 @@ public class Payment extends BaseTimeEntity {
         changeStatus(PaymentStatus.CONFIRM_PENDING);
     }
 
-    public void complete(Long pgAmount, LocalDateTime paidAt) {
+    public void complete(Long pgAmount, LocalDateTime paidAt, String paymentMethodName) {
         changeStatus(PaymentStatus.PAID);
         this.pgAmount = pgAmount;
         this.paidAt = paidAt;
+        this.paymentMethodName = paymentMethodName;
     }
 
     public void fail() {

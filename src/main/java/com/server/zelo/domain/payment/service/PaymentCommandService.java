@@ -66,7 +66,7 @@ public class PaymentCommandService {
 
         if (pgPayment.isPaid() && payment.isAmountMatched(pgPayment.amount())) {
             transactionOperations.executeWithoutResult(status -> {
-                paymentService.complete(portoneId, pgPayment.amount(), pgPayment.paidAt());
+                paymentService.complete(portoneId, pgPayment.amount(), pgPayment.paidAt(), pgPayment.methodName());
                 orderCommandService.completePayment(orderId);
                 createDelivery(orderId);
             });

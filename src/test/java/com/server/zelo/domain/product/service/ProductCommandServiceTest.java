@@ -21,7 +21,10 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class ProductCommandServiceTest {
@@ -31,6 +34,9 @@ class ProductCommandServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    @Mock
+    private PopularKeywordService popularKeywordService;
 
     @InjectMocks
     private ProductCommandService productCommandService;
@@ -52,6 +58,21 @@ class ProductCommandServiceTest {
         assertThat(result.content())
                 .extracting(GetProductSummaryResponse::name, GetProductSummaryResponse::availableQuantity)
                 .containsExactly(tuple("백김치 1kg", 7), tuple("포기김치 500g", 0));
+    }
+
+    @Test
+    void 첫_페이지_검색만_인기_검색어로_센다() {
+        // given
+        SearchProductCondition first = new SearchProductCondition("김치", null, null, null, 0, null);
+        SearchProductCondition next = new SearchProductCondition("김치", null, null, null, 1, null);
+        given(productService.searchProducts(any())).willReturn(new PageImpl<>(List.of()));
+
+        // when
+        productCommandService.searchProducts(first);
+        productCommandService.searchProducts(next);
+
+        // then
+        then(popularKeywordService).should(times(1)).record("김치");
     }
 
     @Test

@@ -21,9 +21,14 @@ public class ProductCommandService {
 
     private final ProductService productService;
     private final InventoryService inventoryService;
+    private final PopularKeywordService popularKeywordService;
 
     @Transactional(readOnly = true)
     public PageResponse<GetProductSummaryResponse> searchProducts(SearchProductCondition condition) {
+        // 다음 페이지로 넘길 때마다 세면 많이 넘겨 본 검색어가 올라가서 첫 페이지만 셈
+        if (condition.page() == 0) {
+            popularKeywordService.record(condition.keyword());
+        }
         Page<Product> products = productService.searchProducts(condition);
         List<Long> productIds = products.getContent().stream().map(Product::getId).toList();
         Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);

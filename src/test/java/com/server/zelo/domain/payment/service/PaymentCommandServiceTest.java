@@ -12,6 +12,8 @@ import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
+import com.server.zelo.domain.payment.entity.PaymentMethod;
+import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
@@ -39,6 +41,9 @@ import static org.mockito.Mockito.never;
 @ExtendWith(MockitoExtension.class)
 class PaymentCommandServiceTest {
 
+    private static final Long PAYMENT_METHOD_ID = 3L;
+    private static final String BILLING_KEY = "billing-key-1";
+    private static final String ORDER_NAME = "티셔츠 외 1건";
     private static final Long USER_ID = 1L;
     private static final Long ORDER_ID = 10L;
     private static final Long AMOUNT = 32_000L;
@@ -46,6 +51,7 @@ class PaymentCommandServiceTest {
     private static final LocalDateTime PAID_AT = LocalDateTime.of(2026, 10, 19, 12, 0);
     private static final ShippingAddress SHIPPING_ADDRESS =
             ShippingAddress.of("홍길동", "010-1234-5678", "12345", "서울시 강남구");
+
 
     @Mock
     private OrderService orderService;
@@ -65,13 +71,16 @@ class PaymentCommandServiceTest {
     @Mock
     private ChatMessageService chatMessageService;
 
+    @Mock
+    private PaymentMethodService paymentMethodService;
+
     private PaymentCommandService paymentCommandService;
 
     // 트랜잭션 없이 콜백만 바로 실행해서 결제 확인 흐름만 검증한다
     @BeforeEach
     void setUp() {
         paymentCommandService = new PaymentCommandService(orderService, portOneClient, paymentService,
-                deliveryService, chatMessageService, orderCommandService,
+                deliveryService, chatMessageService, orderCommandService, paymentMethodService,
                 TransactionOperations.withoutTransaction());
     }
 
@@ -364,6 +373,113 @@ class PaymentCommandServiceTest {
         assertThat(card.reason()).isEqualTo(PaymentCardPayload.USER_CANCELED);
         assertThat(card.paidAmount()).isNull();
         assertThat(card.paidAt()).isNull();
+    }
+
+    @Test
+    void 저장된_카드로_결제하면_빌링키로_결제를_요청하고_포트원_재조회로_완료한다() {
+        // given
+        Payment payment = givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
+
+        // when
+        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(paymentService).should().startBillingPayment(PORTONE_ID);
+        then(portOneClient).should().payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+        then(paymentService).should().complete(PORTONE_ID, AMOUNT, PAID_AT);
+    }
+
+    @Test
+    void 카드가_거절되면_결제를_실패_처리한다() {
+        // given
+        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED))
+                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+
+        // when
+        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID);
+        then(orderCommandService).should().failPaymentIfPossible(ORDER_ID);
+    }
+
+    @Test
+    void 빌링키_결제_응답이_없으면_예외를_던지고_실패_처리하지_않는다() {
+        // given
+        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        willThrow(new BusinessException(ErrorCode.PG_TIMEOUT))
+                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+
+        // when // then
+        assertThatThrownBy(() -> paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        then(paymentService).should(never()).fail(any());
+    }
+
+    @Test
+    void 결제_대기_중이_아닌_주문이면_예외가_발생하고_결제를_요청하지_않는다() {
+        // given
+        givenBillingPayment(OrderStatus.CANCELED);
+
+        // when // then
+        assertThatThrownBy(() -> paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_ORDER_STATUS);
+        then(paymentService).should(never()).startBillingPayment(any());
+        then(portOneClient).should(never()).payWithBillingKey(any(), any(), any(), any());
+    }
+
+    @Test
+    void 다른_사용자의_카드면_예외가_발생하고_결제를_요청하지_않는다() {
+        // given
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(paymentMethodService.getOwnedMethod(PAYMENT_METHOD_ID, USER_ID))
+                .willThrow(new BusinessException(ErrorCode.PAYMENT_METHOD_NOT_FOUND));
+
+        // when // then
+        assertThatThrownBy(() -> paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PAYMENT_METHOD_NOT_FOUND);
+        then(portOneClient).should(never()).payWithBillingKey(any(), any(), any(), any());
+    }
+
+    @Test
+    void 이미_진행된_결제면_예외가_발생하고_결제를_요청하지_않는다() {
+        // given
+        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        given(paymentService.startBillingPayment(PORTONE_ID))
+                .willThrow(new BusinessException(ErrorCode.ALREADY_PROCESSED_PAYMENT));
+
+        // when // then
+        assertThatThrownBy(() -> paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED_PAYMENT);
+        then(portOneClient).should(never()).payWithBillingKey(any(), any(), any(), any());
+    }
+
+    private Payment givenBillingPayment(OrderStatus orderStatus) {
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(payment);
+        given(paymentMethodService.getOwnedMethod(PAYMENT_METHOD_ID, USER_ID))
+                .willReturn(PaymentMethod.of(USER_ID, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234"));
+        Order order = mock(Order.class);
+        given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+        given(order.getStatus()).willReturn(orderStatus);
+        if (orderStatus == OrderStatus.PAYMENT_PENDING) {
+            given(order.getOrderName()).willReturn(ORDER_NAME);
+        }
+        return payment;
     }
 
     // 결제 반영 전에 주문이 결제 대기인지 확인하므로 주문 상태를 준비한다

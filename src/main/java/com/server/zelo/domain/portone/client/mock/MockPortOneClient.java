@@ -54,4 +54,9 @@ public class MockPortOneClient implements PortOneClient {
     public void deleteBillingKey(String billingKey) {
         log.info("[FAKE] 포트원 빌링키 삭제");
     }
+    
+    @Override
+    public void payWithBillingKey(String portoneId, String billingKey, String orderName, Long amount) {
+        log.info("[FAKE] 포트원 빌링키 결제 portoneId={}, amount={}", portoneId, amount);
+    }
 }

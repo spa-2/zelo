@@ -18,8 +18,6 @@ class MockPortOneClientTest {
     @InjectMocks
     private MockPortOneClient mockPortOneClient;
 
-    @Mock
-    private PaymentRepository paymentRepository;
 
     @Test
     void 가짜_모드에서는_빌링키_끝의_사용자_ID를_발급_고객으로_보고_카드로_반환한다() {
@@ -38,6 +36,13 @@ class MockPortOneClientTest {
     void 가짜_모드에서_빌링키를_삭제하면_예외_없이_끝난다() {
         // when // then
         assertThatCode(() -> mockPortOneClient.deleteBillingKey("fake-billing-key-1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 가짜_모드에서_빌링키_결제를_요청하면_예외_없이_끝난다() {
+        // when // then
+        assertThatCode(() -> mockPortOneClient.payWithBillingKey("payment-1", "fake-billing-key-1", "티셔츠 외 1건", 15000L))
                 .doesNotThrowAnyException();
     }
 }

@@ -108,4 +108,10 @@ public class Payment extends BaseTimeEntity {
             throw new BusinessException(ErrorCode.PAYMENT_NOT_REFUNDABLE);
         }
     }
+
+    public void validateReady() {
+        if (status != PaymentStatus.READY) {
+            throw new BusinessException(ErrorCode.ALREADY_PROCESSED_PAYMENT);
+        }
+    }
 }

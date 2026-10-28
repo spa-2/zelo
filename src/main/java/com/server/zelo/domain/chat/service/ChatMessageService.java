@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -34,9 +35,17 @@ public class ChatMessageService {
     private static final String FALLBACK_CONTENT = "지금은 답변을 드리기 어려워요. 잠시 후 다시 말씀해 주세요.";
     private static final String FALLBACK_TYPE = "FALLBACK";
     private static final String FALLBACK_PAYLOAD_FORMAT = "{\"type\":\"" + FALLBACK_TYPE + "\",\"code\":\"%s\"}";
+    // [다시 시도]를 보여 줄 FALLBACK 오류. 같은 요청을 다시 보내면 될 수 있는 일시적 오류(시간 초과, 429, 5xx, 연결 실패,
+    // 빈 응답, 서킷 열림)만 둔다. 요청이 거절됐거나(AI_006) 답을 읽지 못한 것(AI_009), 원인을 모르는 것(AI_001)은 다시 해도 같다
+    private static final Set<String> RETRYABLE_CODES = Set.of(
+            ErrorCode.AI_TIMEOUT.getCode(),
+            ErrorCode.AI_RATE_LIMITED.getCode(),
+            ErrorCode.AI_SERVER_ERROR.getCode(),
+            ErrorCode.AI_NETWORK_ERROR.getCode(),
+            ErrorCode.AI_EMPTY_RESPONSE.getCode(),
+            ErrorCode.AI_CIRCUIT_OPEN.getCode());
     // 결제 결과 메시지. 취소는 사유마다 사용자가 알아야 할 내용(환불 여부)이 달라 문장을 나눈다.
-    // 이 문장은 LLM에 system 역할로 가서 규칙처럼 읽히므로, 주문명·상품명처럼 사용자나 LLM에서 온 글자를 넣지 않는다
-    // (그런 값은 화면용 payload에만 담는다)
+    // 이 문장은 LLM에 system 역할로 가서 규칙처럼 읽히므로, 주문명·상품명처럼 사용자나 LLM에서 온 글자를 넣지 않는다 (그런 값은 화면용 payload에만 담는다)
     private static final String PAYMENT_COMPLETED_CONTENT = "결제가 완료됐어요.";
     private static final String PAYMENT_FAILED_CONTENT = "결제에 실패했어요.";
     private static final String PAYMENT_CANCELED_CONTENT = "결제를 취소했어요.";
@@ -96,10 +105,28 @@ public class ChatMessageService {
         List<ChatMessage> page = hasNext ? fetched.subList(0, size) : fetched;
         Long nextCursor = hasNext ? page.getLast().getId() : null;
 
-        List<ChatMessageResponse> messages = page.stream()
+        List<ChatMessageResponse> messages = new ArrayList<>(page.stream()
                 .map(ChatMessageResponse::from)
-                .toList();
+                .toList());
+        // 다시 시도는 방의 마지막 메시지만 할 수 있어, 가장 최근 메시지가 담기는 첫 페이지의 맨 앞만 본다
+        if (condition.before() == null && !page.isEmpty() && isRetryable(page.getFirst().getPayload())) {
+            messages.set(0, messages.getFirst().withRetryable(true));
+        }
         return GetChatMessagesResponse.of(messages, nextCursor, hasNext);
+    }
+
+    // [다시 시도]로 답변을 다시 만들 사용자 메시지. 누른 FALLBACK(messageId)이 아직 방의 마지막 메시지이고
+    // 일시적 오류일 때만 준다. 그 사이 새 메시지가 왔으면 화면의 버튼이 오래된 것이라 거절한다
+    @Transactional(readOnly = true)
+    public ChatMessage getRetryTarget(Long roomId, Long userId, Long messageId) {
+        chatRoomService.getOwnedChatRoom(roomId, userId);
+        boolean retryable = chatMessageRepository.findByRoomIdOrderByIdDesc(roomId, Limit.of(1)).stream()
+                .anyMatch(last -> last.getId().equals(messageId) && isRetryable(last.getPayload()));
+        if (!retryable) {
+            throw new BusinessException(ErrorCode.CHAT_RETRY_NOT_ALLOWED);
+        }
+        return chatMessageRepository.findFirstByRoomIdAndSenderAndIdLessThanOrderByIdDesc(roomId, ChatSender.USER, messageId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
     }
 
     // 멱등 키로 첫 응답을 다시 만들 때 쓴다. 채팅 메시지는 지우지 않으므로 없으면 저장 상태가 잘못된 것이다
@@ -170,6 +197,16 @@ public class ChatMessageService {
             return Optional.empty();
         }
         return Optional.of(node.path("quoteId").asString());
+    }
+
+    // 다시 시도할 수 있는 FALLBACK인지. 방의 마지막 메시지인지는 부르는 쪽이 본다
+    public boolean isRetryable(String payload) {
+        if (payload == null) {
+            return false;
+        }
+        JsonNode node = jsonMapper.readTree(payload);
+        return FALLBACK_TYPE.equals(node.path("type").asString(""))
+                && RETRYABLE_CODES.contains(node.path("code").asString(""));
     }
 
     // DB(jsonb)가 키 순서·공백을 바꿔 돌려주므로 문자열 비교가 아니라 JSON의 type 값으로 본다

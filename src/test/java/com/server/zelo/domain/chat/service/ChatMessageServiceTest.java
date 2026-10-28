@@ -2,6 +2,7 @@ package com.server.zelo.domain.chat.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -439,10 +440,147 @@ class ChatMessageServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_ERROR));
     }
 
+    @ParameterizedTest
+    @CsvSource({"AI_002", "AI_003", "AI_004", "AI_005", "AI_007", "AI_008"})
+    void 일시적_오류의_고정_문구는_다시_시도할_수_있다(String code) {
+        // when & then: DB(jsonb)는 키 순서와 공백을 바꿔 돌려준다
+        assertThat(chatMessageService.isRetryable("{\"code\": \"" + code + "\", \"type\": \"FALLBACK\"}")).isTrue();
+    }
+
+    @Test
+    void 다시_해도_같은_오류의_고정_문구나_고정_문구가_아닌_메시지는_다시_시도할_수_없다() {
+        // when & then
+        assertThat(chatMessageService.isRetryable("{\"type\":\"FALLBACK\",\"code\":\"AI_001\"}")).isFalse();
+        assertThat(chatMessageService.isRetryable("{\"type\":\"FALLBACK\",\"code\":\"AI_006\"}")).isFalse();
+        assertThat(chatMessageService.isRetryable("{\"type\":\"FALLBACK\",\"code\":\"AI_009\"}")).isFalse();
+        assertThat(chatMessageService.isRetryable("{\"type\":\"QUOTE_CARD\",\"code\":\"AI_002\"}")).isFalse();
+        assertThat(chatMessageService.isRetryable(null)).isFalse();
+    }
+
+    @Test
+    void 첫_페이지의_가장_최근_메시지가_다시_시도할_수_있는_고정_문구면_retryable을_true로_준다() {
+        // given
+        ChatMessage fallback = message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}");
+        ChatMessage question = message(41L, ChatSender.USER, null);
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(31))).willReturn(List.of(fallback, question));
+
+        // when
+        GetChatMessagesResponse response =
+                chatMessageService.getMessages(10L, 1L, new SearchChatMessageCondition(null, null));
+
+        // then
+        assertThat(response.messages()).extracting(ChatMessageResponse::messageId, ChatMessageResponse::retryable)
+                .containsExactly(tuple(42L, true), tuple(41L, false));
+    }
+
+    @Test
+    void 가장_최근_메시지가_아닌_고정_문구는_retryable이_false다() {
+        // given: 고정 문구 뒤에 사용자가 새 메시지를 보냈다
+        ChatMessage question = message(43L, ChatSender.USER, null);
+        ChatMessage fallback = message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}");
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(31))).willReturn(List.of(question, fallback));
+
+        // when
+        GetChatMessagesResponse response =
+                chatMessageService.getMessages(10L, 1L, new SearchChatMessageCondition(null, null));
+
+        // then
+        assertThat(response.messages()).extracting(ChatMessageResponse::retryable).containsExactly(false, false);
+    }
+
+    @Test
+    void 다음_페이지는_방의_마지막_메시지가_없어_retryable이_false다() {
+        // given
+        ChatMessage fallback = message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}");
+        given(chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(10L, 50L, Limit.of(31)))
+                .willReturn(List.of(fallback));
+
+        // when
+        GetChatMessagesResponse response =
+                chatMessageService.getMessages(10L, 1L, new SearchChatMessageCondition(50L, null));
+
+        // then
+        assertThat(response.messages()).extracting(ChatMessageResponse::retryable).containsExactly(false);
+    }
+
+    @Test
+    void 다시_시도하면_고정_문구_앞의_사용자_메시지를_준다() {
+        // given
+        ChatMessage fallback = message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}");
+        ChatMessage question = message(40L, ChatSender.USER, null);
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(1))).willReturn(List.of(fallback));
+        given(chatMessageRepository.findFirstByRoomIdAndSenderAndIdLessThanOrderByIdDesc(10L, ChatSender.USER, 42L))
+                .willReturn(Optional.of(question));
+
+        // when
+        ChatMessage result = chatMessageService.getRetryTarget(10L, 1L, 42L);
+
+        // then
+        assertThat(result).isEqualTo(question);
+    }
+
+    @Test
+    void 고정_문구_뒤에_새_메시지가_있으면_다시_시도할_수_없다() {
+        // given
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(1)))
+                .willReturn(List.of(message(43L, ChatSender.USER, null)));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.getRetryTarget(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+        then(chatMessageRepository).should(never()).findFirstByRoomIdAndSenderAndIdLessThanOrderByIdDesc(any(), any(), any());
+    }
+
+    @Test
+    void 다시_해도_같은_오류의_고정_문구는_다시_시도할_수_없다() {
+        // given
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(1)))
+                .willReturn(List.of(message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_006\"}")));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.getRetryTarget(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+    }
+
+    @Test
+    void 고정_문구_앞에_사용자_메시지가_없으면_다시_시도할_수_없다() {
+        // given
+        given(chatMessageRepository.findByRoomIdOrderByIdDesc(10L, Limit.of(1)))
+                .willReturn(List.of(message(42L, ChatSender.ASSISTANT, "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}")));
+        given(chatMessageRepository.findFirstByRoomIdAndSenderAndIdLessThanOrderByIdDesc(10L, ChatSender.USER, 42L))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.getRetryTarget(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+    }
+
+    @Test
+    void 다른_사용자의_방이면_다시_시도할_메시지를_조회하지_않는다() {
+        // given
+        given(chatRoomService.getOwnedChatRoom(10L, 2L))
+                .willThrow(new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.getRetryTarget(10L, 2L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+        then(chatMessageRepository).should(never()).findByRoomIdOrderByIdDesc(any(), any());
+    }
+
     private PaymentCardPayload paymentCard(PaymentStatus status, String reason) {
         return new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
                 List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),
                 12_000L, status, reason, LocalDateTime.of(2026, 10, 24, 12, 0));
+    }
+
+    private ChatMessage message(Long id, ChatSender sender, String payload) {
+        ChatMessage chatMessage = ChatMessage.of(10L, sender, "메시지 " + id, payload);
+        ReflectionTestUtils.setField(chatMessage, "id", id);
+        return chatMessage;
     }
 
     private List<ChatMessage> messagesWithIds(Long... ids) {

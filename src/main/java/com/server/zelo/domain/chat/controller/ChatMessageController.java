@@ -63,6 +63,16 @@ public class ChatMessageController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 
+    // FALLBACK 메시지의 [다시 시도]. 바로 앞 사용자 메시지로 답변을 다시 만들어 새 AI 메시지로 돌려준다
+    @PostMapping("/rooms/{roomId}/messages/{messageId}/retry")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> retryMessage(
+            @Auth AuthUser authUser,
+            @PathVariable Long roomId,
+            @PathVariable Long messageId) {
+        ChatMessageResponse response = chatMessageCommandService.retryMessage(roomId, authUser.id(), messageId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
     // 견적 카드의 ✕, −/+ 버튼. 결과를 AI 메시지(새 카드 또는 안내 문장)로 저장해 돌려준다
     @PostMapping("/rooms/{roomId}/quote-items")
     public ResponseEntity<ApiResponse<ChatMessageResponse>> updateQuoteItem(

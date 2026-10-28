@@ -30,6 +30,7 @@ import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -303,6 +304,58 @@ class ChatQuoteApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("CHAT_003"));
     }
 
+    @Test
+    void LLM이_실패한_뒤_다시_시도하면_사용자_메시지를_또_저장하지_않고_두_번_눌러도_한_번만_답한다() throws Exception {
+        // given: 일반 질문이 LLM 서버 오류로 고정 문구(AI_004)로 끝났다
+        Long roomId = createRoom();
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.GENERAL_QUESTION);
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+        String failed = send(roomId, "보관은 어떻게 해?")
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("AI_004"))
+                .andExpect(jsonPath("$.data.retryable").value(true))
+                .andReturn().getResponse().getContentAsString();
+        Integer fallbackId = JsonPath.read(failed, "$.data.messageId");
+        quoteKeys.add(retryKey(fallbackId));
+        getMessages(roomId).andExpect(jsonPath("$.data.messages[0].retryable").value(true));
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
+
+        // when: 두 탭에서 [다시 시도]를 눌렀다
+        String first = retry(roomId, fallbackId).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String second = retry(roomId, fallbackId).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        // then: 같은 답변이고, 방에는 사용자 메시지 1개 + 고정 문구 + 답변 1개만 있으며 버튼은 사라진다
+        assertThat(JsonPath.<Integer>read(second, "$.data.messageId")).isEqualTo(JsonPath.<Integer>read(first, "$.data.messageId"));
+        getMessages(roomId)
+                .andExpect(jsonPath("$.data.messages.length()").value(3))
+                .andExpect(jsonPath("$.data.messages[0].sender").value("ASSISTANT"))
+                .andExpect(jsonPath("$.data.messages[0].retryable").value(false))
+                .andExpect(jsonPath("$.data.messages[1].messageId").value(fallbackId))
+                .andExpect(jsonPath("$.data.messages[1].retryable").value(false))
+                .andExpect(jsonPath("$.data.messages[2].sender").value("USER"));
+    }
+
+    @Test
+    void 고정_문구_뒤에_새_메시지를_보냈으면_다시_시도는_409와_CHAT_004를_돌려준다() throws Exception {
+        // given
+        Long roomId = createRoom();
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.GENERAL_QUESTION);
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+        String failed = send(roomId, "보관은 어떻게 해?").andExpect(status().isBadGateway())
+                .andReturn().getResponse().getContentAsString();
+        Integer fallbackId = JsonPath.read(failed, "$.data.messageId");
+        quoteKeys.add(retryKey(fallbackId));
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
+        send(roomId, "유통기한은?").andExpect(status().isCreated());
+
+        // when & then
+        retry(roomId, fallbackId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CHAT_004"));
+    }
+
     private Long createRoom() {
         return chatRoomRepository.save(ChatRoom.of(OWNER_ID)).getId();
     }
@@ -327,6 +380,23 @@ class ChatQuoteApiIntegrationTest {
                 .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"text\":\"" + text + "\"}"));
+    }
+
+    private ResultActions retry(Long roomId, Integer messageId) throws Exception {
+        return mockMvc.perform(post("/api/chat/rooms/{roomId}/messages/{messageId}/retry", roomId, messageId)
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC)));
+    }
+
+    private ResultActions getMessages(Long roomId) throws Exception {
+        return mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId)
+                        .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC)))
+                .andExpect(status().isOk());
+    }
+
+    // 서버가 [다시 시도]마다 FALLBACK 메시지 ID로 만드는 멱등 키
+    private static String retryKey(Integer messageId) {
+        String key = UUID.nameUUIDFromBytes(("retry:" + messageId).getBytes(StandardCharsets.UTF_8)).toString();
+        return "chat:idempotency:" + OWNER_ID + ":" + key;
     }
 
     private void saveCurrentQuote(Quote quote) {

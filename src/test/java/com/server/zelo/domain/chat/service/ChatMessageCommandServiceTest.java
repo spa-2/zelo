@@ -55,11 +55,13 @@ import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,6 +91,8 @@ class ChatMessageCommandServiceTest {
     private static final String NOT_IN_QUOTE = "견적 카드에 없는 상품이라 고치지 못했어요. 카드에 있는 상품 이름으로 다시 말씀해 주세요.";
     private static final String NOT_ENOUGH_STOCK = "재고가 부족해서 그 수량으로 바꿀 수 없어요. 수량을 줄여서 다시 말씀해 주세요.";
     private static final String KEY = "7f3c2a9e-1b4d-4c8a-9e6f-2d5b8a1c3e70";
+    // [다시 시도]는 서버가 FALLBACK 메시지 ID(42)로 키를 만든다
+    private static final String RETRY_KEY = UUID.nameUUIDFromBytes("retry:42".getBytes(StandardCharsets.UTF_8)).toString();
     private static final String QUOTE_CHANGED = "견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요.";
     private static final String QUOTE_IN_PROGRESS = "이 채팅방의 견적을 처리하고 있는 다른 요청이 있어요. 잠시 후 다시 말씀해 주세요.";
 
@@ -1571,8 +1575,123 @@ class ChatMessageCommandServiceTest {
         then(orderService).should(never()).findOrderedQuoteIds(any());
     }
 
+    @Test
+    void 다시_시도하면_사용자_메시지를_새로_저장하지_않고_앞_사용자_메시지로_답변만_다시_만든다() {
+        // given: 41번 "안녕"의 답이 42번 고정 문구로 끝난 방
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(true);
+        given(chatMessageService.getRetryTarget(10L, 1L, 42L)).willReturn(userMessage(10L, 41L, "안녕"));
+        given(chatMessageService.findHistory(10L, 41L)).willReturn(List.of());
+        given(llmGateway.explain(anyString(), anyList(), eq("안녕"))).willReturn(LlmReply.of("답변", "gpt-test", 1, 1));
+        given(chatMessageService.createAssistantMessage(10L, 1L, "답변")).willReturn(assistantMessage(43L, "답변", null));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.retryMessage(10L, 1L, 42L);
+
+        // then
+        assertThat(response.messageId()).isEqualTo(43L);
+        assertThat(response.content()).isEqualTo("답변");
+        then(chatMessageService).should(never()).createUserMessage(any(), any(), any());
+        ArgumentCaptor<ChatIdempotencyRecord> saved = ArgumentCaptor.forClass(ChatIdempotencyRecord.class);
+        then(chatIdempotencyRepository).should().save(eq(1L), eq(RETRY_KEY), saved.capture());
+        assertThat(saved.getValue().messageId()).isEqualTo(43L);
+        assertThat(saved.getValue().requestHash()).isEqualTo(hashUtil.hash("room:10:retry:42"));
+    }
+
+    @Test
+    void 같은_고정_문구의_다시_시도가_처리_중이면_409를_던지고_LLM을_다시_부르지_않는다() {
+        // given: 두 탭에서 같은 [다시 시도]를 눌렀다
+        String hash = hashUtil.hash("room:10:retry:42");
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, RETRY_KEY)).willReturn(Optional.of(ChatIdempotencyRecord.processing(hash)));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TIMEOUT_EXCEPTION));
+        then(chatMessageService).shouldHaveNoInteractions();
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 끝난_다시_시도가_또_오면_그때_만든_답변을_돌려주고_LLM을_다시_부르지_않는다() {
+        // given
+        String hash = hashUtil.hash("room:10:retry:42");
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, RETRY_KEY)).willReturn(Optional.of(
+                new ChatIdempotencyRecord(true, hash, 10L, 43L, null, null)));
+        given(chatMessageService.getMessage(43L)).willReturn(assistantMessage(43L, "답변", null));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.retryMessage(10L, 1L, 42L);
+
+        // then
+        assertThat(response.messageId()).isEqualTo(43L);
+        then(chatMessageService).should(never()).getRetryTarget(any(), any(), any());
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 다시_시도할_수_없는_메시지면_키를_지우고_409를_던진다() {
+        // given: 고정 문구 뒤에 새 메시지가 왔다
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(true);
+        given(chatMessageService.getRetryTarget(10L, 1L, 42L))
+                .willThrow(new BusinessException(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_RETRY_NOT_ALLOWED));
+        then(chatIdempotencyRepository).should().delete(1L, RETRY_KEY);
+        then(chatIdempotencyRepository).should(never()).save(any(), any(), any());
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 다시_시도도_실패하면_새_고정_문구를_다시_시도할_수_있게_돌려주고_결과로_저장한다() {
+        // given
+        String payload = "{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}";
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(true);
+        given(chatMessageService.getRetryTarget(10L, 1L, 42L)).willReturn(userMessage(10L, 41L, "안녕"));
+        given(chatMessageService.findHistory(10L, 41L)).willReturn(List.of());
+        given(llmGateway.explain(anyString(), anyList(), eq("안녕"))).willThrow(new BusinessException(ErrorCode.AI_TIMEOUT));
+        given(chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT))
+                .willReturn(assistantMessage(43L, "지금은 답변을 드리기 어려워요.", payload));
+        given(chatMessageService.isRetryable(payload)).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT);
+                    assertThat(exception.getData()).isInstanceOfSatisfying(ChatMessageResponse.class, data -> {
+                        assertThat(data.messageId()).isEqualTo(43L);
+                        assertThat(data.retryable()).isTrue();
+                    });
+                });
+        ArgumentCaptor<ChatIdempotencyRecord> saved = ArgumentCaptor.forClass(ChatIdempotencyRecord.class);
+        then(chatIdempotencyRepository).should().save(eq(1L), eq(RETRY_KEY), saved.capture());
+        assertThat(saved.getValue().messageId()).isEqualTo(43L);
+        assertThat(saved.getValue().failure()).isEqualTo(ErrorCode.AI_TIMEOUT);
+    }
+
+    @Test
+    void 다시_할_수_없는_오류의_고정_문구는_retryable이_false다() {
+        // given
+        String payload = "{\"type\":\"FALLBACK\",\"code\":\"AI_009\"}";
+        given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
+        given(llmGateway.explain(anyString(), anyList(), anyString()))
+                .willThrow(new BusinessException(ErrorCode.AI_INVALID_RESPONSE));
+        given(chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_INVALID_RESPONSE))
+                .willReturn(assistantMessage(43L, "지금은 답변을 드리기 어려워요.", payload));
+        given(chatMessageService.isRetryable(payload)).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕"))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(((ChatMessageResponse) exception.getData()).retryable()).isFalse());
+    }
+
     private ChatMessageResponse messageResponse(Long messageId, String payload) {
-        return new ChatMessageResponse(messageId, ChatSender.ASSISTANT, "메시지 " + messageId, payload, null,
+        return new ChatMessageResponse(messageId, ChatSender.ASSISTANT, "메시지 " + messageId, payload, null, false,
                 LocalDateTime.of(2026, 10, 27, 12, 0));
     }
 

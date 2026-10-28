@@ -3,11 +3,15 @@ import { check } from 'k6';
 
 // 견적 발급 부하 테스트 (#244)
 // 앱은 LLM fake 모드로 띄워서 OpenAI 대기 시간을 빼고 서버 쪽 처리 시간만 잼
+// fake 기본값은 일반 질문이라 견적이 안 나와서 아래 옵션으로 띄워야 함
+//   --zelo.llm.mode=fake --zelo.llm.fake.plan-intent=SHOPPING_REQUEST
 // k6 run -e BASE_URL=http://localhost:8080 -e VUS=50 load-test/quote-issue.js
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const VUS = Number(__ENV.VUS || 10);
 
 export const options = {
+    // 사용자를 하나씩 가입·로그인시켜서 VUS가 많으면 기본 60초로는 모자람
+    setupTimeout: '5m',
     scenarios: {
         quote: {
             executor: 'constant-vus',
@@ -15,11 +19,11 @@ export const options = {
             duration: __ENV.DURATION || '1m',
         },
     },
+    // setup의 가입·로그인은 빼고 견적 발급 요청만 봄
     thresholds: {
-        http_req_failed: ['rate<0.01'],
-        checks: ['rate>0.99'],
-        // setup의 가입·로그인은 빼고 견적 발급 요청만 봄
+        'http_req_failed{name:startChat}': ['rate<0.01'],
         'http_req_duration{name:startChat}': ['p(95)<1000'],
+        checks: ['rate>0.99'],
     },
 };
 
@@ -32,12 +36,19 @@ export function setup() {
     for (let i = 0; i < VUS; i++) {
         const email = `load${runId}-${i}@test.com`;
         const password = 'Zelo1234!';
-        http.post(`${BASE_URL}/api/users`, JSON.stringify({
+        const signUp = http.post(`${BASE_URL}/api/users`, JSON.stringify({
             email, password, passwordConfirm: password, name: '부하테스트', phoneNumber: '010-1234-5678',
             place: '집', addresses: '서울시 강남구 테헤란로 1', zipCode: '06234',
         }), { headers: JSON_HEADERS });
+        if (signUp.status !== 201) {
+            throw new Error(`가입 실패 ${email} status=${signUp.status} body=${signUp.body}`);
+        }
         const login = http.post(`${BASE_URL}/api/users/login`, JSON.stringify({ email, password }), { headers: JSON_HEADERS });
-        tokens.push(login.json('data.accessToken'));
+        const token = login.status === 200 ? login.json('data.accessToken') : null;
+        if (!token) {
+            throw new Error(`로그인 실패 ${email} status=${login.status} body=${login.body}`);
+        }
+        tokens.push(token);
     }
     return { tokens };
 }

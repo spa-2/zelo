@@ -23,7 +23,8 @@ export const options = {
     thresholds: {
         'http_req_failed{name:startChat}': ['rate<0.01'],
         'http_req_duration{name:startChat}': ['p(95)<1000'],
-        checks: ['rate>0.99'],
+        // 201인데 카드가 없는 경우가 다른 검사에 묻히지 않게 따로 봄
+        'checks{check:견적 카드}': ['rate>0.99'],
     },
 };
 

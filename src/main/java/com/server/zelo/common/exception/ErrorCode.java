@@ -24,6 +24,7 @@ public enum ErrorCode {
     INACTIVE_ACCOUNT(HttpStatus.FORBIDDEN, "MEMBER_006", "비활성화 계정입니다"),
     USER_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_007", "배송지를 찾을 수 없습니다."),
     DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
+    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
     DEFAULT_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "MEMBER_008", "기본 배송지는 다른 배송지를 기본으로 지정한 뒤 변경하거나 삭제할 수 있습니다."),
 
     // Product
@@ -35,6 +36,8 @@ public enum ErrorCode {
     DUPLICATE_PRODUCT_CODE(HttpStatus.CONFLICT, "PRODUCT_006", "이미 있는 상품 코드입니다."),
     INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_007", "재료를 찾을 수 없습니다."),
     INVALID_PRODUCT_STATUS(HttpStatus.CONFLICT, "PRODUCT_008", "지금 상품 상태에서는 할 수 없습니다."),
+    CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_009", "카테고리를 찾을 수 없습니다."),
+
     // Quote
     QUOTE_EXPIRED(HttpStatus.CONFLICT, "QUOTE_001", "견적이 만료되었습니다. 견적을 다시 받아 주세요."),
     QUOTE_NOT_CURRENT(HttpStatus.CONFLICT, "QUOTE_002", "견적이 수정되었습니다. 최신 견적을 확인해 주세요."),

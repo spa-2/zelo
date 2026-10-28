@@ -13,6 +13,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -98,6 +99,7 @@ class QuoteExplainPromptTest {
                 new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED"),
                 new ExcludedItem("트러플", "PRODUCT_NOT_FOUND"),
                 new ExcludedItem("계란", "OUT_OF_STOCK"),
+                new ExcludedItem("대파", "REJECTED_BY_USER"),
                 new ExcludedItem("쌀", "NEW_REASON"))));
 
         // then
@@ -106,6 +108,7 @@ class QuoteExplainPromptTest {
                 .contains("- 소주: AI가 대신 살 수 없는 품목(주류 등)")
                 .contains("- 트러플: 판매하는 상품이 없음")
                 .contains("- 계란: 재고 부족")
+                .contains("- 대파: 사용자가 대체 후보를 고르지 않고 뺌")
                 .contains("- 쌀: NEW_REASON");
     }
 
@@ -220,6 +223,33 @@ class QuoteExplainPromptTest {
 
         // then
         assertThat(text).doesNotContain("근거:");
+    }
+
+    @Test
+    void 대체_후보는_아직_담지_않았다고_품절된_원래_상품과_함께_적는다() {
+        // given
+        QuoteItem importedLeek = new QuoteItem(5L, "VEG-0102", "수입 대파", "1단", 2_500L, 1, 2_500L);
+        LocalDateTime now = LocalDateTime.of(2026, 10, 23, 12, 0);
+        Quote quote = new Quote("quote-1", 1L, 10L, "김치볶음밥", List.of(), List.of(), 0L, now, now.plusMinutes(10),
+                Set.of(), List.of(new SubstituteItem("대파", "국산 대파", importedLeek)));
+
+        // when
+        String text = quoteExplainPrompt.userText(plan(null, List.of(), List.of()), quote);
+
+        // then
+        assertThat(text)
+                .contains("담은 상품: 없음")
+                .contains("대체 후보 (아직 담지 않음, 합계에 없음):\n- 대파: 국산 대파 품절 → 수입 대파 (1단) 1개, 2,500원")
+                .contains("합계: 0원");
+    }
+
+    @Test
+    void 프롬프트에_대체_후보를_담지_않았다고_안내하고_카드에서_고르게_하는_규칙이_있다() {
+        // then
+        assertThat(quoteExplainPrompt.systemPrompt())
+                .contains("대체 후보가 있으면, 원래 상품이 품절이라 다른 상품을 후보로 찾았고 아직 담지 않았다고 말해")
+                .contains("[좋아요]를 누르면 담고 [빼기]를 누르면 그 재료를 뺀다")
+                .contains("담은 상품이 \"없음\"이고 대체 후보도 없으면");
     }
 
     @Test

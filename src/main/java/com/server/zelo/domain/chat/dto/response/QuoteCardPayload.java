@@ -3,6 +3,7 @@ package com.server.zelo.domain.chat.dto.response;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -21,6 +22,8 @@ public record QuoteCardPayload(
         List<String> conditions, // 요청 조건 이름 (ex: 맵지 않은). 없으면 빈 값
         List<Item> items, // 견적이 담긴 상품 목록
         List<Excluded> excludedItems, // 상품을 찾지 못하거나 재고가 부족해 견적에서 제외된 상품
+        // 원래 고를 상품이 품절이라 대신 고른 후보. 사용자가 [좋아요]를 누르기 전이라 items·totalAmount에 들어가지 않는다
+        List<Substitute> substitutes,
         Long totalAmount, // 견적 총액
         LocalDateTime expiresAt // 견적 만료 시각
 ) {
@@ -28,15 +31,20 @@ public record QuoteCardPayload(
     public static final String TYPE = "QUOTE_CARD";
 
     public static QuoteCardPayload from(Quote quote) {
-        List<Item> items = quote.items().stream()
-                .map(item -> new Item(item.productId(), item.productName(), item.productUnit(),
-                        item.unitPrice(), item.quantity(), item.lineAmount(), Reason.from(item.reason())))
-                .toList();
+        List<Item> items = quote.items().stream().map(QuoteCardPayload::toItem).toList();
         List<Excluded> excludedItems = quote.excludedItems().stream()
                 .map(excludedItem -> new Excluded(excludedItem.name(), excludedItem.reason()))
                 .toList();
+        List<Substitute> substitutes = quote.substitutes().stream()
+                .map(substitute -> new Substitute(substitute.name(), substitute.soldOutProductName(), toItem(substitute.item())))
+                .toList();
         return new QuoteCardPayload(TYPE, quote.quoteId(), quote.menuName(), labels(quote.conditions()),
-                items, excludedItems, quote.totalAmount(), quote.expiresAt());
+                items, excludedItems, substitutes, quote.totalAmount(), quote.expiresAt());
+    }
+
+    private static Item toItem(QuoteItem item) {
+        return new Item(item.productId(), item.productName(), item.productUnit(),
+                item.unitPrice(), item.quantity(), item.lineAmount(), Reason.from(item.reason()));
     }
 
     // 견적의 조건은 Set이라 순서가 없어서, 카드마다 순서가 바뀌지 않게 Keyword 선언 순서로 정렬한다
@@ -103,7 +111,15 @@ public record QuoteCardPayload(
     ) {
     }
 
-    // reason: CATEGORY_NOT_ALLOWED, PRODUCT_NOT_FOUND, OUT_OF_STOCK (견적 담당 코드 그대로)
+    // 화면은 ingredientName으로 [좋아요]·[빼기]를 보낸다(견적 담당이 재료 이름으로 후보를 찾음)
+    public record Substitute(
+            String ingredientName, // 재료 이름 (ex: 대파)
+            String soldOutProductName, // 품절된 원래 상품 이름
+            Item item // 대신 고른 상품. 고르기 전이라 합계에 들어가지 않음
+    ) {
+    }
+
+    // reason: CATEGORY_NOT_ALLOWED, PRODUCT_NOT_FOUND, OUT_OF_STOCK, REJECTED_BY_USER(대체 후보를 [빼기]로 거절) (견적 담당 코드 그대로)
     public record Excluded(
             String name,
             String reason

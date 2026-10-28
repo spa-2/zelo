@@ -3,6 +3,7 @@ package com.server.zelo.domain.chat.controller;
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.SendChatMessageRequest;
 import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
@@ -63,6 +64,16 @@ public class ChatMessageController {
             @PathVariable Long roomId,
             @Valid @RequestBody UpdateQuoteItemRequest request) {
         ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(roomId, authUser.id(), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
+    // 견적 카드 대체 후보의 [좋아요]·[빼기]. 결과를 AI 메시지(새 카드 또는 안내 문장)로 저장해 돌려준다
+    @PostMapping("/rooms/{roomId}/quote-substitutes")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> chooseSubstitute(
+            @Auth AuthUser authUser,
+            @PathVariable Long roomId,
+            @Valid @RequestBody ChooseSubstituteRequest request) {
+        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 }

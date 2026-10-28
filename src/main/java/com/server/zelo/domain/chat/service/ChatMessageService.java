@@ -102,6 +102,13 @@ public class ChatMessageService {
         return GetChatMessagesResponse.of(messages, nextCursor, hasNext);
     }
 
+    // 멱등 키로 첫 응답을 다시 만들 때 쓴다. 채팅 메시지는 지우지 않으므로 없으면 저장 상태가 잘못된 것이다
+    @Transactional(readOnly = true)
+    public ChatMessage getMessage(Long messageId) {
+        return chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
+    }
+
     // LLM에 함께 보낼 앞 대화를 오래된 순으로 준다. 방금 저장한 이번 메시지(beforeMessageId)는 따로 보내므로 뺀다.
     // 고정 문구는 대화 내용이 아니라서 뺀다(LLM이 "답변을 드리기 어려워요"를 따라 하지 않게).
     // 최근 10개 안에서 빼므로 고정 문구가 있으면 10개보다 적게 갈 수 있다

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,14 +29,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/chat")
 public class ChatMessageController {
 
+    // 화면이 [보내기]마다 만드는 UUID. 응답을 못 받아 다시 보낼 때는 같은 값을 보내 두 번 처리되지 않게 한다
+    private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
     private final ChatMessageCommandService chatMessageCommandService;
 
     // 채팅방 없이 메인 화면에서 첫 메시지를 보내면 방 생성 + 메세지 생성
     @PostMapping("/messages")
     public ResponseEntity<ApiResponse<StartChatResponse>> startChat(
             @Auth AuthUser authUser,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody SendChatMessageRequest request) {
-        StartChatResponse response = chatMessageCommandService.startChat(authUser.id(), request.text());
+        StartChatResponse response = chatMessageCommandService.startChat(authUser.id(), request.text(), idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 
@@ -52,8 +57,9 @@ public class ChatMessageController {
     public ResponseEntity<ApiResponse<ChatMessageResponse>> sendMessage(
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @Valid @RequestBody SendChatMessageRequest request) {
-        ChatMessageResponse response = chatMessageCommandService.sendMessage(roomId, authUser.id(), request.text());
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(roomId, authUser.id(), request.text(), idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 

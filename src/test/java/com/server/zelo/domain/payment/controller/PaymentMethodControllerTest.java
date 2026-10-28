@@ -8,6 +8,7 @@ import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.payment.service.PaymentMethodCommandService;
+import com.server.zelo.domain.payment.service.PaymentMethodService;
 import com.server.zelo.domain.user.entity.UserRole;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,12 +28,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.never;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -48,6 +50,9 @@ class PaymentMethodControllerTest {
 
     @Mock
     private PaymentMethodCommandService paymentMethodCommandService;
+
+    @Mock
+    private PaymentMethodService paymentMethodService;
 
     private MockMvc mockMvc;
 
@@ -131,6 +136,80 @@ class PaymentMethodControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(code.getCode()))
                 .andExpect(jsonPath("$.message").value(code.getMessage()));
+    }
+
+    @Test
+    void 결제_수단_목록을_조회하면_200과_빌링키를_뺀_카드_정보를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        PaymentMethod paymentMethod = PaymentMethod.of(1L, PaymentMethodType.CARD, BILLING_KEY, "신한카드 1234");
+        ReflectionTestUtils.setField(paymentMethod, "id", 3L);
+        given(paymentMethodService.findPaymentMethods(1L)).willReturn(List.of(paymentMethod));
+
+        // when // then
+        mockMvc.perform(get(URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].paymentMethodId").value(3))
+                .andExpect(jsonPath("$.data[0].type").value("CARD"))
+                .andExpect(jsonPath("$.data[0].displayName").value("신한카드 1234"))
+                .andExpect(jsonPath("$.data[0].billingKey").doesNotExist());
+    }
+
+    @Test
+    void 등록한_결제_수단이_없으면_200과_빈_목록을_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(paymentMethodService.findPaymentMethods(1L)).willReturn(List.of());
+
+        // when // then
+        mockMvc.perform(get(URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void 인증_정보가_없으면_목록_조회에_401을_반환한다() throws Exception {
+        // when // then
+        mockMvc.perform(get(URL))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
+        then(paymentMethodService).should(never()).findPaymentMethods(anyLong());
+    }
+
+    @Test
+    void 결제_수단을_삭제하면_204를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when // then
+        mockMvc.perform(delete(URL + "/3"))
+                .andExpect(status().isNoContent());
+        then(paymentMethodCommandService).should().deletePaymentMethod(1L, 3L);
+    }
+
+    @Test
+    void 없거나_다른_사용자의_결제_수단을_삭제하면_404를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        willThrow(new BusinessException(ErrorCode.PAYMENT_METHOD_NOT_FOUND))
+                .given(paymentMethodCommandService).deletePaymentMethod(1L, 3L);
+
+        // when // then
+        mockMvc.perform(delete(URL + "/3"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.PAYMENT_METHOD_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void 인증_정보가_없으면_삭제에_401을_반환하고_삭제하지_않는다() throws Exception {
+        // when // then
+        mockMvc.perform(delete(URL + "/3"))
+                .andExpect(status().isUnauthorized());
+        then(paymentMethodCommandService).should(never()).deletePaymentMethod(anyLong(), anyLong());
     }
 
     private void authenticate(Long userId) {

@@ -49,4 +49,9 @@ public class MockPortOneClient implements PortOneClient {
         String customerId = billingKey.substring(billingKey.lastIndexOf('-') + 1);
         return PortOneBillingKey.of(billingKey, PaymentMethodType.CARD, "테스트카드 1234", customerId);
     }
+
+    @Override
+    public void deleteBillingKey(String billingKey) {
+        log.info("[FAKE] 포트원 빌링키 삭제");
+    }
 }

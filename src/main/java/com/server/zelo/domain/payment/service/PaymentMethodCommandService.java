@@ -25,4 +25,11 @@ public class PaymentMethodCommandService {
         return paymentMethodService.createPaymentMethod(
                 userId, pgBillingKey.type(), billingKey, pgBillingKey.displayName());
     }
+
+    // 우리 DB만 지우면 포트원에 결제 가능한 빌링키가 남으므로 포트원을 먼저 지우고, 실패하면 DB를 남겨 다시 시도할 수 있게 한다
+    public void deletePaymentMethod(Long userId, Long paymentMethodId) {
+        PaymentMethod paymentMethod = paymentMethodService.getOwnedMethod(paymentMethodId, userId);
+        portOneClient.deleteBillingKey(paymentMethod.getBillingKey());
+        paymentMethodService.deletePaymentMethod(paymentMethod.getId());
+    }
 }

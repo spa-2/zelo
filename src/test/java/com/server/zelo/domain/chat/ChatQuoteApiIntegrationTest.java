@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import com.server.zelo.domain.user.entity.UserRole;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
@@ -17,6 +18,7 @@ import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.ai.plan.QuoteEdit;
 import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.jayway.jsonpath.JsonPath;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
@@ -32,6 +34,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,7 +85,7 @@ class ChatQuoteApiIntegrationTest {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    // Redis는 테스트 트랜잭션으로 되돌려지지 않아 넣은 견적 키를 모아 두었다가 지운다
+    // Redis는 테스트 트랜잭션으로 되돌려지지 않아 넣은 견적·멱등 키를 모아 두었다가 지운다
     private final List<String> quoteKeys = new ArrayList<>();
 
     @MockitoBean
@@ -261,6 +264,45 @@ class ChatQuoteApiIntegrationTest {
                 .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
     }
 
+    @Test
+    void 같은_멱등_키로_두_번_보내면_한_번만_처리하고_같은_응답을_돌려준다() throws Exception {
+        // given: 일반 질문(Fake LLM). 화면이 응답을 잃고 같은 키로 다시 보낸 경우
+        Long roomId = createRoom();
+        String key = UUID.randomUUID().toString();
+        quoteKeys.add("chat:idempotency:" + OWNER_ID + ":" + key);
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.GENERAL_QUESTION);
+
+        // when
+        String first = sendWithKey(roomId, "보관은 어떻게 해?", key)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String second = sendWithKey(roomId, "보관은 어떻게 해?", key)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        // then: 같은 AI 메시지로 응답하고, 방에는 사용자 메시지 1개 + AI 메시지 1개만 있다
+        assertThat(JsonPath.<Integer>read(second, "$.data.messageId")).isEqualTo(JsonPath.<Integer>read(first, "$.data.messageId"));
+        mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId)
+                        .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messages.length()").value(2));
+    }
+
+    @Test
+    void 같은_멱등_키로_다른_문장을_보내면_409와_CHAT_003을_돌려준다() throws Exception {
+        // given
+        Long roomId = createRoom();
+        String key = UUID.randomUUID().toString();
+        quoteKeys.add("chat:idempotency:" + OWNER_ID + ":" + key);
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.GENERAL_QUESTION);
+        sendWithKey(roomId, "보관은 어떻게 해?", key).andExpect(status().isCreated());
+
+        // when & then
+        sendWithKey(roomId, "유통기한은?", key)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CHAT_003"));
+    }
+
     private Long createRoom() {
         return chatRoomRepository.save(ChatRoom.of(OWNER_ID)).getId();
     }
@@ -277,6 +319,14 @@ class ChatQuoteApiIntegrationTest {
                 .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"quoteId\":\"" + quoteId + "\",\"productId\":" + productId + ",\"quantity\":" + quantity + "}"));
+    }
+
+    private ResultActions sendWithKey(Long roomId, String text, String idempotencyKey) throws Exception {
+        return mockMvc.perform(post("/api/chat/rooms/{roomId}/messages", roomId)
+                .header("Authorization", "Bearer " + jwtUtil.createAccessToken(OWNER_ID, UserRole.BASIC))
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\":\"" + text + "\"}"));
     }
 
     private void saveCurrentQuote(Quote quote) {

@@ -428,6 +428,17 @@ class ChatMessageServiceTest {
         assertThat(chatMessageService.findQuoteCardId("{\"type\":\"PAYMENT_CARD\",\"orderId\":3}")).isEmpty();
     }
 
+    @Test
+    void 멱등_키에_저장한_메시지가_없으면_서버_오류로_본다() {
+        // given
+        given(chatMessageRepository.findById(42L)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageService.getMessage(42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_ERROR));
+    }
+
     private PaymentCardPayload paymentCard(PaymentStatus status, String reason) {
         return new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
                 List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),

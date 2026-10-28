@@ -120,4 +120,17 @@ class PaymentTest {
         assertThat(payment.isPaid()).isTrue();
     }
 
+    @Test
+    void READY가_아닌_결제는_빌링키_결제를_시작할_수_없다() {
+        // given
+        Payment payment = Payment.of(1L, "payment-1", 15_000L);
+        payment.startConfirm();
+
+        // when // then
+        assertThatThrownBy(payment::validateReady)
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_PROCESSED_PAYMENT);
+    }
+
 }

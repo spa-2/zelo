@@ -62,4 +62,11 @@ public class PaymentService {
         return paymentRepository.findTopByOrderIdOrderByIdDesc(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
+
+    public Payment startBillingPayment(String portoneId) {
+        Payment payment = getPayment(portoneId);
+        payment.validateReady();
+        payment.startConfirm();
+        return payment;
+    }
 }

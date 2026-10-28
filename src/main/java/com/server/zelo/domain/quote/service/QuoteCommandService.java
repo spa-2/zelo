@@ -144,7 +144,8 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         SubstituteItem target = getSubstitute(quote, name);
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
-        excludedItems.add(new ExcludedItem(name, "OUT_OF_STOCK"));
+        // 사용자가 뺀 거라 재고 부족과 구분함. 채팅 쪽도 같은 이름으로 처리함
+        excludedItems.add(new ExcludedItem(name, "REJECTED_BY_USER"));
         return save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
                 without(quote, target));
     }

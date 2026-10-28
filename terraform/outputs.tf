@@ -23,3 +23,7 @@ output "redis_private_ip" {
 output "ssm_prefix" {
   value = local.ssm_prefix
 }
+# GitHub 저장소 변수 AWS_DEPLOY_ROLE_ARN에 넣는 값
+output "github_deploy_role_arn" {
+  value = aws_iam_role.github_deploy.arn
+}

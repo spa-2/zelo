@@ -26,6 +26,7 @@ import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
+import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
@@ -170,7 +171,7 @@ class QuoteCommandServiceTest {
     }
 
     @Test
-    void 조건_상품이_품절이면_조건_불일치지만_조건_상품은_있었다고_담는다() {
+    void 원래_고를_상품이_품절이면_대신_고른_상품은_후보로만_돌려준다() {
         // given
         Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
         Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
@@ -181,10 +182,99 @@ class QuoteCommandServiceTest {
                 menuPlan(List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of(Keyword.NOT_SPICY)));
 
         // then
-        QuoteItemReason reason = quote.items().get(0).reason();
-        assertThat(quote.items()).extracting(QuoteItem::productName).containsExactly("포기김치 500g");
-        assertThat(reason.matchedConditions()).isEmpty();
-        assertThat(reason.conditionProductExists()).isTrue();
+        assertThat(quote.items()).isEmpty();
+        assertThat(quote.totalAmount()).isZero();
+        assertThat(quote.substitutes()).extracting(SubstituteItem::name, SubstituteItem::soldOutProductName)
+                .containsExactly(tuple("김치", "백김치 1kg"));
+        QuoteItem substitute = quote.substitutes().get(0).item();
+        assertThat(substitute.productName()).isEqualTo("포기김치 500g");
+        assertThat(substitute.reason().matchedConditions()).isEmpty();
+        assertThat(substitute.reason().conditionProductExists()).isTrue();
+    }
+
+    @Test
+    void 후보를_고르면_견적에_담고_후보에서_뺀다() {
+        // given
+        givenSubstituteQuote(List.of(item(9L, 3000L, 1)));
+        given(inventoryService.findAvailableQuantities(List.of(1L))).willReturn(Map.of(1L, 10));
+
+        // when
+        Quote quote = quoteCommandService.acceptSubstitute(1L, 5L, "김치");
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L, 1L);
+        assertThat(quote.substitutes()).isEmpty();
+        assertThat(quote.totalAmount()).isEqualTo(8900L);
+        assertThat(quote.quoteId()).isNotEqualTo("q-1");
+    }
+
+    @Test
+    void 후보를_고를_때_이미_담긴_상품이면_수량을_합친다() {
+        // given
+        givenSubstituteQuote(List.of(item(1L, 5900L, 1)));
+        given(inventoryService.findAvailableQuantities(List.of(1L))).willReturn(Map.of(1L, 10));
+
+        // when
+        Quote quote = quoteCommandService.acceptSubstitute(1L, 5L, "김치");
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::quantity).containsExactly(2);
+    }
+
+    @Test
+    void 후보를_고르는_사이에_품절되면_품절로_돌려준다() {
+        // given
+        givenSubstituteQuote(List.of());
+        given(inventoryService.findAvailableQuantities(List.of(1L))).willReturn(Map.of(1L, 0));
+
+        // when
+        Quote quote = quoteCommandService.acceptSubstitute(1L, 5L, "김치");
+
+        // then
+        assertThat(quote.items()).isEmpty();
+        assertThat(quote.substitutes()).isEmpty();
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("김치", "OUT_OF_STOCK"));
+    }
+
+    @Test
+    void 후보를_빼면_품절로_제외한다() {
+        // given
+        givenSubstituteQuote(List.of(item(9L, 3000L, 1)));
+
+        // when
+        Quote quote = quoteCommandService.rejectSubstitute(1L, 5L, "김치");
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L);
+        assertThat(quote.substitutes()).isEmpty();
+        assertThat(quote.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("김치", "OUT_OF_STOCK"));
+    }
+
+    @Test
+    void 없는_후보를_고르면_예외가_발생한다() {
+        // given
+        givenSubstituteQuote(List.of());
+
+        // when & then
+        assertThatThrownBy(() -> quoteCommandService.acceptSubstitute(1L, 5L, "계란"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    @Test
+    void 재료를_다시_추가하면_그_재료의_이전_후보는_지운다() {
+        // given
+        givenSubstituteQuote(List.of());
+        givenProducts(List.of(product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80)), Map.of(2L, 100), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "김치", 400, BaseUnit.G);
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(2L);
+        assertThat(quote.substitutes()).isEmpty();
     }
 
     @Test
@@ -385,6 +475,14 @@ class QuoteCommandServiceTest {
         long total = items.stream().mapToLong(QuoteItem::lineAmount).sum();
         given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
                 items, excludedItems, total, LocalDateTime.now(), LocalDateTime.now().plusMinutes(10))));
+    }
+
+    private void givenSubstituteQuote(List<QuoteItem> items) {
+        long total = items.stream().mapToLong(QuoteItem::lineAmount).sum();
+        SubstituteItem substitute = new SubstituteItem("김치", "백김치 1kg", item(1L, 5900L, 1));
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
+                items, List.of(), total, LocalDateTime.now(), LocalDateTime.now().plusMinutes(10), Set.of(),
+                List.of(substitute))));
     }
 
     private QuoteItem item(Long productId, Long price, int quantity) {

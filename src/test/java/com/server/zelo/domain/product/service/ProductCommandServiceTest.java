@@ -1,22 +1,12 @@
 package com.server.zelo.domain.product.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
-import static org.mockito.BDDMockito.given;
-
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Category;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Keyword;
-import com.server.zelo.domain.product.entity.Product;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import com.server.zelo.domain.product.entity.*;
+import com.server.zelo.domain.product.model.ProductDetail;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +14,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 class ProductCommandServiceTest {
@@ -59,11 +57,9 @@ class ProductCommandServiceTest {
     @Test
     void 상세에_키워드와_재고를_같이_준다() {
         // given
-        Product product = product(1L, "백김치 1kg");
-        given(productService.getProduct("P-1")).willReturn(product);
-        given(productService.findKeywords(List.of(1L))).willReturn(Map.of(1L, Set.of(Keyword.NOT_SPICY, Keyword.DOMESTIC)));
+        ProductDetail detail = ProductDetail.from(product(1L, "백김치 1kg"), Set.of(Keyword.NOT_SPICY, Keyword.DOMESTIC));
+        given(productService.getProductDetail("P-1")).willReturn(detail);
         given(inventoryService.findAvailableQuantities(List.of(1L))).willReturn(Map.of(1L, 3));
-
         // when
         GetProductResponse result = productCommandService.getProduct("P-1");
 

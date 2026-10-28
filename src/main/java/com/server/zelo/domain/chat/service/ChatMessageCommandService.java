@@ -4,6 +4,7 @@ import com.server.zelo.ai.gateway.LlmGateway;
 import com.server.zelo.ai.gateway.LlmReply;
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.QuoteEdit;
+import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.ai.plan.QuoteEditPlan;
 import com.server.zelo.ai.prompt.ChatPrompt;
 import com.server.zelo.ai.prompt.MenuPlanPrompt;
@@ -14,6 +15,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
+import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
 import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
@@ -52,6 +54,10 @@ public class ChatMessageCommandService {
     private static final String NOT_IN_QUOTE = "견적 카드에 없는 상품이라 고치지 못했어요. 카드에 있는 상품 이름으로 다시 말씀해 주세요.";
     private static final String NOT_ENOUGH_STOCK = "재고가 부족해서 그 수량으로 바꿀 수 없어요. 수량을 줄여서 다시 말씀해 주세요.";
     private static final String QUOTE_CHANGED = "견적이 방금 바뀌어서 고치지 않았어요. 최신 견적 카드를 확인하고 다시 말씀해 주세요.";
+    // 카드 버튼 수정은 LLM 없이 무엇을 했는지만 정해진 문장으로 알린다
+    private static final String ITEM_REMOVED = "%s 상품을 뺐어요.";
+    private static final String ITEM_QUANTITY_CHANGED = "%s 상품을 %d개로 바꿨어요.";
+    private static final String NO_ITEM_LEFT = " 견적에 남은 상품이 없어요. 만들 메뉴를 다시 말씀해 주세요.";
     private static final String QUOTE_IN_PROGRESS = "이 채팅방의 견적을 처리하고 있는 다른 요청이 있어요. 잠시 후 다시 말씀해 주세요.";
     // 견적 수정 메서드의 오류 중 사용자가 다시 말하면 되는 것. 그 밖의 오류(Redis 장애 등)는 그대로 던진다.
     // QUOTE_NOT_CURRENT는 수정 메서드가 아니라 계획 뒤 견적이 바뀌었을 때 applyEdits가 쓴다
@@ -68,6 +74,7 @@ public class ChatMessageCommandService {
     private final MenuPlanPrompt menuPlanPrompt;
     private final ProductService productService;
     private final QuoteEditPrompt quoteEditPrompt;
+    private final ChatRoomService chatRoomService;
     private final ChatMessageService chatMessageService;
     private final QuoteExplainPrompt quoteExplainPrompt;
     private final QuoteCommandService quoteCommandService;
@@ -115,6 +122,42 @@ public class ChatMessageCommandService {
         return GetChatMessagesResponse.of(messages, response.nextCursor(), response.hasNext());
     }
 
+    // 견적 카드의 ✕, −/+ 버튼. LLM 없이 견적을 바로 고치고, 새 카드와 정해진 문장을 AI 메시지로 저장해 돌려준다.
+    // 화면이 보던 카드(quoteId)가 지금 견적일 때만 고치며, 말로 고칠 때와 같은 방 락 안에서 다시 확인하고 적용한다
+    public ChatMessageResponse updateQuoteItem(Long roomId, Long userId, UpdateQuoteItemRequest request) {
+        chatRoomService.getOwnedChatRoom(roomId, userId);
+        Optional<Quote> current = quoteService.findQuote(roomId);
+        if (current.isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT));
+        }
+        Quote quote = current.get();
+        if (!quote.quoteId().equals(request.quoteId())) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_CHANGED));
+        }
+
+        QuoteEdit edit = request.isRemove()
+                ? QuoteEdit.of(QuoteEditAction.REMOVE, request.productId(), 0, "", 0, null)
+                : QuoteEdit.of(QuoteEditAction.CHANGE_QUANTITY, request.productId(), request.quantity(), "", 0, null);
+        QuoteEditPlan editPlan = QuoteEditPlan.of(List.of(edit), "");
+        Optional<EditResult> locked = withQuoteLock(roomId, () -> applyEdits(userId, roomId, quote, editPlan));
+        if (locked.isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_IN_PROGRESS));
+        }
+        EditResult result = locked.get();
+        if (result.appliedEdits().isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId,
+                    EDIT_FAILURE_REPLIES.get(result.failure())));
+        }
+
+        String reply = buttonEditReply(quote, request);
+        Quote edited = result.edited();
+        // 마지막 상품을 빼면 주문할 것이 없어 카드 없이 알린다([주문하기] 버튼이 뜨지 않게)
+        if (edited.items().isEmpty()) {
+            return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, reply + NO_ITEM_LEFT));
+        }
+        return assistantResponse(chatMessageService.createQuoteCardMessage(roomId, userId, reply, QuoteCardPayload.from(edited)));
+    }
+
     // 메시지가 장보기 요청인지, 견적 수정인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
     // 견적 발급·수정은 LLM이 아니라 서버가 직접 부른다(매번 같은 순서라 예측·테스트할 수 있고, LLM 재시도와 얽히지 않는다)
     private <T> T replyTo(Long roomId, Long userId, List<ChatMessage> history, String text,
@@ -134,11 +177,27 @@ public class ChatMessageCommandService {
             case GENERAL_QUESTION -> chatMessageService.createAssistantMessage(roomId, userId,
                     explain(roomId, userId, chatPrompt.systemPrompt(), history, text, toResponse).text());
         };
-        // 방금 만든 카드는 방의 현재 견적이다
+        return toResponse.apply(assistantResponse(assistantMessage));
+    }
+
+    // 방금 만든 카드는 방의 현재 견적이다
+    private ChatMessageResponse assistantResponse(ChatMessage assistantMessage) {
         QuoteCardStatus quoteCardStatus = chatMessageService.findQuoteCardId(assistantMessage.getPayload())
                 .map(quoteId -> QuoteCardStatus.ACTIVE)
                 .orElse(null);
-        return toResponse.apply(ChatMessageResponse.from(assistantMessage, quoteCardStatus));
+        return ChatMessageResponse.from(assistantMessage, quoteCardStatus);
+    }
+
+    // 버튼으로 견적 상품을 수정한 뒤, 채팅에 보여줄 안내 문장을 만듦
+    private String buttonEditReply(Quote quote, UpdateQuoteItemRequest request) {
+        String label = quote.items().stream()
+                .filter(item -> item.productId().equals(request.productId()))
+                .findFirst()
+                .map(QuoteExplainPrompt::productLabel)
+                .orElseThrow();
+        return request.isRemove()
+                ? ITEM_REMOVED.formatted(label)
+                : ITEM_QUANTITY_CHANGED.formatted(label, request.quantity());
     }
 
     // 현재 견적 메뉴는 "4인분으로"처럼 메뉴를 말하지 않은 요청과, 같은 메뉴에서 재료만 고치는 요청을 구분하는 데 쓴다

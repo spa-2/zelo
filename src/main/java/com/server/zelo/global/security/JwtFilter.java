@@ -4,6 +4,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.entity.UserRole;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -61,11 +62,12 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 유저의 정보를 준비(role은 더미값만 넣음)
+        // 유저의 정보를 준비
         Long id = jwtUtil.getUserId(token);
-        AuthUser authUser = AuthUser.of(id);
+        UserRole userRole = jwtUtil.getUserRole(token);
+        AuthUser authUser = AuthUser.of(id, userRole);
         GrantedAuthority grantedAuthority = new SimpleGrantedAuthority(
-                "ROLE_");
+                "ROLE_" + userRole.name());
         Collection<? extends GrantedAuthority> authorities = List.of(grantedAuthority);
 
         // ContextHolder에 넣음

@@ -31,11 +31,17 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private String phoneNumber;
 
+    // 회원가입 시 기본 역할인 Basic이고 Admin은 시드(AdminSeedLoader)로 넣는다.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false,length = 20)
+    private UserRole role;
+
     private User(String email, String password, String name, String phoneNumber) {
         this.email = normalizeEmail(email);
         this.password = password;
         this.name = name;
         this.phoneNumber = phoneNumber;
+        role = UserRole.BASIC;
     }
 
     public static User of(String email, String password, String name, String phoneNumber) {
@@ -44,6 +50,13 @@ public class User extends BaseTimeEntity {
 
     public static User ofSocial(String email, String name, String phoneNumber) {
         return new User(email, null, name, phoneNumber);
+    }
+
+    // 관리자는 가입 API가 없어서 시드로만 만든다
+    public static User ofAdmin(String email, String password, String name, String phoneNumber) {
+        User user = new User(email, password, name, phoneNumber);
+        user.role = UserRole.ADMIN;
+        return user;
     }
 
     public boolean isPasswordNull(){

@@ -102,7 +102,7 @@ class OrderDetailCommandServiceTest {
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().productName()).isEqualTo("구매 당시 사과");
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                PAYMENT_ID, "payment-detail-169", status));
+                PAYMENT_ID, "payment-detail-169", status, 3_000L, null, null));
         assertThat(response.delivery()).isNull();
         assertThat(response.refund()).isNull();
         InOrder calls = inOrder(orderService, paymentService);
@@ -164,7 +164,7 @@ class OrderDetailCommandServiceTest {
         // then
         assertThat(response.orderId()).isEqualTo(ORDER_ID);
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                PAYMENT_ID, "payment-detail-169", PaymentStatus.PAID));
+                PAYMENT_ID, "payment-detail-169", PaymentStatus.PAID, 3_000L, "TEST_CARD", PAID_AT));
         assertThat(response.delivery()).isEqualTo(hasDelivery ? deliveryInfo() : null);
         assertThat(response.refund()).isEqualTo(hasRefund ? refundInfo() : null);
         assertThat(response.items().getFirst().productName()).isEqualTo("구매 당시 사과");
@@ -292,7 +292,7 @@ class OrderDetailCommandServiceTest {
         Payment payment = Payment.of(ORDER_ID, "payment-detail-169", 3_000L);
         ReflectionTestUtils.setField(payment, "id", PAYMENT_ID);
         payment.startConfirm();
-        payment.complete(3_000L, PAID_AT);
+        payment.complete(3_000L, PAID_AT, "TEST_CARD");
         return payment;
     }
 

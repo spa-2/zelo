@@ -1,11 +1,13 @@
 package com.server.zelo.domain.user.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.auth.RefreshTokenCookieFactory;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.exception.LoginLockedException;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
@@ -33,12 +35,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -82,7 +87,7 @@ class UserControllerTest {
     @Test
     void 로그인하면_200과_액세스_토큰을_본문으로_반환한다() throws Exception {
         // given
-        given(userCommandService.login(new LoginRequest("jieun@example.com", "DemoPass!2026")))
+        given(userCommandService.login(new LoginRequest("jieun@example.com", "DemoPass!2026"), "127.0.0.1"))
                 .willReturn(LoginResult.of("accessToken", "refreshToken"));
 
         // when & then
@@ -128,7 +133,7 @@ class UserControllerTest {
     }
 
     private ResultActions performLogin() throws Exception {
-        given(userCommandService.login(any(LoginRequest.class)))
+        given(userCommandService.login(any(LoginRequest.class), anyString()))
                 .willReturn(LoginResult.of("accessToken", "refreshToken"));
 
         return mockMvc.perform(post("/api/users/login")
@@ -146,6 +151,44 @@ class UserControllerTest {
     }
 
     @Test
+    void 시도_횟수를_초과하면_429와_Retry_After_헤더를_반환하고_쿠키를_내리지_않는다() throws Exception {
+        // given
+        given(userCommandService.login(any(LoginRequest.class), anyString()))
+                .willThrow(new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540));
+
+        // when & then
+        mockMvc.perform(post("/api/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "jieun@example.com", "password": "Wrong1!"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "540"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(jsonPath("$.code").value(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS.getCode()));
+    }
+
+    @Test
+    void 요청의_원격_주소를_로그인에_전달한다() throws Exception {
+        // given
+        given(userCommandService.login(any(LoginRequest.class), eq("203.0.113.7")))
+                .willReturn(LoginResult.of("accessToken", "refreshToken"));
+
+        // when & then
+        mockMvc.perform(post("/api/users/login")
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.7");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "jieun@example.com", "password": "DemoPass!2026"}
+                                """))
+                .andExpect(status().isOk());
+        then(userCommandService).should().login(any(LoginRequest.class), eq("203.0.113.7"));
+    }
+
+    @Test
     void 이메일_형식이_올바르지_않으면_400을_반환하고_로그인을_시도하지_않는다() throws Exception {
         // when & then
         mockMvc.perform(post("/api/users/login")
@@ -155,7 +198,7 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        then(userCommandService).should(never()).login(any());
+        then(userCommandService).should(never()).login(any(), any());
     }
 
     @Test
@@ -167,13 +210,13 @@ class UserControllerTest {
                                 {"email": "jieun@example.com", "password": ""}
                                 """))
                 .andExpect(status().isBadRequest());
-        then(userCommandService).should(never()).login(any());
+        then(userCommandService).should(never()).login(any(), any());
     }
 
     @Test
     void 자격_증명이_틀리면_401을_반환하고_쿠키를_내리지_않는다() throws Exception {
         // given
-        given(userCommandService.login(any(LoginRequest.class)))
+        given(userCommandService.login(any(LoginRequest.class), anyString()))
                 .willThrow(new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         // when
@@ -244,7 +287,7 @@ class UserControllerTest {
 
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 
     @Test

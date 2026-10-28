@@ -18,9 +18,12 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
+// 관리자가 가격을 바꿀 때 판매량까지 옛 값으로 덮어쓰지 않게 바뀐 컬럼만 UPDATE
 @Getter
 @Entity
+@DynamicUpdate
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "products", indexes = {
         @Index(name = "idx_products_ingredient_status", columnList = "ingredient_id, status"),
@@ -129,4 +132,26 @@ public class Product extends BaseTimeEntity {
         return new Product(productCode, ingredient, brand, name, description, price, contentAmount, unitLabel);
     }
 
+    // 이미 발급된 견적은 주문할 때 가격 비교에서 PRICE_CHANGED로 걸림
+    public void update(Long price, String description) {
+        if (price == null || price < 0) {
+            throw new BusinessException(ErrorCode.INVALID_PRICE);
+        }
+        this.price = price;
+        this.description = description;
+    }
+
+    public void stopSale() {
+        if (status == ProductStatus.STOP_SALE) {
+            throw new BusinessException(ErrorCode.INVALID_PRODUCT_STATUS);
+        }
+        this.status = ProductStatus.STOP_SALE;
+    }
+
+    public void resumeSale() {
+        if (status == ProductStatus.ON_SALE) {
+            throw new BusinessException(ErrorCode.INVALID_PRODUCT_STATUS);
+        }
+        this.status = ProductStatus.ON_SALE;
+    }
 }

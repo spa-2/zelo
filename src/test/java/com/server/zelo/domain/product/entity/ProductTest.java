@@ -140,4 +140,73 @@ class ProductTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
     }
+
+    @Test
+    void 가격과_설명을_바꾼다() {
+        // given
+        Product product = Product.of("P-1", Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA),
+                "브랜드 A", "사과 한 상자", null, 10000L, 1, "1box");
+
+        // when
+        product.update(12000L, "새 설명");
+
+        // then
+        assertThat(product.getPrice()).isEqualTo(12000L);
+        assertThat(product.getDescription()).isEqualTo("새 설명");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {-1L})
+    void 가격을_없거나_음수로_바꾸면_예외가_발생한다(Long price) {
+        // given
+        Product product = Product.of("P-1", Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA),
+                "브랜드 A", "사과 한 상자", null, 10000L, 1, "1box");
+
+        // when & then
+        assertThatThrownBy(() -> product.update(price, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRICE));
+    }
+
+    @Test
+    void 판매중지했다가_다시_판매한다() {
+        // given
+        Product product = Product.of("P-1", Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA),
+                "브랜드 A", "사과 한 상자", null, 10000L, 1, "1box");
+
+        // when
+        product.stopSale();
+        ProductStatus stopped = product.getStatus();
+        product.resumeSale();
+
+        // then
+        assertThat(stopped).isEqualTo(ProductStatus.STOP_SALE);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.ON_SALE);
+    }
+
+    @Test
+    void 이미_판매중지된_상품을_또_중지하면_예외가_발생한다() {
+        // given
+        Product product = Product.of("P-1", Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA),
+                "브랜드 A", "사과 한 상자", null, 10000L, 1, "1box");
+        product.stopSale();
+
+        // when & then
+        assertThatThrownBy(product::stopSale)
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRODUCT_STATUS));
+    }
+
+    @Test
+    void 판매중인_상품을_다시_판매하면_예외가_발생한다() {
+        // given
+        Product product = Product.of("P-1", Ingredient.of(Category.of("과일", true), "사과", BaseUnit.EA),
+                "브랜드 A", "사과 한 상자", null, 10000L, 1, "1box");
+
+        // when & then
+        assertThatThrownBy(product::resumeSale)
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_PRODUCT_STATUS));
+    }
 }

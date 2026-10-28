@@ -1,5 +1,6 @@
 package com.server.zelo.common.auth;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import org.junit.jupiter.api.AfterEach;
@@ -24,7 +25,7 @@ class AuthArgumentResolverTest {
     @Test
     void 인증_정보가_있으면_AuthUser를_반환한다() {
         // given
-        AuthUser authUser = AuthUser.of(1L);
+        AuthUser authUser = AuthUser.of(1L, UserRole.BASIC);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(authUser, null, AuthorityUtils.NO_AUTHORITIES));
 

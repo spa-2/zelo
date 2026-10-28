@@ -11,6 +11,7 @@ import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
+import com.server.zelo.domain.user.entity.UserRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ public class UserCommandService {
     private final UserService userService;
     private final UserAddressService userAddressService;
     private final RefreshTokenService refreshTokenService;
+    private final LoginAttemptService loginAttemptService;
 
     // 유저와 배송지가 같이 저장되거나 같이 롤백되어야 해서 여기서 트랜잭션을 묶음
     @Transactional
@@ -45,11 +47,17 @@ public class UserCommandService {
 
     // 리프레시 토큰은 Redis에 저장되므로 DB 변경은 없고 조회만 하는 트랜잭션으로 둠
     @Transactional(readOnly = true)
-    public LoginResult login(LoginRequest request) {
+    public LoginResult login(LoginRequest request, String remoteAddr) {
+        // 로그인 시 요청 이메일과 사용자의 공인 IP를 조합으로 시도 횟수를 증가시킨다.
+        loginAttemptService.attempt(request.email(), remoteAddr);
+
         User user = userService.getUserByEmailAndPassword(request.email(), request.password());
 
-        String accessToken = jwtUtil.createAccessToken(user.getId());
-        String refreshToken = jwtUtil.createRefreshToken(user.getId());
+        // 인증에 성공했다면 시도 횟수에서 제거
+        loginAttemptService.deleteAttempt(request.email(), remoteAddr);
+
+        String accessToken = jwtUtil.createAccessToken(user.getId(), user.getRole());
+        String refreshToken = jwtUtil.createRefreshToken(user.getId(), user.getRole());
         refreshTokenService.saveRefreshToken(user.getId(), refreshToken);
 
         return LoginResult.of(accessToken, refreshToken);
@@ -75,8 +83,10 @@ public class UserCommandService {
     public LoginResult reissue(String refreshToken) {
         Long userId = verifyTokenAndGetUserId(refreshToken);
 
-        String newAccessToken = jwtUtil.createAccessToken(userId);
-        String newRefreshToken = jwtUtil.createRefreshToken(userId);
+        // role 변경 로직이 없어서 claim에서 role을 읽어서 가져온다. (변경된다면 재로그인 필요)
+        UserRole role = jwtUtil.getUserRole(refreshToken);
+        String newAccessToken = jwtUtil.createAccessToken(userId, role);
+        String newRefreshToken = jwtUtil.createRefreshToken(userId, role);
         // 리프레스 토큰이 유효할때만 새로운 토큰으로 응답
         refreshTokenService.rotateToken(userId, refreshToken, newRefreshToken);
         return LoginResult.of(newAccessToken, newRefreshToken);

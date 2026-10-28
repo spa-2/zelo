@@ -1,5 +1,7 @@
 package com.server.zelo.domain.payment.controller;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.ErrorCode;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -105,8 +108,47 @@ class PaymentControllerTest {
         then(paymentFacade).should(never()).confirmPayment(anyLong(), any());
     }
 
+    @Test
+    void 저장된_카드로_결제하면_200과_결제_결과를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(paymentFacade.payWithPaymentMethod(1L, PORTONE_ID, 3L)).willReturn(PaymentStatus.PAID);
+
+        // when // then
+        mockMvc.perform(post("/api/payments/" + PORTONE_ID + "/payment-method")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethodId\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.portoneId").value(PORTONE_ID))
+                .andExpect(jsonPath("$.data.status").value("PAID"));
+    }
+
+    @Test
+    void 결제_수단_ID가_없으면_400을_반환하고_결제하지_않는다() throws Exception {
+        // given
+        authenticate(1L);
+
+        // when // then
+        mockMvc.perform(post("/api/payments/" + PORTONE_ID + "/payment-method")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        then(paymentFacade).should(never()).payWithPaymentMethod(anyLong(), any(), anyLong());
+    }
+
+    @Test
+    void 이미_진행된_결제면_409를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        given(paymentFacade.payWithPaymentMethod(1L, PORTONE_ID, 3L))
+                .willThrow(new BusinessException(ErrorCode.ALREADY_PROCESSED_PAYMENT));
+
+        // when // then
+        mockMvc.perform(post("/api/payments/" + PORTONE_ID + "/payment-method")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"paymentMethodId\":3}"))
+                .andExpect(status().isConflict());
+    }
+
     private void authenticate(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(AuthUser.of(userId), null, AuthorityUtils.NO_AUTHORITIES));
+                new UsernamePasswordAuthenticationToken(AuthUser.of(userId, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

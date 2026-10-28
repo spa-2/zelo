@@ -1,5 +1,7 @@
 package com.server.zelo.domain.payment.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
 import com.server.zelo.domain.chat.service.ChatMessageService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
@@ -8,6 +10,7 @@ import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
+import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.portone.client.PortOneClient;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
@@ -32,6 +35,7 @@ public class PaymentCommandService {
     private final DeliveryService deliveryService;
     private final ChatMessageService chatMessageService;
     private final OrderCommandService orderCommandService;
+    private final PaymentMethodService paymentMethodService;
     private final TransactionOperations transactionOperations;
 
 
@@ -62,7 +66,7 @@ public class PaymentCommandService {
 
         if (pgPayment.isPaid() && payment.isAmountMatched(pgPayment.amount())) {
             transactionOperations.executeWithoutResult(status -> {
-                paymentService.complete(portoneId, pgPayment.amount(), pgPayment.paidAt());
+                paymentService.complete(portoneId, pgPayment.amount(), pgPayment.paidAt(), pgPayment.methodName());
                 orderCommandService.completePayment(orderId);
                 createDelivery(orderId);
             });
@@ -82,12 +86,7 @@ public class PaymentCommandService {
         }
 
         if (pgPayment.isFailed()) {
-            transactionOperations.executeWithoutResult(status -> {
-                paymentService.fail(portoneId);
-                orderCommandService.failPaymentIfPossible(orderId);
-            });
-            createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
-            return PaymentStatus.FAILED;
+            return failPayment(portoneId, orderId);
         }
 
         // 결제창에서 취소된 결제는 실패가 아니라 주문 취소로 반영한다
@@ -103,6 +102,31 @@ public class PaymentCommandService {
         // 그 외(결제창 진행 중 등)는 확인 대기로 남겨 두고 웹훅이나 스케줄러가 다시 확인한다
         return PaymentStatus.CONFIRM_PENDING;
 
+    }
+
+    // 결제창 없이 서버가 빌링키로 결제하고, 결과는 일반 결제와 같이 포트원 재조회로 반영한다
+    public PaymentStatus payWithPaymentMethod(Long userId, String portoneId, Long paymentMethodId) {
+        Payment payment = paymentService.getPayment(portoneId);
+        Long orderId = payment.getOrderId();
+        orderService.validateOwner(orderId, userId);
+        PaymentMethod paymentMethod = paymentMethodService.getOwnedMethod(paymentMethodId, userId);
+
+        Order order = orderService.getOrderWithItems(orderId);
+        if (order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+
+        transactionOperations.executeWithoutResult(status -> paymentService.startBillingPayment(portoneId));
+        try {
+            portOneClient.payWithBillingKey(portoneId, paymentMethod.getBillingKey(), order.getOrderName(), payment.getAmount());
+        } catch (BusinessException e) {
+            // 카드 거절은 돈이 빠져나가지 않았으므로 바로 실패 처리한다. 타임아웃 등은 결제됐을 수 있어 확인 대기로 남기고 웹훅이 반영한다
+            if (e.getErrorCode() == ErrorCode.PG_REQUEST_REJECTED) {
+                return failPayment(portoneId, orderId);
+            }
+            throw e;
+        }
+        return confirmPayment(portoneId);
     }
         private boolean isPaymentPending(Long orderId) {
         return orderService.getOrderWithItems(orderId).getStatus() == OrderStatus.PAYMENT_PENDING;
@@ -131,6 +155,15 @@ public class PaymentCommandService {
         } catch (RuntimeException e) {
             log.error("결제 결과 카드 저장 실패 orderId={}, status={}", orderId, paymentStatus, e);
         }
+    }
+
+    private PaymentStatus failPayment(String portoneId, Long orderId) {
+        transactionOperations.executeWithoutResult(status -> {
+            paymentService.fail(portoneId);
+            orderCommandService.failPaymentIfPossible(orderId);
+        });
+        createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
+        return PaymentStatus.FAILED;
     }
 
 

@@ -1,13 +1,18 @@
 package com.server.zelo.domain.portone.client;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.payment.entity.PaymentMethodType;
+import com.server.zelo.domain.portone.dto.response.PortOneBillingKey;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.config.PortOneProperties;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -26,6 +31,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+@ExtendWith(OutputCaptureExtension.class)
 class HttpPortOneClientTest {
 
     private static final String BASE_URL = "https://api.portone.io";
@@ -33,6 +39,9 @@ class HttpPortOneClientTest {
     private static final String PAYMENT_URL = BASE_URL + "/payments/" + PORTONE_ID + "?storeId=store-1";
     private static final String CANCEL_URL = BASE_URL + "/payments/" + PORTONE_ID + "/cancel";
     private static final String CANCEL_REASON = "결제 금액 불일치";
+    private static final String BILLING_KEY = "billing-key-1";
+    private static final String BILLING_KEY_URL = BASE_URL + "/billing-keys/" + BILLING_KEY + "?storeId=store-1";
+    private static final String BILLING_PAYMENT_URL = BASE_URL + "/payments/" + PORTONE_ID + "/billing-key";
     private MockRestServiceServer server;
     private HttpPortOneClient portOneClient;
 
@@ -52,7 +61,8 @@ class HttpPortOneClientTest {
         server.expect(requestTo(PAYMENT_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("""
-                        {"id":"payment-1","status":"PAID","amount":{"total":15000},"paidAt":"2026-10-20T01:00:00Z"}
+                        {"id":"payment-1","status":"PAID","amount":{"total":15000},"paidAt":"2026-10-20T01:00:00Z",
+                         "method":{"type":"PaymentMethodCard","card":{"name":"신한카드"}}}
                         """, MediaType.APPLICATION_JSON));
 
         // when
@@ -62,6 +72,7 @@ class HttpPortOneClientTest {
         assertThat(payment.status()).isEqualTo(PortOnePaymentStatus.PAID);
         assertThat(payment.amount()).isEqualTo(15000L);
         assertThat(payment.paidAt()).isEqualTo(LocalDateTime.of(2026, 10, 20, 10, 0));
+        assertThat(payment.methodName()).isEqualTo("신한카드");
         server.verify();
     }
 
@@ -292,5 +303,248 @@ class HttpPortOneClientTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         server.verify();
+    }
+
+    @Test
+    void 발급된_카드_빌링키를_조회하면_종류_표시_이름_발급_고객을_반환한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"status":"ISSUED","billingKey":"billing-key-1",
+                         "methods":[{"type":"BillingKeyPaymentMethodCard","card":{"name":"신한카드","number":"53275000****1234"}}],
+                         "customer":{"id":"1"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        // when
+        PortOneBillingKey billingKey = portOneClient.getBillingKey(BILLING_KEY);
+
+        // then
+        assertThat(billingKey.type()).isEqualTo(PaymentMethodType.CARD);
+        assertThat(billingKey.displayName()).isEqualTo("신한카드 1234");
+        assertThat(billingKey.isOwnedBy(1L)).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void 포트원에_빌링키가_없으면_INVALID_BILLING_KEY_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키_조회_응답이_비어_있으면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withSuccess());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_조회_중_포트원_서버_오류면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_조회_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).contains("포트원 빌링키 조회 응답 없음");
+        assertThat(output).doesNotContain(BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키_조회_중_연결에_실패하면_PG_REQUEST_FAILED_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new ConnectException("Connection refused");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.getBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+        assertThat(output).doesNotContain(BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키를_삭제하면_포트원에_DELETE_요청을_보낸다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andExpect(method(HttpMethod.DELETE))
+                .andRespond(withSuccess());
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void 포트원에_없는_빌링키를_삭제하면_성공으로_본다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 이미_삭제된_빌링키를_삭제하면_성공으로_본다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"BILLING_KEY_ALREADY_DELETED","message":"이미 삭제된 빌링키"}
+                                """));
+
+        // when // then
+        assertThatCode(() -> portOneClient.deleteBillingKey(BILLING_KEY)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 포트원이_빌링키_삭제를_거절하면_PG_REQUEST_REJECTED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_REJECTED);
+    }
+
+    @Test
+    void 빌링키_삭제_중_포트원_서버_오류면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_삭제_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_KEY_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.deleteBillingKey(BILLING_KEY))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).doesNotContain(BILLING_KEY);
+    }
+
+    @Test
+    void 빌링키_결제를_요청하면_상점_ID_빌링키_금액을_보낸다() {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.storeId").value("store-1"))
+                .andExpect(jsonPath("$.billingKey").value(BILLING_KEY))
+                .andExpect(jsonPath("$.orderName").value("티셔츠 외 1건"))
+                .andExpect(jsonPath("$.amount.total").value(15000))
+                .andExpect(jsonPath("$.currency").value("KRW"))
+                .andRespond(withSuccess());
+
+        // when // then
+        assertThatCode(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void 이미_결제된_건이면_빌링키_결제를_성공으로_본다() {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"ALREADY_PAID","message":"이미 결제됨"}
+                                """));
+
+        // when // then
+        assertThatCode(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 카드사가_빌링키_결제를_거절하면_PG_REQUEST_REJECTED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"type":"PG_PROVIDER","message":"한도 초과"}
+                                """));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_REJECTED);
+    }
+
+    @Test
+    void 빌링키_결제_중_포트원_서버_오류면_PG_REQUEST_FAILED_예외가_발생한다() {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL)).andRespond(withServerError());
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_REQUEST_FAILED);
+    }
+
+    @Test
+    void 빌링키_결제_응답이_없으면_PG_TIMEOUT_예외가_발생하고_로그에_빌링키를_남기지_않는다(CapturedOutput output) {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PG_TIMEOUT);
+        assertThat(output).doesNotContain(BILLING_KEY);
     }
 }

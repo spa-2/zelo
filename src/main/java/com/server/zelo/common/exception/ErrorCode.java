@@ -24,6 +24,7 @@ public enum ErrorCode {
     INACTIVE_ACCOUNT(HttpStatus.FORBIDDEN, "MEMBER_006", "비활성화 계정입니다"),
     USER_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_007", "배송지를 찾을 수 없습니다."),
     DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
+    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
     DEFAULT_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "MEMBER_008", "기본 배송지는 다른 배송지를 기본으로 지정한 뒤 변경하거나 삭제할 수 있습니다."),
 
     // Product
@@ -32,6 +33,10 @@ public enum ErrorCode {
     INVALID_PRICE(HttpStatus.BAD_REQUEST, "PRODUCT_003", "가격은 0 이상이어야 합니다."),
     INVALID_STOCK(HttpStatus.BAD_REQUEST, "PRODUCT_004", "재고는 0 이상이어야 합니다."),
     INVALID_PRICE_RANGE(HttpStatus.BAD_REQUEST, "PRODUCT_005", "최소가격은 최대가격보다 작아야 합니다."),
+    DUPLICATE_PRODUCT_CODE(HttpStatus.CONFLICT, "PRODUCT_006", "이미 있는 상품 코드입니다."),
+    INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_007", "재료를 찾을 수 없습니다."),
+    INVALID_PRODUCT_STATUS(HttpStatus.CONFLICT, "PRODUCT_008", "지금 상품 상태에서는 할 수 없습니다."),
+    CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_009", "카테고리를 찾을 수 없습니다."),
 
     // Quote
     QUOTE_EXPIRED(HttpStatus.CONFLICT, "QUOTE_001", "견적이 만료되었습니다. 견적을 다시 받아 주세요."),
@@ -61,6 +66,9 @@ public enum ErrorCode {
     PG_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PAYMENT_007", "결제사 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."),
     PAYMENT_NOT_REFUNDABLE(HttpStatus.CONFLICT, "PAYMENT_008", "결제가 완료된 주문만 환불할 수 있습니다."),
     PG_REQUEST_REJECTED(HttpStatus.BAD_GATEWAY, "PAYMENT_009", "결제사가 요청을 거절했습니다."),
+    PAYMENT_METHOD_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_010", "결제 수단을 찾을 수 없습니다."),
+    PAYMENT_METHOD_ALREADY_REGISTERED(HttpStatus.CONFLICT, "PAYMENT_011", "이미 등록된 결제 수단입니다."),
+    INVALID_BILLING_KEY(HttpStatus.BAD_REQUEST, "PAYMENT_012", "유효하지 않은 빌링키입니다."),
 
     // Refund
     REFUND_IN_PROGRESS(HttpStatus.CONFLICT, "REFUND_003", "이미 진행 중인 환불이 있습니다."),
@@ -73,6 +81,8 @@ public enum ErrorCode {
     // Chat
     CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_001", "채팅방을 찾을 수 없습니다."),
     CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_002", "해당 채팅방에 접근할 권한이 없습니다."),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "CHAT_003", "같은 요청 키로 다른 메시지를 보낼 수 없습니다."),
+    CHAT_RETRY_NOT_ALLOWED(HttpStatus.CONFLICT, "CHAT_004", "다시 시도할 수 없는 메시지입니다."),
 
     // Review
     REVIEW_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "REVIEW_001", "상품의 리뷰 요약을 찾을 수 없습니다."),
@@ -107,6 +117,7 @@ public enum ErrorCode {
     SOCIAL_EMAIL_CONFLICT(HttpStatus.CONFLICT, "AUTH_011", "이미 가입된 이메일입니다. 기존 방식으로 로그인해 주세요."),
     UNSUPPORTED_SOCIAL_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_012", "지원하지 않는 소셜 로그인입니다."),
     SOCIAL_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_013", "소셜 로그인 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요."),
+    TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_014", "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요"),
 
     //Refund
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),

@@ -2,6 +2,11 @@ spring:
   application:
     name: zelo
 
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # ssm 리전
+
   datasource:
     url: jdbc:postgresql://localhost:5432/zelotest
     username: postgres
@@ -109,3 +114,26 @@ jwt:
   access-expiration: 600000 # 10분
   refresh-expiration: 1209600000 # 2주
   secret: ${jwt_secret}
+
+server:
+  port: 8080 # 서버 포트 명시
+  tomcat:
+    mbeanregistry: # 서버의 상태와 동작 정보 활성화
+      enabled: true
+  forward-headers-strategy: native # tomcat이 proxy가 보내는 x-forwarded-for을 해석한다.
+
+management:
+  server:
+    port: 9292
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: zelo   # 모든 지표에 앱 이름 태그
+
+info:
+  app:
+    name: zelo
+    version: 1.0.0

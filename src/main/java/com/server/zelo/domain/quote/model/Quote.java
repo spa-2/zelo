@@ -34,12 +34,20 @@ public record Quote(
         budgetOptions = budgetOptions == null ? List.of() : budgetOptions;
     }
 
+    // 예산 없이 만드는 기존 호출용. 채팅 테스트가 후보까지 넣는 이 모양을 써서 남겨둠
+    public Quote(String quoteId, Long userId, Long roomId, String menuName, List<QuoteItem> items,
+                 List<ExcludedItem> excludedItems, Long totalAmount, LocalDateTime createdAt, LocalDateTime expiresAt,
+                 Set<Keyword> conditions, List<SubstituteItem> substitutes) {
+        this(quoteId, userId, roomId, menuName, items, excludedItems, totalAmount, createdAt, expiresAt, conditions,
+                substitutes, null, List.of());
+    }
+
     // 후보·예산 없이 만드는 기존 호출용
     public Quote(String quoteId, Long userId, Long roomId, String menuName, List<QuoteItem> items,
                  List<ExcludedItem> excludedItems, Long totalAmount, LocalDateTime createdAt, LocalDateTime expiresAt,
                  Set<Keyword> conditions) {
         this(quoteId, userId, roomId, menuName, items, excludedItems, totalAmount, createdAt, expiresAt, conditions,
-                List.of(), null, List.of());
+                List.of());
     }
 
     // 조건 없이 만드는 기존 호출용. 채팅·주문·AI 테스트가 이 모양을 써서 남겨둠

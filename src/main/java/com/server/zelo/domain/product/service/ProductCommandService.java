@@ -5,11 +5,10 @@ import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
-import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.model.ProductDetail;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -22,9 +21,14 @@ public class ProductCommandService {
 
     private final ProductService productService;
     private final InventoryService inventoryService;
+    private final PopularKeywordService popularKeywordService;
 
     @Transactional(readOnly = true)
     public PageResponse<GetProductSummaryResponse> searchProducts(SearchProductCondition condition) {
+        // 다음 페이지로 넘길 때마다 세면 많이 넘겨 본 검색어가 올라가서 첫 페이지만 셈
+        if (condition.page() == 0) {
+            popularKeywordService.record(condition.keyword());
+        }
         Page<Product> products = productService.searchProducts(condition);
         List<Long> productIds = products.getContent().stream().map(Product::getId).toList();
         Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);
@@ -34,9 +38,8 @@ public class ProductCommandService {
 
     @Transactional(readOnly = true)
     public GetProductResponse getProduct(String productCode) {
-        Product product = productService.getProduct(productCode);
-        Set<Keyword> keywords = productService.findKeywords(List.of(product.getId())).getOrDefault(product.getId(), Set.of());
-        Integer stock = inventoryService.findAvailableQuantities(List.of(product.getId())).getOrDefault(product.getId(), 0);
-        return GetProductResponse.of(product, keywords, stock);
+        ProductDetail detail = productService.getProductDetail(productCode);
+        Integer stock = inventoryService.findAvailableQuantities(List.of(detail.productId())).getOrDefault(detail.productId(), 0);
+        return GetProductResponse.of(detail, stock);
     }
 }

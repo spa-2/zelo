@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -218,7 +219,7 @@ class ChatLlmFallbackIntegrationTest {
     }
 
     private String bearer() {
-        return "Bearer " + jwtUtil.createAccessToken(USER_ID);
+        return "Bearer " + jwtUtil.createAccessToken(USER_ID, UserRole.BASIC);
     }
 
     private List<ChatMessage> messagesOf(Long roomId) {

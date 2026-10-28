@@ -23,4 +23,10 @@ public class PaymentFacade {
         return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
                 () -> paymentCommandService.confirmPayment(userId, portoneId));
     }
+
+    // 결제 확인과 같은 락 키를 써서 빌링키 결제 중에 웹훅·스케줄러가 같은 결제를 처리하지 않게 한다
+    public PaymentStatus payWithPaymentMethod(Long userId, String portoneId, Long paymentMethodId) {
+        return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
+                () -> paymentCommandService.payWithPaymentMethod(userId, portoneId, paymentMethodId));
+    }
 }

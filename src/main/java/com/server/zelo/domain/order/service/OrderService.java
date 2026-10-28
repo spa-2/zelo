@@ -23,8 +23,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -130,6 +133,11 @@ public class OrderService {
 
                     return order;
                 });
+    }
+
+    // 채팅이 견적 카드마다 주문됐는지 표시할 때 사용. 카드 수만큼 조회하지 않도록 한 번에 조회
+    public Set<String> findOrderedQuoteIds(Collection<String> quoteIds) {
+        return new HashSet<>(orderRepository.findQuoteIdsByQuoteIdIn(quoteIds));
     }
 
     // 선점 재고가 여러 결제 대기 주문에 묶이지 않도록 신규 주문 생성을 제한

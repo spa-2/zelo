@@ -88,7 +88,7 @@ class PaymentServiceTest {
         // given
         Payment payment = Payment.of(10L, PORTONE_ID, 32_000L);
         payment.startConfirm();
-        payment.complete(32_000L, LocalDateTime.now());
+        payment.complete(32_000L, LocalDateTime.now(), "TEST_CARD");
         given(paymentRepository.findByPortoneId(PORTONE_ID)).willReturn(Optional.of(payment));
 
         // when
@@ -122,4 +122,6 @@ class PaymentServiceTest {
         // then
         assertThat(result).isEmpty();
     }
+
+
 }

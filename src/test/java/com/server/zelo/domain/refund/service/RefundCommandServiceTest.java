@@ -362,7 +362,7 @@ class RefundCommandServiceTest {
         Payment payment = Payment.of(ORDER_ID, PORTONE_ID, 10_000L);
         ReflectionTestUtils.setField(payment, "id", 1L);
         payment.startConfirm();
-        payment.complete(10_000L, LocalDateTime.now());
+        payment.complete(10_000L, LocalDateTime.now(), "TEST_CARD");
         return payment;
     }
 }

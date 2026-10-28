@@ -46,8 +46,8 @@ public class PaymentService {
         return payment;
     }
 
-    public void complete(String portoneId, Long pgAmount, LocalDateTime paidAt) {
-        getPayment(portoneId).complete(pgAmount, paidAt);
+    public void complete(String portoneId, Long pgAmount, LocalDateTime paidAt, String paymentMethodName) {
+        getPayment(portoneId).complete(pgAmount, paidAt, paymentMethodName);
     }
 
     public void fail(String portoneId) {
@@ -61,5 +61,12 @@ public class PaymentService {
     public Payment getLatestPayment(Long orderId) {
         return paymentRepository.findTopByOrderIdOrderByIdDesc(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+    }
+
+    public Payment startBillingPayment(String portoneId) {
+        Payment payment = getPayment(portoneId);
+        payment.validateReady();
+        payment.startConfirm();
+        return payment;
     }
 }

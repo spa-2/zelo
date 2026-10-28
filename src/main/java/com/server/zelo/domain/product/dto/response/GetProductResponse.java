@@ -1,10 +1,9 @@
 package com.server.zelo.domain.product.dto.response;
 
 import com.server.zelo.domain.product.entity.Keyword;
-import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.model.ProductDetail;
 import java.util.List;
-import java.util.Set;
 
 public record GetProductResponse(
         String productCode,
@@ -19,17 +18,17 @@ public record GetProductResponse(
         ProductStatus status
 ) {
 
-    public static GetProductResponse of(Product product, Set<Keyword> keywords, Integer availableQuantity) {
+    public static GetProductResponse of(ProductDetail detail, Integer availableQuantity) {
         return new GetProductResponse(
-                product.getProductCode(),
-                product.getBrand(),
-                product.getName(),
-                product.getDescription(),
-                product.getPrice(),
-                product.getUnitLabel(),
-                product.getCategory().getName(),
-                keywords.stream().sorted().toList(),
+                detail.productCode(),
+                detail.brand(),
+                detail.name(),
+                detail.description(),
+                detail.price(),
+                detail.unitLabel(),
+                detail.categoryName(),
+                detail.keywords(),
                 availableQuantity,
-                product.getStatus());
+                detail.status());
     }
 }

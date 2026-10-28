@@ -8,6 +8,7 @@ import com.server.zelo.common.monitoring.BusinessMetric;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.entity.BaseUnit;
+import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
@@ -20,6 +21,7 @@ import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.service.ReviewService;
+import com.server.zelo.domain.user.service.UserBlockedCategoryService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,12 +51,14 @@ public class QuoteCommandService {
     private final BusinessMetrics businessMetrics;
     private final QuoteRepository quoteRepository;
     private final InventoryService inventoryService;
+    private final UserBlockedCategoryService userBlockedCategoryService;
 
     @Transactional(readOnly = true)
     public Quote createQuote(Long userId, Long roomId, MenuPlan menuPlan) {
         Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
+        Set<Long> blockedCategoryIds = userBlockedCategoryService.findBlockedCategoryIds(userId);
         Quote quote = businessMetrics.time(BusinessMetric.QUOTE_CREATE_TIME, () -> {
-            Selection selection = select(menuPlan.ingredients(), conditions);
+            Selection selection = select(menuPlan.ingredients(), conditions, blockedCategoryIds);
             List<BudgetOption> budgetOptions = selection.items().stream()
                     .filter(item -> selection.cheaperItems().containsKey(item.productId()))
                     .map(item -> new BudgetOption(item.productId(), selection.cheaperItems().get(item.productId())))
@@ -100,7 +104,8 @@ public class QuoteCommandService {
         }
         Quote quote = getQuote(userId, roomId);
         // 처음 견적의 조건(맵지 않게 등)으로 골라야 추가한 재료도 같은 기준이 됨
-        Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), quote.conditions());
+        Selection selection = select(List.of(MenuPlanIngredient.of(ingredientName, amount, unit)), quote.conditions(),
+                userBlockedCategoryService.findBlockedCategoryIds(userId));
 
         List<QuoteItem> items = new ArrayList<>(quote.items());
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems().stream()
@@ -155,7 +160,8 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         SubstituteItem target = getSubstitute(quote, name);
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
-        excludedItems.add(new ExcludedItem(name, "OUT_OF_STOCK"));
+        // 사용자가 뺀 거라 재고 부족과 구분함. 채팅 쪽도 같은 이름으로 처리함
+        excludedItems.add(new ExcludedItem(name, "REJECTED_BY_USER"));
         return save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
                 without(quote, target), quote.budget(), quote.budgetOptions());
     }
@@ -179,7 +185,7 @@ public class QuoteCommandService {
                 quote.budget(), keepOptions(quote, items));
     }
 
-    private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions) {
+    private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions, Set<Long> blockedCategoryIds) {
         List<String> ingredientNames = ingredients.stream().map(MenuPlanIngredient::name).toList();
         List<Product> products = productService.findOnSaleProducts(ingredientNames);
         List<Long> productIds = products.stream().map(Product::getId).toList();
@@ -204,7 +210,15 @@ public class QuoteCommandService {
                 excludedItems.add(new ExcludedItem(ingredient.name(), "CATEGORY_NOT_ALLOWED"));
                 continue;
             }
-            List<Product> inStock = candidates.stream()
+            // 사용자가 막은 카테고리(알레르기 등) 상품은 안 고름
+            List<Product> allowed = candidates.stream()
+                    .filter(product -> !isBlocked(product.getCategory(), blockedCategoryIds))
+                    .toList();
+            if (allowed.isEmpty()) {
+                excludedItems.add(new ExcludedItem(ingredient.name(), "BLOCKED_BY_USER"));
+                continue;
+            }
+            List<Product> inStock = allowed.stream()
                     .filter(product -> stocks.getOrDefault(product.getId(), 0) >= quantity(ingredient, product))
                     .toList();
             if (inStock.isEmpty()) {
@@ -213,17 +227,17 @@ public class QuoteCommandService {
             }
 
             // 재고 상관없이 원래 고를 상품부터 정함. 그게 품절이면 대신 고른 건 사용자가 고를 때까지 후보로만 둠
-            Product first = pick(ingredient, candidates, conditions, keywords, reviews);
+            Product first = pick(ingredient, allowed, conditions, keywords, reviews);
             boolean firstInStock = stocks.getOrDefault(first.getId(), 0) >= quantity(ingredient, first);
             Product product = firstInStock ? first : pick(ingredient, inStock, conditions, keywords, reviews);
-            QuoteItem item = toItem(ingredient, product, candidates, conditions, keywords, reviews);
+            QuoteItem item = toItem(ingredient, product, allowed, conditions, keywords, reviews);
             if (!firstInStock) {
                 substitutes.add(new SubstituteItem(ingredient.name(), first.getName(), item));
                 continue;
             }
             items.add(item);
             findCheaper(ingredient, product, inStock, conditions, keywords).ifPresent(cheaper -> cheaperItems.put(
-                    product.getId(), toItem(ingredient, cheaper, candidates, conditions, keywords, reviews)));
+                    product.getId(), toItem(ingredient, cheaper, allowed, conditions, keywords, reviews)));
         }
         return new Selection(items, excludedItems, substitutes, cheaperItems);
     }
@@ -252,6 +266,12 @@ public class QuoteCommandService {
                 .filter(product -> totalPrice(ingredient, product) < totalPrice(ingredient, picked))
                 .min(Comparator.comparingLong((Product product) -> totalPrice(ingredient, product))
                         .thenComparing(Product::getId));
+    }
+
+    // 대분류를 막으면 그 아래 소분류 상품도 막힘
+    private boolean isBlocked(Category category, Set<Long> blockedCategoryIds) {
+        return blockedCategoryIds.contains(category.getId())
+                || (category.getParent() != null && blockedCategoryIds.contains(category.getParent().getId()));
     }
 
     // 수정할 때마다 quoteId를 새로 발급해서 수정 전 카드로는 주문 못 하게 함

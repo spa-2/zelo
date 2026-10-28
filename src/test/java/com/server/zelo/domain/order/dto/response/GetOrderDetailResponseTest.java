@@ -101,7 +101,24 @@ class GetOrderDetailResponseTest {
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                201L, "payment-detail-169", status));
+                201L, "payment-detail-169", status, 7_000L, null, null));
+    }
+
+    @Test
+    void 결제가_완료되면_결제_수단과_금액과_결제_일시를_반환한다() {
+        // given
+        Fixture fixture = fixture();
+        Payment payment = Payment.of(101L, "payment-detail-169", 7_000L);
+        ReflectionTestUtils.setField(payment, "id", 201L);
+        payment.startConfirm();
+        payment.complete(7_000L, CREATED_AT, "신한카드");
+
+        // when
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null);
+
+        // then
+        assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
+                201L, "payment-detail-169", PaymentStatus.PAID, 7_000L, "신한카드", CREATED_AT));
     }
 
     @ParameterizedTest

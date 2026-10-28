@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.controller;
 
+import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
@@ -90,6 +91,8 @@ class OrderDetailControllerTest {
                 .andExpect(jsonPath("$.data.items[0].canceledQuantity").value(1))
                 .andExpect(jsonPath("$.data.items[0].cancelableQuantity").value(2))
                 .andExpect(jsonPath("$.data.payment.portoneId").value("payment-detail-169"))
+                .andExpect(jsonPath("$.data.payment.amount").value(3_000))
+                .andExpect(jsonPath("$.data.payment.paymentMethodName").value("신한카드"))
                 .andExpect(jsonPath("$.data.delivery.deliveryStatus").value("READY"))
                 .andExpect(jsonPath("$.data.refund.refundStatus").value("COMPLETED"));
         then(command).should().getOrderDetail(USER_ID, ORDER_ID);
@@ -189,7 +192,8 @@ class OrderDetailControllerTest {
                 new GetOrderDetailResponse.ShippingAddressInfo("홍길동", "010-1234-5678", "06236", "주문 당시 주소"),
                 List.of(new GetOrderDetailResponse.OrderItemInfo(1_001L, 20L, "구매 당시 사과", "1개",
                         1_000L, 3, 1, 2, 3_000L, StockState.DEDUCTED)),
-                new GetOrderDetailResponse.PaymentInfo(201L, "payment-detail-169", PaymentStatus.PAID),
+                new GetOrderDetailResponse.PaymentInfo(201L, "payment-detail-169", PaymentStatus.PAID,
+                        3_000L, "신한카드", CREATED_AT),
                 new GetOrderDetailResponse.DeliveryInfo(301L, DeliveryStatus.READY, null, null),
                 new GetOrderDetailResponse.RefundInfo(401L, RefundStatus.COMPLETED, RefundType.PARTIAL,
                         1_000L, CREATED_AT.plusMinutes(10)));
@@ -197,6 +201,6 @@ class OrderDetailControllerTest {
 
     private void authenticate() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
-                AuthUser.of(USER_ID), null, AuthorityUtils.NO_AUTHORITIES));
+                AuthUser.of(USER_ID, UserRole.BASIC), null, AuthorityUtils.NO_AUTHORITIES));
     }
 }

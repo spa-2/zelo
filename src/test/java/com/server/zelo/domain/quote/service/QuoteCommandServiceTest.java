@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class QuoteCommandServiceTest {
@@ -516,6 +517,73 @@ class QuoteCommandServiceTest {
         // then
         assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(9L);
         assertThat(quote.excludedItems()).extracting(ExcludedItem::reason).containsExactly("BLOCKED_BY_USER");
+    }
+    @Test
+    void 추천_재료의_상품과_추가_금액을_계산하고_견적은_저장하지_않는다() {
+        // given
+        givenQuote(List.of(item(9L, 3000L, 1)), List.of());
+        givenProducts(List.of(product(1L, kimchi, "포기김치 500g", 5900L, 500, 100)), Map.of(1L, 100), Map.of());
+
+        // when
+        QuoteRecommendation recommendation = quoteCommandService.recommendItems(1L, 5L,
+                List.of(MenuPlanIngredient.of("김치", 800, BaseUnit.G)));
+
+        // then
+        assertThat(recommendation.items()).extracting(QuoteItem::productName, QuoteItem::quantity)
+                .containsExactly(tuple("포기김치 500g", 2));
+        assertThat(recommendation.extraAmount()).isEqualTo(11800L);
+        then(quoteRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 추천_재료도_처음_견적의_조건으로_고른다() {
+        // given
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.of(new Quote("q-1", 1L, 5L, "김치볶음밥",
+                List.of(), List.of(), 0L, LocalDateTime.now(), LocalDateTime.now().plusMinutes(10), Set.of(Keyword.NOT_SPICY))));
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
+        Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
+        givenProducts(List.of(pogi, baek), Map.of(1L, 100, 2L, 100), Map.of(2L, Set.of(Keyword.NOT_SPICY)));
+
+        // when
+        QuoteRecommendation recommendation = quoteCommandService.recommendItems(1L, 5L,
+                List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)));
+
+        // then
+        assertThat(recommendation.items()).extracting(QuoteItem::productName).containsExactly("백김치 1kg");
+    }
+
+    @Test
+    void 못_담는_추천_재료는_사유와_같이_돌려주고_추가_금액에_넣지_않는다() {
+        // given
+        givenQuote(List.of(), List.of());
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
+        Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
+        givenProducts(List.of(pogi, baek), Map.of(1L, 0, 2L, 100), Map.of());
+
+        // when
+        QuoteRecommendation recommendation = quoteCommandService.recommendItems(1L, 5L, List.of(
+                MenuPlanIngredient.of("참치캔", 1, BaseUnit.EA),
+                MenuPlanIngredient.of("김치", 400, BaseUnit.G)));
+
+        // then
+        assertThat(recommendation.items()).isEmpty();
+        assertThat(recommendation.excludedItems()).extracting(ExcludedItem::name, ExcludedItem::reason)
+                .containsExactly(tuple("참치캔", "PRODUCT_NOT_FOUND"));
+        assertThat(recommendation.substitutes()).extracting(SubstituteItem::soldOutProductName)
+                .containsExactly("포기김치 500g");
+        assertThat(recommendation.extraAmount()).isZero();
+    }
+
+    @Test
+    void 견적이_없으면_추천도_만료_예외가_발생한다() {
+        // given
+        given(quoteRepository.findByRoomId(5L)).willReturn(Optional.empty());
+
+        // when, then
+        assertThatThrownBy(() -> quoteCommandService.recommendItems(1L, 5L,
+                List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.QUOTE_EXPIRED);
     }
 
     private Category category(Long id, String name, Category parent) {

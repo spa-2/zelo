@@ -16,6 +16,7 @@ import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.QuoteItemReason;
+import com.server.zelo.domain.quote.model.QuoteRecommendation;
 import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
@@ -122,6 +123,15 @@ public class QuoteCommandService {
                 .toList());
         substitutes.addAll(selection.substitutes());
         return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes);
+    }
+
+    // 계산만 하고 견적은 안 바꿈. 사용자가 담기를 누르면 addItem으로 담음
+    @Transactional(readOnly = true)
+    public QuoteRecommendation recommendItems(Long userId, Long roomId, List<MenuPlanIngredient> ingredients) {
+        Quote quote = getQuote(userId, roomId);
+        Selection selection = select(ingredients, quote.conditions(), userBlockedCategoryService.findBlockedCategoryIds(userId));
+        long extraAmount = selection.items().stream().mapToLong(QuoteItem::lineAmount).sum();
+        return new QuoteRecommendation(selection.items(), selection.substitutes(), selection.excludedItems(), extraAmount);
     }
 
     // 후보를 보여준 사이에 팔렸을 수 있어서 재고를 다시 봄. 모자라면 addItem처럼 품절로 돌려줌

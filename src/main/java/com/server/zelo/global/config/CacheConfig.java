@@ -15,6 +15,7 @@ import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -47,7 +48,9 @@ public class CacheConfig implements CachingConfigurer {
         JavaType ingredientUnits = jsonMapper.getTypeFactory()
                 .constructMapType(LinkedHashMap.class, String.class, BaseUnit.class);
         JavaType productDetail = jsonMapper.getTypeFactory().constructType(ProductDetail.class);
-        return RedisCacheManager.builder(redisConnectionFactory)
+        // 기본은 Redis 쓰기를 비동기로 해서, 조회가 캐시에 넣는 중에 관리자 수정의 삭제가 먼저 끝나면 옛 값이 다시 남을 수 있음
+        RedisCacheWriter cacheWriter = RedisCacheWriter.create(redisConnectionFactory, RedisCacheWriter.RedisCacheWriterConfigurer::immediateWrites);
+        return RedisCacheManager.builder(cacheWriter)
                 .withCacheConfiguration(CATEGORIES, cacheConfiguration(jsonMapper, categories))
                 .withCacheConfiguration(INGREDIENT_UNITS, cacheConfiguration(jsonMapper, ingredientUnits))
                 .withCacheConfiguration(PRODUCT_DETAIL, cacheConfiguration(jsonMapper, productDetail))

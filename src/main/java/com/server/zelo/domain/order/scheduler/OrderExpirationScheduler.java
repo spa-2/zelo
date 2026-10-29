@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.scheduler;
 
+import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.service.OrderFacade;
 import com.server.zelo.domain.order.service.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +21,6 @@ import java.util.List;
         matchIfMissing = true
 )
 public class OrderExpirationScheduler {
-    private static final int EXPIRATION_MINUTES = 30;
 
     private final OrderFacade orderFacade;
     private final OrderService orderService;
@@ -28,7 +28,7 @@ public class OrderExpirationScheduler {
     @Scheduled(fixedDelayString = "${zelo.order.expiration.scheduler.fixed-delay:30000}")
     public void cancelExpiredOrders() {
         // 한 번의 실행에서는 모든 주문에 같은 만료 기준 시각을 적용
-        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(EXPIRATION_MINUTES);
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(Order.PAYMENT_EXPIRATION_MINUTES);
 
         List<Long> orderIds = orderService.findExpiredOrderIds(cutoff);
 

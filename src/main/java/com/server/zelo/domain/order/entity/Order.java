@@ -24,6 +24,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,6 +76,8 @@ public class Order extends BaseTimeEntity {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.PERSIST)
     private List<OrderItem> orderItems = new ArrayList<>();
+
+    public static final int PAYMENT_EXPIRATION_MINUTES = 30;
 
     private Order(
             User user,
@@ -153,5 +156,9 @@ public class Order extends BaseTimeEntity {
     public boolean isFullyCanceled() {
         // 품목이 없는 주문을 전체 취소 완료로 판단하지 않음
         return !this.orderItems.isEmpty() && this.orderItems.stream().allMatch(OrderItem::isFullyCanceled);
+    }
+
+    public boolean isPaymentExpired(LocalDateTime now) {
+        return !getCreatedAt().isAfter(now.minusMinutes(PAYMENT_EXPIRATION_MINUTES));
     }
 }

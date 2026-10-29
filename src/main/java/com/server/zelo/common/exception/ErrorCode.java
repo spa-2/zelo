@@ -55,6 +55,7 @@ public enum ErrorCode {
     ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ORDER_003", "해당 주문에 접근할 권한이 없습니다."),
     PENDING_ORDER_EXISTS(HttpStatus.CONFLICT, "ORDER_004", "결제 대기 중인 주문이 이미 있습니다."),
     INVALID_STOCK_STATUS(HttpStatus.BAD_REQUEST, "ORDER_005", "유효하지 않은 주문 상품의 재고 상태 변경입니다."),
+    ORDER_PAYMENT_EXPIRED(HttpStatus.CONFLICT, "ORDER_006", "결제 가능 시간이 지난 주문입니다. 견적을 다시 받아 주세요."),
 
     // Payment
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제 정보를 찾을 수 없습니다."),

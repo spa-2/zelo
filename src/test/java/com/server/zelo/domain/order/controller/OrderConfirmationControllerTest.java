@@ -9,7 +9,6 @@ import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
 import com.server.zelo.domain.order.service.OrderCommandService;
-import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.order.service.OrderFacade;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,9 +48,6 @@ class OrderConfirmationControllerTest {
     private static final String REQUEST_JSON = "{\"roomId\":10,\"quoteId\":\"QUOTE-114\"}";
 
     @Mock
-    private OrderService orderService;
-
-    @Mock
     private OrderCommandService orderCommandService;
 
     @Mock
@@ -62,7 +58,7 @@ class OrderConfirmationControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade, orderService, orderCommandService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade,orderCommandService))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -97,7 +93,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.data.expiresAt").exists());
         then(orderCommandService).should().createConfirmation(USER_ID, REQUEST);
         then(orderCommandService).shouldHaveNoMoreInteractions();
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @ParameterizedTest
@@ -118,7 +114,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.quoteId").value(quoteId));
         then(orderCommandService).should().createConfirmation(USER_ID, request);
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @ParameterizedTest
@@ -136,7 +132,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderCommandService, orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @Test
@@ -149,7 +145,7 @@ class OrderConfirmationControllerTest {
         mockMvc.perform(post("/api/orders/confirmations").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(orderCommandService, orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @Test
@@ -164,7 +160,7 @@ class OrderConfirmationControllerTest {
                         .content("{"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(orderCommandService, orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @Test
@@ -180,7 +176,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
-        verifyNoInteractions(orderCommandService, orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @ParameterizedTest
@@ -203,7 +199,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.code").value(code.getCode()))
                 .andExpect(jsonPath("$.message").value(code.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @Test
@@ -223,7 +219,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.SERVICE_UNAVAILABLE.getCode()))
                 .andExpect(jsonPath("$.message").value(ErrorCode.SERVICE_UNAVAILABLE.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     private void authenticate() {

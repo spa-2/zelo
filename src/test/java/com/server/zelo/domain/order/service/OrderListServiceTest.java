@@ -1,8 +1,6 @@
 package com.server.zelo.domain.order.service;
 
-import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
-import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.ShippingAddress;
@@ -23,10 +21,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import java.time.LocalDateTime;
 import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -57,17 +53,14 @@ class OrderListServiceTest {
                 .willReturn(new PageImpl<>(List.of(first, second), sortedPage, 7));
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
+        Page<Order> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
-        assertThat(result.content()).containsExactly(
-                new GetOrderSummaryResponse(101L, OrderStatus.PAYMENT_PENDING, "사과 주문", 3_000L, CREATED_AT),
-                new GetOrderSummaryResponse(100L, OrderStatus.PAID, "당근 주문", 5_000L, CREATED_AT.minusHours(1))
-        );
-        assertThat(result.page()).isEqualTo(2);
-        assertThat(result.size()).isEqualTo(2);
-        assertThat(result.totalElements()).isEqualTo(7);
-        assertThat(result.totalPages()).isEqualTo(4);
+        assertThat(result.getContent()).containsExactly(first, second);
+        assertThat(result.getNumber()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(2);
+        assertThat(result.getTotalElements()).isEqualTo(7);
+        assertThat(result.getTotalPages()).isEqualTo(4);
         then(orderRepository).should().findByUser_Id(sortedPage, USER_ID);
         then(orderRepository).shouldHaveNoMoreInteractions();
     }
@@ -83,13 +76,11 @@ class OrderListServiceTest {
                 .willReturn(new PageImpl<>(List.of(order), sortedPage, 1));
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
+        Page<Order> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
-        assertThat(result.content()).containsExactly(
-                new GetOrderSummaryResponse(101L, status, "사과 주문", 3_000L, CREATED_AT)
-        );
-        assertThat(result.totalElements()).isEqualTo(1);
+        assertThat(result.getContent()).containsExactly(order);
+        assertThat(result.getTotalElements()).isEqualTo(1);
         then(orderRepository).should().findByUser_IdAndStatus(sortedPage, USER_ID, status);
         then(orderRepository).shouldHaveNoMoreInteractions();
     }
@@ -109,14 +100,14 @@ class OrderListServiceTest {
         }
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
+        Page<Order> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
-        assertThat(result.content()).isEmpty();
-        assertThat(result.page()).isEqualTo(3);
-        assertThat(result.size()).isEqualTo(20);
-        assertThat(result.totalElements()).isZero();
-        assertThat(result.totalPages()).isZero();
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getNumber()).isEqualTo(3);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getTotalElements()).isZero();
+        assertThat(result.getTotalPages()).isZero();
         if (filtered) {
             then(orderRepository).should().findByUser_IdAndStatus(sortedPage, USER_ID, status);
         } else {
@@ -140,11 +131,11 @@ class OrderListServiceTest {
         }
 
         // when
-        PageResponse<GetOrderSummaryResponse> result = orderService.getMyOrders(USER_ID, condition);
+        Page<Order> result = orderService.getMyOrders(USER_ID, condition);
 
         // then
-        assertThat(result.page()).isZero();
-        assertThat(result.size()).isEqualTo(20);
+        assertThat(result.getNumber()).isZero();
+        assertThat(result.getSize()).isEqualTo(20);
         if (filtered) {
             then(orderRepository).should().findByUser_IdAndStatus(sortedPage, USER_ID, status);
         } else {

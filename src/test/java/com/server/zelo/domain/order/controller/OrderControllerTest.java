@@ -10,7 +10,6 @@ import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
-import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.order.service.OrderFacade;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,10 +28,8 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
 import java.time.LocalDateTime;
 import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -49,8 +46,6 @@ class OrderControllerTest {
 
     private static final Long USER_ID = 7L;
 
-    @Mock
-    private OrderService orderService;
 
     @Mock
     private OrderCommandService orderCommandService;
@@ -66,7 +61,7 @@ class OrderControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade, orderService, orderCommandService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade,orderCommandService))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -82,8 +77,8 @@ class OrderControllerTest {
         // given
         authenticate();
         GetOrderSummaryResponse order = new GetOrderSummaryResponse(
-                101L, OrderStatus.PAID, "사과 주문", 3_000L, LocalDateTime.of(2026, 10, 22, 14, 30));
-        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+                101L, OrderStatus.PAID, "사과 주문", 3_000L, 2_000L, LocalDateTime.of(2026, 10, 22, 14, 30));
+        given(orderCommandService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(order), 0, 20, 1, 1));
 
         // when
@@ -102,7 +97,8 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
-                .andExpect(jsonPath("$.data.totalPages").value(1));
+                .andExpect(jsonPath("$.data.totalPages").value(1))
+                .andExpect(jsonPath("$.data.content[0].paidAmount").value(2_000));
         assertRequest(0, 20, null);
     }
 
@@ -111,7 +107,7 @@ class OrderControllerTest {
     void 정의된_상태는_검색조건으로_전달하고_빈_목록도_200으로_반환한다(OrderStatus orderStatus) throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderCommandService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         // when
@@ -130,7 +126,7 @@ class OrderControllerTest {
     void 유효한_페이지와_크기는_그대로_전달한다(int page, int size) throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderCommandService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), page, size, 0, 0));
 
         // when
@@ -150,7 +146,7 @@ class OrderControllerTest {
             String name, String value, int expectedPage, int expectedSize) throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderCommandService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), expectedPage, expectedSize, 0, 0));
 
         // when
@@ -176,7 +172,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()))
                 .andExpect(jsonPath("$.message").isNotEmpty())
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @ParameterizedTest
@@ -191,7 +187,7 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @ParameterizedTest
@@ -207,14 +203,14 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     @Test
     void 요청에_다른_사용자_ID를_넣어도_인증된_사용자_ID로_조회한다() throws Exception {
         // given
         authenticate();
-        given(orderService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
+        given(orderCommandService.getMyOrders(eq(USER_ID), any(SearchOrderCondition.class)))
                 .willReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         // when
@@ -235,7 +231,7 @@ class OrderControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
-        verifyNoInteractions(orderService);
+        verifyNoInteractions(orderCommandService);
     }
 
     private void authenticate() {
@@ -244,8 +240,8 @@ class OrderControllerTest {
     }
 
     private void assertRequest(int page, int size, OrderStatus status) {
-        then(orderService).should().getMyOrders(eq(USER_ID), conditionCaptor.capture());
-        then(orderService).shouldHaveNoMoreInteractions();
+        then(orderCommandService).should().getMyOrders(eq(USER_ID), conditionCaptor.capture());
+        then(orderCommandService).shouldHaveNoMoreInteractions();
         assertThat(conditionCaptor.getValue().page()).isEqualTo(page);
         assertThat(conditionCaptor.getValue().size()).isEqualTo(size);
         assertThat(conditionCaptor.getValue().status()).isEqualTo(status);

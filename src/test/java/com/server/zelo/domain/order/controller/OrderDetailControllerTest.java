@@ -12,7 +12,6 @@ import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.StockState;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderFacade;
-import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
@@ -51,7 +50,6 @@ class OrderDetailControllerTest {
     private static final LocalDateTime CREATED_AT = LocalDateTime.of(2030, 1, 2, 12, 0);
 
     @Mock private OrderFacade facade;
-    @Mock private OrderService service;
     @Mock private OrderCommandService command;
 
     private MockMvc mockMvc;
@@ -59,7 +57,7 @@ class OrderDetailControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade, service, command))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade,command))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -96,7 +94,7 @@ class OrderDetailControllerTest {
                 .andExpect(jsonPath("$.data.delivery.deliveryStatus").value("READY"))
                 .andExpect(jsonPath("$.data.refund.refundStatus").value("COMPLETED"));
         then(command).should().getOrderDetail(USER_ID, ORDER_ID);
-        verifyNoInteractions(facade, service);
+        verifyNoInteractions(facade);
     }
 
     @Test
@@ -122,7 +120,7 @@ class OrderDetailControllerTest {
                 .andExpect(jsonPath("$.data.delivery").doesNotExist())
                 .andExpect(jsonPath("$.data.refund").doesNotExist());
         then(command).should().getOrderDetail(USER_ID, ORDER_ID);
-        verifyNoInteractions(facade, service);
+        verifyNoInteractions(facade);
     }
 
     @Test
@@ -135,7 +133,7 @@ class OrderDetailControllerTest {
         mockMvc.perform(get(URL))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
-        verifyNoInteractions(command, facade, service);
+        verifyNoInteractions(command, facade);
     }
 
     @ParameterizedTest
@@ -149,7 +147,7 @@ class OrderDetailControllerTest {
         mockMvc.perform(get("/api/orders/" + orderId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(command, facade, service);
+        verifyNoInteractions(command, facade);
     }
 
     @ParameterizedTest
@@ -183,7 +181,7 @@ class OrderDetailControllerTest {
                 .andExpect(jsonPath("$.code").value(code.getCode()))
                 .andExpect(jsonPath("$.message").value(code.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(facade, service);
+        verifyNoInteractions(facade);
     }
 
     private GetOrderDetailResponse response() {

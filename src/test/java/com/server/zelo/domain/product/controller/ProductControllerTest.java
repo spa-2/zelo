@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
+import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -118,5 +118,26 @@ class ProductControllerTest {
         mockMvc.perform(get("/api/products/NOPE"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PRODUCT_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void 자동완성_결과를_준다() throws Exception {
+        // given
+        given(productCommandService.autocomplete(new AutocompleteCondition("김치")))
+                .willReturn(List.of("백김치 1kg", "포기김치 500g"));
+
+        // when & then
+        mockMvc.perform(get("/api/products/autocomplete").param("keyword", "김치"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0]").value("백김치 1kg"))
+                .andExpect(jsonPath("$.data[1]").value("포기김치 500g"));
+    }
+
+    @Test
+    void 자동완성_검색어가_50자를_넘으면_400을_반환한다() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/products/autocomplete").param("keyword", "가".repeat(51)))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(productCommandService);
     }
 }

@@ -5,33 +5,26 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.request.UpdateProductRequest;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Keyword;
-import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.product.entity.ProductKeyword;
-import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.model.ProductDetail;
 import com.server.zelo.domain.product.repository.IngredientRepository;
 import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import com.server.zelo.global.config.CacheConfig;
-import java.sql.SQLException;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.SQLException;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +49,11 @@ public class ProductService {
     public Page<Product> searchProducts(SearchProductCondition condition) {
         return productRepository.search(condition.keyword(), condition.categoryId(), condition.inStock(),
                 ProductStatus.ON_SALE, PageRequest.of(condition.page(), condition.size(), condition.sort().toSort()));
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> findProductNames(String keyword, int limit) {
+        return productRepository.findNames(keyword, ProductStatus.ON_SALE, Limit.of(limit));
     }
 
     @Transactional(readOnly = true)

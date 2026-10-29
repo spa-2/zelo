@@ -2,9 +2,7 @@ package com.server.zelo.domain.product.repository;
 
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.entity.ProductStatus;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -12,6 +10,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
@@ -33,6 +35,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                     select 1 from Inventory i where i.product = p and i.availableQuantity > 0))
             """)
     Page<Product> search(String keyword, Long categoryId, boolean inStock, ProductStatus status, Pageable pageable);
+
+    // 자동완성용. 브랜드만 다르고 이름이 같은 상품은 한 번만, 많이 팔린 이름부터
+    @Query("""
+            select p.name from Product p
+            where p.status = :status
+              and p.name like concat('%', :keyword, '%')
+            group by p.name
+            order by max(p.salesCount) desc, p.name
+            """)
+    List<String> findNames(String keyword, ProductStatus status, Limit limit);
 
     @EntityGraph(attributePaths = {"category"})
     Optional<Product> findByProductCode(String productCode);

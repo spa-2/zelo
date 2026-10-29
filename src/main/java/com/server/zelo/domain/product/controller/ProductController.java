@@ -2,6 +2,7 @@ package com.server.zelo.domain.product.controller;
 
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.api.PageResponse;
+import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.response.GetPopularKeywordResponse;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
@@ -37,6 +38,12 @@ public class ProductController {
     @GetMapping("/popular-keywords")
     public ResponseEntity<ApiResponse<List<GetPopularKeywordResponse>>> getPopularKeywords() {
         return ResponseEntity.ok(ApiResponse.ok(popularKeywordService.getPopularKeywords()));
+    }
+
+    // 입력 중인 글자가 들어간 상품 이름 10개
+    @GetMapping("/autocomplete")
+    public ResponseEntity<ApiResponse<List<String>>> autocomplete(@Valid @ModelAttribute AutocompleteCondition condition) {
+        return ResponseEntity.ok(ApiResponse.ok(productCommandService.autocomplete(condition)));
     }
 
     @GetMapping("/{productCode}")

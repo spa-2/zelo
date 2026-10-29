@@ -93,7 +93,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.data.expiresAt").exists());
         then(orderCommandService).should().createConfirmation(USER_ID, REQUEST);
         then(orderCommandService).shouldHaveNoMoreInteractions();
-        verifyNoInteractions(orderCommandService);
+        verifyNoInteractions(orderFacade);
     }
 
     @ParameterizedTest
@@ -114,7 +114,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.quoteId").value(quoteId));
         then(orderCommandService).should().createConfirmation(USER_ID, request);
-        verifyNoInteractions(orderCommandService);
+        verifyNoInteractions(orderFacade);
     }
 
     @ParameterizedTest
@@ -199,7 +199,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.code").value(code.getCode()))
                 .andExpect(jsonPath("$.message").value(code.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderCommandService);
+        verifyNoInteractions(orderFacade);
     }
 
     @Test
@@ -219,7 +219,7 @@ class OrderConfirmationControllerTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.SERVICE_UNAVAILABLE.getCode()))
                 .andExpect(jsonPath("$.message").value(ErrorCode.SERVICE_UNAVAILABLE.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(orderCommandService);
+        verifyNoInteractions(orderFacade);
     }
 
     private void authenticate() {

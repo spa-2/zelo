@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -174,7 +175,7 @@ public class QuoteCommandService {
                 without(quote, target), quote.budget(), quote.budgetOptions());
     }
 
-    // 고른 상품 하나만 더 싼 걸로 바꿈. 바꿔도 예산을 넘으면 나머지 후보는 남음
+    // 고른 상품 하나만 더 싼 걸로 바꿈. 나머지 상품 후보는 그대로 둠
     @Transactional(readOnly = true)
     public Quote applyBudgetOption(Long userId, Long roomId, Long productId) {
         Quote quote = getQuote(userId, roomId);
@@ -195,7 +196,12 @@ public class QuoteCommandService {
                 quote.budget(), keepOptions(quote, items));
     }
 
-    private Selection select(List<MenuPlanIngredient> ingredients, Set<Keyword> conditions, Set<Long> blockedCategoryIds) {
+    private Selection select(List<MenuPlanIngredient> requested, Set<Keyword> conditions, Set<Long> blockedCategoryIds) {
+        // 같은 재료가 두 번 오면 양을 합쳐서 한 줄로 고름. 같은 상품이 두 줄 생기면 후보가 어느 줄 건지 꼬여서
+        Map<String, MenuPlanIngredient> merged = new LinkedHashMap<>();
+        requested.forEach(ingredient -> merged.merge(ingredient.name(), ingredient,
+                (first, second) -> MenuPlanIngredient.of(first.name(), first.amount() + second.amount(), first.unit())));
+        List<MenuPlanIngredient> ingredients = List.copyOf(merged.values());
         List<String> ingredientNames = ingredients.stream().map(MenuPlanIngredient::name).toList();
         List<Product> products = productService.findOnSaleProducts(ingredientNames);
         List<Long> productIds = products.stream().map(Product::getId).toList();
@@ -266,13 +272,13 @@ public class QuoteCommandService {
                 product.getUnitLabel(), product.getPrice(), quantity, product.getPrice() * quantity, reason);
     }
 
-    // 조건 맞는 상품을 골랐으면 더 싼 것도 조건 맞는 것 중에서만 (예산 때문에 매운 김치로 바뀌면 안 돼서)
+    // 고른 상품이 맞춘 조건은 더 싼 것도 다 맞춰야 함 (예산 때문에 매운 김치로 바뀌면 안 돼서)
     private Optional<Product> findCheaper(MenuPlanIngredient ingredient, Product picked, List<Product> inStock,
                                           Set<Keyword> conditions, Map<Long, Set<Keyword>> keywords) {
-        boolean pickedMatched = !Collections.disjoint(keywords.getOrDefault(picked.getId(), Set.of()), conditions);
+        Set<Keyword> pickedMatched = new HashSet<>(keywords.getOrDefault(picked.getId(), Set.of()));
+        pickedMatched.retainAll(conditions);
         return inStock.stream()
-                .filter(product -> !pickedMatched
-                        || !Collections.disjoint(keywords.getOrDefault(product.getId(), Set.of()), conditions))
+                .filter(product -> keywords.getOrDefault(product.getId(), Set.of()).containsAll(pickedMatched))
                 .filter(product -> totalPrice(ingredient, product) < totalPrice(ingredient, picked))
                 .min(Comparator.comparingLong((Product product) -> totalPrice(ingredient, product))
                         .thenComparing(Product::getId));
@@ -289,8 +295,8 @@ public class QuoteCommandService {
                        Set<Keyword> conditions, List<SubstituteItem> substitutes, Long budget,
                        List<BudgetOption> budgetOptions) {
         long totalAmount = items.stream().mapToLong(QuoteItem::lineAmount).sum();
-        // 예산 안이면 바꿀 이유가 없어서 후보를 안 줌
-        List<BudgetOption> options = budget != null && totalAmount > budget ? budgetOptions : List.of();
+        // 예산 안이어도 후보는 지우지 않음. 재료를 더 담아서 넘으면 다시 보여줘야 해서 (보여줄지는 overBudget)
+        List<BudgetOption> options = budget != null ? budgetOptions : List.of();
         LocalDateTime now = LocalDateTime.now();
         Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName, items, excludedItems,
                 totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions, substitutes, budget, options);

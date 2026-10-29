@@ -34,6 +34,11 @@ public record Quote(
         budgetOptions = budgetOptions == null ? List.of() : budgetOptions;
     }
 
+    // 예산을 넘을 때만 더 싼 후보를 보여줌. 후보는 예산 안으로 들어와도 지우지 않고 둠
+    public boolean overBudget() {
+        return budget != null && totalAmount > budget;
+    }
+
     // 예산 없이 만드는 기존 호출용. 채팅 테스트가 후보까지 넣는 이 모양을 써서 남겨둠
     public Quote(String quoteId, Long userId, Long roomId, String menuName, List<QuoteItem> items,
                  List<ExcludedItem> excludedItems, Long totalAmount, LocalDateTime createdAt, LocalDateTime expiresAt,

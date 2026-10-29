@@ -541,7 +541,7 @@ class QuoteCommandServiceTest {
     }
 
     @Test
-    void 예산_안이면_더_싼_후보를_안_준다() {
+    void 예산_안이면_예산_초과로_보지_않는다() {
         // given
         Product pogi = product(1L, kimchi, "포기김치 1kg", 12000L, 1000, 100);
         Product cheapKimchi = product(2L, kimchi, "썰은김치 1kg", 9000L, 1000, 10);
@@ -552,7 +552,7 @@ class QuoteCommandServiceTest {
                 menuPlan(List.of(MenuPlanIngredient.of("김치", 1000, BaseUnit.G)), List.of(), 20000L));
 
         // then
-        assertThat(quote.budgetOptions()).isEmpty();
+        assertThat(quote.overBudget()).isFalse();
     }
 
     @Test
@@ -574,7 +574,7 @@ class QuoteCommandServiceTest {
     }
 
     @Test
-    void 예산_후보를_고르면_그_상품만_바꾸고_예산_안이면_나머지_후보는_지운다() {
+    void 예산_후보를_고르면_그_상품만_바꾸고_나머지_후보는_남긴다() {
         // given
         givenBudgetQuote(List.of(item(1L, 12000L, 1), item(3L, 5000L, 1)), 15000L, List.of(
                 new BudgetOption(1L, item(2L, 9000L, 1)), new BudgetOption(3L, item(4L, 3500L, 1))));
@@ -586,7 +586,8 @@ class QuoteCommandServiceTest {
         // then
         assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(2L, 3L);
         assertThat(quote.totalAmount()).isEqualTo(14000L);
-        assertThat(quote.budgetOptions()).isEmpty();
+        assertThat(quote.overBudget()).isFalse();
+        assertThat(quote.budgetOptions()).extracting(BudgetOption::productId).containsExactly(3L);
         assertThat(quote.quoteId()).isNotEqualTo("q-1");
     }
 
@@ -669,6 +670,49 @@ class QuoteCommandServiceTest {
 
         // then
         assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(2L, 1L);
+    }
+    @Test
+    void 예산_안이던_견적에_재료를_더해서_넘으면_기존_상품_후보도_다시_보여준다() {
+        // given
+        givenBudgetQuote(List.of(item(1L, 12000L, 1)), 15000L, List.of(new BudgetOption(1L, item(2L, 9000L, 1))));
+        givenProducts(List.of(product(3L, egg, "계란 10구", 5000L, 10, 10)), Map.of(3L, 10), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.addItem(1L, 5L, "계란", 10, BaseUnit.EA);
+
+        // then
+        assertThat(quote.overBudget()).isTrue();
+        assertThat(quote.budgetOptions()).extracting(BudgetOption::productId).containsExactly(1L);
+    }
+
+    @Test
+    void 고른_상품이_맞춘_조건은_더_싼_후보도_다_맞춰야_한다() {
+        // given
+        Product baek = product(1L, kimchi, "국산 백김치 1kg", 12000L, 1000, 100);
+        Product importedBaek = product(2L, kimchi, "수입 백김치 1kg", 7000L, 1000, 10);
+        givenProducts(List.of(baek, importedBaek), Map.of(1L, 10, 2L, 10),
+                Map.of(1L, Set.of(Keyword.NOT_SPICY, Keyword.DOMESTIC), 2L, Set.of(Keyword.NOT_SPICY)));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(MenuPlanIngredient.of("김치", 1000, BaseUnit.G)),
+                List.of(Keyword.NOT_SPICY, Keyword.DOMESTIC), 8000L));
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(1L);
+        assertThat(quote.budgetOptions()).isEmpty();
+    }
+
+    @Test
+    void 같은_재료가_두_번_오면_양을_합쳐서_한_줄로_담는다() {
+        // given
+        givenProducts(List.of(product(1L, kimchi, "포기김치 500g", 5900L, 500, 100)), Map.of(1L, 10), Map.of());
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(
+                MenuPlanIngredient.of("김치", 400, BaseUnit.G), MenuPlanIngredient.of("김치", 400, BaseUnit.G)), List.of()));
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId, QuoteItem::quantity).containsExactly(tuple(1L, 2));
     }
 
     private void givenQuote(List<QuoteItem> items, List<ExcludedItem> excludedItems) {

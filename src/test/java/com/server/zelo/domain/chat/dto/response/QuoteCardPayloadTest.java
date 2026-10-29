@@ -3,6 +3,7 @@ package com.server.zelo.domain.chat.dto.response;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.server.zelo.domain.product.entity.Keyword;
+import com.server.zelo.domain.quote.model.BudgetOption;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -182,6 +183,53 @@ class QuoteCardPayloadTest {
     void 후보가_없으면_빈_목록이다() {
         // when & then
         assertThat(QuoteCardPayload.from(quote).substitutes()).isEmpty();
+    }
+
+    @Test
+    void 예산을_넘으면_예산과_상품별_더_싼_후보를_보여_준다() {
+        // given: 예산 10,000원인데 백김치 12,000원을 담았다
+        Quote overBudget = budgetQuote(10_000L);
+
+        // when
+        QuoteCardPayload card = QuoteCardPayload.from(overBudget);
+
+        // then
+        assertThat(card.budget()).isEqualTo(10_000L);
+        assertThat(card.overBudget()).isTrue();
+        assertThat(card.budgetOptions()).containsExactly(new QuoteCardPayload.BudgetOption(1L,
+                new QuoteCardPayload.Item(2L, "순한 백김치", "500g", 3_900L, 2, 7_800L, null)));
+    }
+
+    @Test
+    void 예산_안이면_견적에_후보가_남아_있어도_보여_주지_않는다() {
+        // given: 견적은 예산 안으로 들어와도 후보를 지우지 않는다
+        Quote withinBudget = budgetQuote(15_000L);
+
+        // when
+        QuoteCardPayload card = QuoteCardPayload.from(withinBudget);
+
+        // then
+        assertThat(card.overBudget()).isFalse();
+        assertThat(card.budgetOptions()).isEmpty();
+    }
+
+    @Test
+    void 예산을_말하지_않았으면_예산은_null이고_넘지_않은_것으로_본다() {
+        // when
+        QuoteCardPayload card = QuoteCardPayload.from(quote);
+
+        // then
+        assertThat(card.budget()).isNull();
+        assertThat(card.overBudget()).isFalse();
+        assertThat(card.budgetOptions()).isEmpty();
+    }
+
+    private static Quote budgetQuote(Long budget) {
+        QuoteItem cheaperKimchi = new QuoteItem(2L, "SID-0009", "순한 백김치", "500g", 3_900L, 2, 7_800L);
+        return new Quote("quote-1", 9L, 10L, "김치볶음밥",
+                List.of(new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L)), List.of(),
+                12_000L, CREATED_AT, CREATED_AT.plusMinutes(10), Set.of(), List.of(), budget,
+                List.of(new BudgetOption(1L, cheaperKimchi)));
     }
 
     private static Quote quoteWith(Set<Keyword> conditions, QuoteItemReason reason) {

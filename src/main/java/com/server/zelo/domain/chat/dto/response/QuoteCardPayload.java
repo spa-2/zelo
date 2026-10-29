@@ -24,6 +24,10 @@ public record QuoteCardPayload(
         List<Excluded> excludedItems, // 상품을 찾지 못하거나 재고가 부족해 견적에서 제외된 상품
         // 원래 고를 상품이 품절이라 대신 고른 후보. 사용자가 [좋아요]를 누르기 전이라 items·totalAmount에 들어가지 않는다
         List<Substitute> substitutes,
+        Long budget, // 사용자가 말한 예산. 없으면 null
+        boolean overBudget, // 합계가 예산을 넘었는지. 화면은 true일 때만 예산 안내와 더 싼 후보를 그린다
+        // 담긴 상품마다 더 싼 후보. 견적은 예산 안으로 들어와도 후보를 남겨 두므로, 예산을 넘었을 때만 담는다
+        List<BudgetOption> budgetOptions,
         Long totalAmount, // 견적 총액
         LocalDateTime expiresAt // 견적 만료 시각
 ) {
@@ -38,8 +42,12 @@ public record QuoteCardPayload(
         List<Substitute> substitutes = quote.substitutes().stream()
                 .map(substitute -> new Substitute(substitute.name(), substitute.soldOutProductName(), toItem(substitute.item())))
                 .toList();
+        List<BudgetOption> budgetOptions = !quote.overBudget() ? List.of() : quote.budgetOptions().stream()
+                .map(option -> new BudgetOption(option.productId(), toItem(option.item())))
+                .toList();
         return new QuoteCardPayload(TYPE, quote.quoteId(), quote.menuName(), labels(quote.conditions()),
-                items, excludedItems, substitutes, quote.totalAmount(), quote.expiresAt());
+                items, excludedItems, substitutes, quote.budget(), quote.overBudget(), budgetOptions,
+                quote.totalAmount(), quote.expiresAt());
     }
 
     private static Item toItem(QuoteItem item) {
@@ -116,6 +124,13 @@ public record QuoteCardPayload(
             String ingredientName, // 재료 이름 (ex: 대파)
             String soldOutProductName, // 품절된 원래 상품 이름
             Item item // 대신 고른 상품. 고르기 전이라 합계에 들어가지 않음
+    ) {
+    }
+
+    // 화면은 productId로 [바꾸기]를 보낸다. 상품마다 따로 골라, 마음에 드는 상품은 그대로 둘 수 있다
+    public record BudgetOption(
+            Long productId, // 지금 견적에 담긴 상품 (items[].productId)
+            Item item // 대신 담을 더 싼 상품
     ) {
     }
 

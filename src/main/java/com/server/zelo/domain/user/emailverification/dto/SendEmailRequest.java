@@ -1,6 +1,7 @@
 package com.server.zelo.domain.user.emailverification.dto;
 
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
+import com.server.zelo.domain.user.entity.User;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -13,5 +14,9 @@ public record SendEmailRequest(
         String email,
 
         @NotNull
-        EmailVerificationPurpose purpose) {
+        EmailVerificationPurpose purpose
+) {
+        public SendEmailRequest{
+                email = User.normalizeEmail(email);
+        }
 }

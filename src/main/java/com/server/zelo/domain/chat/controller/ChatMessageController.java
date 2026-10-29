@@ -3,6 +3,7 @@ package com.server.zelo.domain.chat.controller;
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.domain.chat.dto.request.ChooseBudgetOptionRequest;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.SendChatMessageRequest;
@@ -90,6 +91,16 @@ public class ChatMessageController {
             @PathVariable Long roomId,
             @Valid @RequestBody ChooseSubstituteRequest request) {
         ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(roomId, authUser.id(), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
+    // 예산을 넘은 견적 카드의 더 싼 후보 [바꾸기]. 결과를 AI 메시지(새 카드 또는 안내 문장)로 저장해 돌려준다
+    @PostMapping("/rooms/{roomId}/quote-budget-options")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> chooseBudgetOption(
+            @Auth AuthUser authUser,
+            @PathVariable Long roomId,
+            @Valid @RequestBody ChooseBudgetOptionRequest request) {
+        ChatMessageResponse response = chatMessageCommandService.chooseBudgetOption(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 }

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -155,6 +156,49 @@ class MenuPlanTest {
     void 재료_양이_없거나_0_이하면_실패한다(Integer amount) {
         // when & then
         assertInvalid(shopping(4, null, List.of(MenuPlanIngredient.of("김치", amount, BaseUnit.G))));
+    }
+
+    // 목록에 없는 재료 이름을 써서 단위 비교 없이 단위별 상한만 본다
+    @ParameterizedTest
+    @CsvSource({"G, 100000", "ML, 100000", "EA, 60", "BUNCH, 10"})
+    void 재료_양이_단위별_상한이면_통과한다(BaseUnit unit, int maxAmount) {
+        // given
+        MenuPlan menuPlan = shopping(4, null, List.of(MenuPlanIngredient.of("새 재료", maxAmount, unit)));
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"G, 100001", "ML, 100001", "EA, 61", "BUNCH, 11"})
+    void 재료_양이_단위별_상한을_넘으면_실패한다(BaseUnit unit, int amount) {
+        // given: BUNCH는 LLM이 쪽파 15g을 15단으로 적는 실수를 막는다
+        MenuPlan menuPlan = shopping(4, null, List.of(MenuPlanIngredient.of("새 재료", amount, unit)));
+
+        // when & then
+        assertInvalid(menuPlan);
+    }
+
+    @Test
+    void 같은_재료를_나눠_적어도_합친_양이_상한을_넘으면_실패한다() {
+        // given: 줄마다는 상한(10단) 안이지만 견적이 합치면 16단이 된다
+        List<MenuPlanIngredient> ingredients = List.of(
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH),
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH));
+
+        // when & then
+        assertInvalid(shopping(4, null, ingredients));
+    }
+
+    @Test
+    void 같은_재료를_나눠_적고_합친_양이_상한이면_통과한다() {
+        // given
+        MenuPlan menuPlan = shopping(4, null, List.of(
+                MenuPlanIngredient.of("쪽파", 4, BaseUnit.BUNCH),
+                MenuPlanIngredient.of("쪽파", 6, BaseUnit.BUNCH)));
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
     }
 
     @Test

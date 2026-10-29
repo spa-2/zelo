@@ -10,6 +10,7 @@ import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import com.server.zelo.domain.quote.model.BudgetOption;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -24,6 +25,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
 class QuoteExplainPromptTest {
+
+    private static final QuoteItem KIMCHI = new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L);
+    private static final QuoteItem CHEAPER_KIMCHI = new QuoteItem(3L, "SID-0009", "순한 백김치", "500g", 3_900L, 2, 7_800L);
 
     private final QuoteExplainPrompt quoteExplainPrompt =
             new QuoteExplainPrompt(new ClassPathResource("prompts/quote-explain.md"));
@@ -61,8 +65,8 @@ class QuoteExplainPromptTest {
     @Test
     void 예산을_넘으면_넘은_금액을_서버가_계산해_적는다() {
         // when
-        String text = quoteExplainPrompt.userText(plan(20_000L, List.of(), List.of()), quote(List.of(
-                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 21_000L, 1, 21_000L)), List.of()));
+        String text = quoteExplainPrompt.userText(plan(20_000L, List.of(), List.of()), budgetQuote(List.of(
+                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 21_000L, 1, 21_000L)), 20_000L, List.of()));
 
         // then
         assertThat(text).contains("예산: 20,000원 (예산을 1,000원 넘음)");
@@ -71,11 +75,65 @@ class QuoteExplainPromptTest {
     @Test
     void 예산_안이면_예산_안이라고_적는다() {
         // when
-        String text = quoteExplainPrompt.userText(plan(30_000L, List.of(), List.of()), quote(List.of(
-                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L)), List.of()));
+        String text = quoteExplainPrompt.userText(plan(30_000L, List.of(), List.of()), budgetQuote(List.of(
+                new QuoteItem(1L, "SID-0008", "백김치", "1kg", 12_000L, 1, 12_000L)), 30_000L, List.of()));
 
         // then
         assertThat(text).contains("예산: 30,000원 (예산 안)");
+    }
+
+    @Test
+    void 예산을_넘으면_상품별_더_싼_후보를_원래_상품과_함께_적는다() {
+        // when
+        String text = quoteExplainPrompt.userText(plan(10_000L, List.of(), List.of()),
+                budgetQuote(List.of(KIMCHI), 10_000L, List.of(new BudgetOption(1L, CHEAPER_KIMCHI))));
+
+        // then
+        assertThat(text).contains("""
+                더 싼 상품 후보:
+                - 백김치 (1kg) → 순한 백김치 (500g) 2개, 7,800원
+                합계: 12,000원""");
+    }
+
+    @Test
+    void 예산을_넘었는데_후보가_없으면_없음으로_적는다() {
+        // given: 수량을 바꾼 상품은 후보가 사라져, 예산을 넘어도 바꿀 후보가 없을 수 있다
+        Quote quote = budgetQuote(List.of(KIMCHI), 10_000L, List.of());
+
+        // when
+        String text = quoteExplainPrompt.userText(plan(10_000L, List.of(), List.of()), quote);
+
+        // then
+        assertThat(text).contains("더 싼 상품 후보: 없음");
+    }
+
+    @Test
+    void 예산_안이면_견적에_후보가_남아_있어도_적지_않는다() {
+        // given: 견적은 예산 안으로 들어와도 후보를 지우지 않는다
+        Quote quote = budgetQuote(List.of(KIMCHI), 15_000L, List.of(new BudgetOption(1L, CHEAPER_KIMCHI)));
+
+        // when
+        String text = quoteExplainPrompt.userText(plan(15_000L, List.of(), List.of()), quote);
+
+        // then
+        assertThat(text).doesNotContain("더 싼 상품 후보");
+    }
+
+    @Test
+    void 고친_견적에도_고친_뒤의_예산_결과와_후보를_적는다() {
+        // given: 계란을 더 담아 예산을 넘었다
+        Quote before = budgetQuote(List.of(KIMCHI), 15_000L, List.of(new BudgetOption(1L, CHEAPER_KIMCHI)));
+        Quote after = budgetQuote(List.of(KIMCHI, new QuoteItem(2L, "MEA-0025", "계란", "10구", 4_500L, 1, 4_500L)),
+                15_000L, List.of(new BudgetOption(1L, CHEAPER_KIMCHI)));
+        QuoteEdit added = QuoteEdit.of(QuoteEditAction.ADD, 0L, 0, "계란", 10, BaseUnit.EA);
+
+        // when
+        String text = quoteExplainPrompt.editedText(before, after, List.of(added), null, null);
+
+        // then
+        assertThat(text)
+                .contains("예산: 15,000원 (예산을 1,500원 넘음)")
+                .contains("- 백김치 (1kg) → 순한 백김치 (500g) 2개, 7,800원");
     }
 
     @Test
@@ -255,6 +313,14 @@ class QuoteExplainPromptTest {
     }
 
     @Test
+    void 프롬프트에_더_싼_후보는_카드에서_상품별로_바꾸게_하고_없으면_말하지_않는_규칙이_있다() {
+        // then
+        assertThat(quoteExplainPrompt.systemPrompt())
+                .contains("[바꾸기]를 눌러 원하는 상품만 더 싼 상품으로 바꿀 수 있다고 안내해")
+                .contains("\"더 싼 상품 후보: 없음\"이면 더 싼 상품으로 바꿀 수 있다고 말하지 마");
+    }
+
+    @Test
     void 프롬프트에_근거_줄에_있는_것만_숫자_그대로_말하는_규칙이_있다() {
         // then
         assertThat(quoteExplainPrompt.systemPrompt())
@@ -285,6 +351,13 @@ class QuoteExplainPromptTest {
     private static MenuPlan plan(Long budget, List<Keyword> conditions, List<String> unmatchedConditions) {
         return MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 4, budget,
                 List.of(MenuPlanIngredient.of("김치", 400, BaseUnit.G)), conditions, unmatchedConditions);
+    }
+
+    private static Quote budgetQuote(List<QuoteItem> items, Long budget, List<BudgetOption> budgetOptions) {
+        long total = items.stream().mapToLong(QuoteItem::lineAmount).sum();
+        LocalDateTime now = LocalDateTime.of(2026, 10, 23, 12, 0);
+        return new Quote("quote-1", 1L, 10L, "김치볶음밥", items, List.of(), total, now, now.plusMinutes(10),
+                Set.of(), List.of(), budget, budgetOptions);
     }
 
     private static Quote quote(List<QuoteItem> items, List<ExcludedItem> excludedItems) {

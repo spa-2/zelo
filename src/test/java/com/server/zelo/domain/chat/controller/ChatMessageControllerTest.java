@@ -16,6 +16,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.domain.chat.dto.request.ChooseBudgetOptionRequest;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
 import com.server.zelo.domain.chat.dto.request.UpdateQuoteItemRequest;
@@ -219,6 +220,42 @@ class ChatMessageControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
         then(chatMessageCommandService).should(never()).chooseSubstitute(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 예산_후보_바꾸기는_201과_AI_메시지를_반환한다() throws Exception {
+        // given
+        authenticate(1L);
+        String reply = "백김치 (1kg) 대신 순한 백김치 (500g) 상품을 담았어요. 합계 12,300원으로 예산 안에 들어왔어요.";
+        given(chatMessageCommandService.chooseBudgetOption(10L, 1L, new ChooseBudgetOptionRequest("quote-1", 1L)))
+                .willReturn(new ChatMessageResponse(107L, ChatSender.ASSISTANT, reply,
+                        "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-budget-options")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quoteId\":\"quote-1\",\"productId\":1}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value(reply))
+                .andExpect(jsonPath("$.data.quoteCardStatus").value("ACTIVE"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "{\"quoteId\":\"quote-1\"}",
+            "{\"quoteId\":\" \",\"productId\":1}",
+            "{\"quoteId\":\"quote-1\",\"productId\":0}"})
+    void 예산_후보_바꾸기_요청이_잘못되면_400과_INVALID_INPUT을_반환하고_바꾸지_않는다(String body) throws Exception {
+        // given
+        authenticate(1L);
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-budget-options")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        then(chatMessageCommandService).should(never()).chooseBudgetOption(anyLong(), anyLong(), any());
     }
 
     @Test

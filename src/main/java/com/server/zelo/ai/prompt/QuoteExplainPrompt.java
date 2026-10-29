@@ -6,6 +6,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.dto.response.QuoteCardPayload;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import com.server.zelo.domain.quote.model.BudgetOption;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -55,9 +56,7 @@ public class QuoteExplainPrompt {
     public String userText(MenuPlan menuPlan, Quote quote) {
         List<String> lines = new ArrayList<>();
         lines.add("메뉴: " + quote.menuName() + " (" + menuPlan.servings() + "인분)");
-        if (menuPlan.budget() != null) {
-            lines.add("예산: " + won(menuPlan.budget()) + budgetResult(menuPlan.budget(), quote.totalAmount()));
-        }
+        addBudgetLine(lines, quote);
         if (!menuPlan.conditions().isEmpty()) {
             List<String> conditionNames = menuPlan.conditions().stream().map(Keyword::getLabel).toList();
             lines.add("조건: " + String.join(", ", conditionNames));
@@ -75,6 +74,8 @@ public class QuoteExplainPrompt {
                              QuoteEdit failedEdit, ErrorCode failure) {
         List<String> lines = new ArrayList<>();
         lines.add("메뉴: " + after.menuName());
+        // 수정으로 예산을 넘거나 다시 안으로 들어올 수 있어, 고친 견적 기준으로 다시 적는다
+        addBudgetLine(lines, after);
         lines.add("수정한 내용:");
         appliedEdits.forEach(edit -> lines.add("- " + editLabel(before, edit)));
         if (failedEdit != null) {
@@ -111,7 +112,29 @@ public class QuoteExplainPrompt {
                         + productLabel(item) + " " + item.quantity() + "개, " + won(item.lineAmount()));
             }
         }
+        addBudgetOptionLines(lines, quote);
         lines.add("합계: " + won(quote.totalAmount()));
+    }
+
+    // 예산 초과 여부도 견적에 저장된 예산으로 서버가 계산해서 적는다
+    private static void addBudgetLine(List<String> lines, Quote quote) {
+        if (quote.budget() != null) {
+            lines.add("예산: " + won(quote.budget()) + budgetResult(quote.budget(), quote.totalAmount()));
+        }
+    }
+
+    // 카드는 예산을 넘었을 때만 후보를 보여 주므로 안내도 같은 기준으로 적는다.
+    // 수량을 바꾸거나 뺀 상품은 후보가 사라져 예산을 넘었는데 후보가 없을 수 있어, 그때는 "없음"으로 적어 바꿀 수 있다고 말하지 않게 한다
+    private static void addBudgetOptionLines(List<String> lines, Quote quote) {
+        if (!quote.overBudget()) {
+            return;
+        }
+        lines.add("더 싼 상품 후보:" + (quote.budgetOptions().isEmpty() ? " 없음" : ""));
+        for (BudgetOption option : quote.budgetOptions()) {
+            QuoteItem cheaper = option.item();
+            lines.add("- " + productLabel(quote, option.productId()) + " → " + productLabel(cheaper) + " "
+                    + cheaper.quantity() + "개, " + won(cheaper.lineAmount()));
+        }
     }
 
     // 뺀 상품은 고친 견적에 없으므로 고치기 전 견적에서 이름을 찾는다

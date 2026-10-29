@@ -19,6 +19,7 @@ import com.server.zelo.domain.refund.entity.RefundType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -175,18 +176,25 @@ class RefundCommandServiceTest {
     }
 
     @Test
-    void 환불_요청_없이_포트원에서_취소된_결제도_주문과_배송을_취소한다() {
+    void 환불_요청_없이_포트원에서_취소된_결제는_남은_상품_전체의_환불_기록을_남기고_주문과_배송을_취소한다() {
         // given
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+        givenOrderWithRemainingItem();
         given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(true);
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
 
         // then
+        ArgumentCaptor<Refund> captor = ArgumentCaptor.forClass(Refund.class);
+        then(refundService).should().createRefund(captor.capture());
+        Refund refund = captor.getValue();
+        assertThat(refund.getRefundType()).isEqualTo(RefundType.FULL);
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
+        assertThat(refund.getItemsAmount()).isEqualTo(10_000L);
         then(refundService).should(never()).complete(any(), any());
         then(paymentService).should().cancel(PORTONE_ID, 10_000L);
         then(orderCommandService).should().cancelIfPossible(ORDER_ID);
@@ -270,6 +278,7 @@ class RefundCommandServiceTest {
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.CANCELLED, 10_000L, null));
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+        givenOrderWithRemainingItem();
         given(deliveryService.cancelDeliveryIfPossible(ORDER_ID)).willReturn(false);
 
         // when
@@ -279,6 +288,7 @@ class RefundCommandServiceTest {
         then(paymentService).should().cancel(PORTONE_ID, 10_000L);
         then(deliveryService).should().cancelDeliveryIfPossible(ORDER_ID);
         then(orderCommandService).shouldHaveNoInteractions();
+        then(refundService).should().createRefund(any());
     }
 
     @Test
@@ -356,6 +366,17 @@ class RefundCommandServiceTest {
             return refund;
         });
         return orderItem;
+    }
+
+    // 포트원에서 직접 취소된 주문의 남은 상품 (5,000원 × 2개)
+    private void givenOrderWithRemainingItem() {
+        OrderItem orderItem = mock(OrderItem.class);
+        given(orderItem.getQuantity()).willReturn(2);
+        given(orderItem.getCancelableQuantity()).willReturn(2);
+        given(orderItem.getUnitPrice()).willReturn(5_000L);
+        Order order = mock(Order.class);
+        given(order.getOrderItems()).willReturn(List.of(orderItem));
+        given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
     }
 
     private Payment paidPayment() {

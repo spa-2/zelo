@@ -379,8 +379,11 @@ public class OrderCommandService {
                 ? null
                 : refundService.findLatestRefund(payment.getId()).orElse(null);
 
+        // 최신 환불 한 건만으로는 여러 번의 부분 환불 금액을 알 수 없어 완료된 환불 합계를 따로 구한다
+        long refundedAmount = payment == null ? 0L : refundService.calculateRefundedAmount(payment.getId());
+
         // 지연 로딩이 필요한 품목과 배송지 변환까지 트랜잭션 안에서 완료
-        return GetOrderDetailResponse.from(order, payment, delivery, refund);
+        return GetOrderDetailResponse.from(order, payment, delivery, refund, refundedAmount);
     }
 
     // Facade의 공통 결제 락 안에서 호출하여 취소 트랜잭션이 끝날 때까지 보호

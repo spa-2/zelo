@@ -52,7 +52,7 @@ class GetOrderDetailResponseTest {
         fixture.first().cancelQuantity(1);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null,0L);
 
         // then
         assertThat(response.orderId()).isEqualTo(101L);
@@ -78,7 +78,7 @@ class GetOrderDetailResponseTest {
         Fixture fixture = fixture();
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null,0L);
 
         // then
         assertThat(response.payment()).isNull();
@@ -97,7 +97,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(payment, "status", status);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null, 0L);
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
@@ -114,7 +114,7 @@ class GetOrderDetailResponseTest {
         payment.complete(7_000L, CREATED_AT, "신한카드");
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null, 0L);
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
@@ -133,7 +133,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(delivery, "deliveredAt", DELIVERED_AT);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, delivery, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, delivery, null, 0L);
 
         // then
         assertThat(response.delivery()).isEqualTo(new GetOrderDetailResponse.DeliveryInfo(
@@ -154,7 +154,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(refund, "refundedAt", completedAt);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, refund);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, refund, 0L);
 
         // then
         assertThat(response.refund()).isEqualTo(new GetOrderDetailResponse.RefundInfo(
@@ -168,7 +168,7 @@ class GetOrderDetailResponseTest {
         Order order = createOrder();
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(order, null, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(order, null, null, null, 0L);
 
         // then
         assertThat(response.items()).isEmpty();
@@ -183,7 +183,7 @@ class GetOrderDetailResponseTest {
         fixture.first().restore();
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
 
         // then
         GetOrderDetailResponse.OrderItemInfo first = response.items().getFirst();
@@ -193,6 +193,33 @@ class GetOrderDetailResponseTest {
         assertThat(first.unitPrice()).isEqualTo(1_000L);
         assertThat(first.lineAmount()).isEqualTo(3_000L);
         assertThat(first.stockState()).isEqualTo(StockState.RESTORED);
+    }
+
+    @Test
+    void 결제된_주문은_완료된_환불_합계와_환불을_뺀_실결제_금액을_반환한다() {
+        // given
+        Fixture fixture = fixture();
+        fixture.order().pay();
+
+        // when
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 3_000L);
+
+        // then
+        assertThat(response.refundedAmount()).isEqualTo(3_000L);
+        assertThat(response.paidAmount()).isEqualTo(4_000L);
+    }
+
+    @Test
+    void 결제되지_않은_주문은_실결제_금액이_null이다() {
+        // given
+        Fixture fixture = fixture();
+
+        // when
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
+
+        // then
+        assertThat(response.refundedAmount()).isZero();
+        assertThat(response.paidAmount()).isNull();
     }
 
     private Fixture fixture() {

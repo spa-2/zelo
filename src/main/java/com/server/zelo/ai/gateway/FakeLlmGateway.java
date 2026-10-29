@@ -10,13 +10,15 @@ import com.server.zelo.ai.plan.QuoteEditPlan;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
@@ -40,8 +42,9 @@ public class FakeLlmGateway implements LlmGateway {
     private volatile Mode mode = Mode.NORMAL;
     private volatile Duration delay = Duration.ofSeconds(6);
     // 기본은 일반 질문이라 채팅이 지금처럼 답변만 한다. 견적 흐름을 확인할 때만 테스트에서 바꾼다
-    private volatile MenuPlanIntent planIntent = MenuPlanIntent.GENERAL_QUESTION;
-    // 기본은 무엇을 고칠지 되묻는 계획이라 견적을 바꾸지 않는다. 수정 흐름을 확인할 때만 테스트에서 바꾼다
+    // 앱을 띄워서 견적까지 보려면(부하 테스트 등) zelo.llm.fake.plan-intent=SHOPPING_REQUEST
+    @Value("${zelo.llm.fake.plan-intent:GENERAL_QUESTION}")
+    private volatile MenuPlanIntent planIntent = MenuPlanIntent.GENERAL_QUESTION;// 기본은 무엇을 고칠지 되묻는 계획이라 견적을 바꾸지 않는다. 수정 흐름을 확인할 때만 테스트에서 바꾼다
     private volatile QuoteEditPlan quoteEditPlan = QuoteEditPlan.of(List.of(), EDIT_QUESTION);
 
     @Override

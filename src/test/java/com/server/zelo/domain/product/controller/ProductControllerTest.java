@@ -19,6 +19,7 @@ import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.ProductStatus;
 import com.server.zelo.domain.product.service.ProductCommandService;
+import com.server.zelo.domain.product.dto.response.GetPopularProductResponse;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -139,5 +140,19 @@ class ProductControllerTest {
         mockMvc.perform(get("/api/products/autocomplete").param("keyword", "가".repeat(51)))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(productCommandService);
+    }
+
+    @Test
+    void 인기_상품을_순위대로_준다() throws Exception {
+        // given
+        given(productCommandService.getPopularProducts()).willReturn(List.of(new GetPopularProductResponse(1, 5L,
+                new GetProductSummaryResponse("SID-0008", "브랜드 A", "백김치 1kg", 8900L, "1kg", "김치·젓갈", 7))));
+
+        // when & then
+        mockMvc.perform(get("/api/products/popular"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].rank").value(1))
+                .andExpect(jsonPath("$.data[0].recentSalesCount").value(5))
+                .andExpect(jsonPath("$.data[0].product.productCode").value("SID-0008"));
     }
 }

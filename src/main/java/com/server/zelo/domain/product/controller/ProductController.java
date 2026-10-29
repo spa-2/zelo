@@ -9,6 +9,7 @@ import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.service.PopularKeywordService;
 import com.server.zelo.domain.product.service.ProductCommandService;
+import com.server.zelo.domain.product.dto.response.GetPopularProductResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,12 @@ public class ProductController {
     @GetMapping("/autocomplete")
     public ResponseEntity<ApiResponse<List<String>>> autocomplete(@Valid @ModelAttribute AutocompleteCondition condition) {
         return ResponseEntity.ok(ApiResponse.ok(productCommandService.autocomplete(condition)));
+    }
+
+    // 최근 7일 많이 팔린 순으로 10개
+    @GetMapping("/popular")
+    public ResponseEntity<ApiResponse<List<GetPopularProductResponse>>> getPopularProducts() {
+        return ResponseEntity.ok(ApiResponse.ok(productCommandService.getPopularProducts()));
     }
 
     @GetMapping("/{productCode}")

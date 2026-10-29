@@ -9,6 +9,7 @@ import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import com.server.zelo.domain.product.service.CategoryService;
 import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.product.service.PopularProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +64,9 @@ class CacheConfigTest {
 
     @MockitoBean
     private ProductKeywordRepository productKeywordRepository;
+
+    @MockitoBean
+    private PopularProductService popularProductService;
 
     @BeforeEach
     void setUp() {

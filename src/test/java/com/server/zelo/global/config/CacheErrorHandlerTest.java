@@ -17,6 +17,7 @@ import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import com.server.zelo.domain.product.service.CategoryService;
 import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.product.service.PopularProductService;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,9 @@ class CacheErrorHandlerTest {
 
     @MockitoBean
     private ProductKeywordRepository productKeywordRepository;
+
+    @MockitoBean
+    private PopularProductService popularProductService;
 
     @Test
     void 레디스가_안_돼도_카테고리는_DB에서_조회한다() {

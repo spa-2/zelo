@@ -47,6 +47,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             """)
     List<String> findNames(String keyword, ProductStatus status, Limit limit);
 
+    // 인기 상품 목록에 카테고리 이름을 같이 보여줘서 같이 가져옴
+    @EntityGraph(attributePaths = {"category"})
+    List<Product> findAllByIdInAndStatus(Collection<Long> ids, ProductStatus status);
+
     @EntityGraph(attributePaths = {"category"})
     Optional<Product> findByProductCode(String productCode);
     boolean existsByProductCode(String productCode);

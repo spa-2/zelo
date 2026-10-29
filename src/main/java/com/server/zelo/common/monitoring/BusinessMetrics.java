@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,25 @@ public class BusinessMetrics {
                 .tags(tags)
                 .register(meterRegistry)
                 .increment();
+    }
+
+    // 토큰 수처럼 1이 아닌 양을 더할 때 씀
+    public void count(BusinessMetric metric, double amount, String... tags) {
+        Counter.builder(metric.getKey())
+                .description(metric.getDescription())
+                .tags(tags)
+                .register(meterRegistry)
+                .increment(amount);
+    }
+
+    // 결과(성공·실패 코드)를 태그로 붙여야 해서 일이 끝난 뒤에 시간을 남길 때 씀
+    public void record(BusinessMetric metric, Duration duration, String... tags) {
+        Timer.builder(metric.getKey())
+                .description(metric.getDescription())
+                .tags(tags)
+                .publishPercentiles(0.5, 0.95)
+                .register(meterRegistry)
+                .record(duration);
     }
 
     public <T> T time(BusinessMetric metric, Supplier<T> task, String... tags) {

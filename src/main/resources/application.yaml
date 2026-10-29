@@ -135,6 +135,10 @@ management:
   metrics:
     tags:
       application: zelo   # 모든 지표에 앱 이름 태그
+    distribution:
+      # 응답 시간 분포를 Prometheus 히스토그램으로 내보내, 서버가 여러 대여도 합쳐서 p95를 계산할 수 있게 한다
+      percentiles-histogram:
+        http.server.requests: true
   tracing:
     sampling:
       # 아직 trace를 보낼 곳(Zipkin 등)이 없어 전부 남겨도 비용이 없다. 보낼 곳을 붙이면 낮춘다

@@ -14,6 +14,8 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.common.util.HashUtil;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
@@ -34,6 +36,7 @@ import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -81,6 +84,11 @@ public class ChatMessageCommandService {
             ErrorCode.QUOTE_NOT_CURRENT, QUOTE_CHANGED,
             ErrorCode.PRODUCT_NOT_FOUND, NOT_IN_QUOTE,
             ErrorCode.INSUFFICIENT_STOCK, NOT_ENOUGH_STOCK);
+    // 지표의 결과 태그 값. 실패는 오류 코드(AI_xxx)나 ErrorCode 이름을 그대로 쓴다
+    private static final String SUCCESS = "SUCCESS";
+    private static final String APPLIED = "APPLIED";
+    private static final String PARTIAL = "PARTIAL";
+    private static final String BUSY = "BUSY";
 
     private final HashUtil hashUtil;
     private final ChatPrompt chatPrompt;
@@ -89,6 +97,7 @@ public class ChatMessageCommandService {
     private final OrderService orderService;
     private final MenuPlanPrompt menuPlanPrompt;
     private final ProductService productService;
+    private final BusinessMetrics businessMetrics;
     private final QuoteEditPrompt quoteEditPrompt;
     private final ChatRoomService chatRoomService;
     private final ChatMessageService chatMessageService;
@@ -156,10 +165,18 @@ public class ChatMessageCommandService {
     }
 
     // 저장한 것 없이 답변만 다시 만들므로 onCommitted를 부르지 않는다. 그래서 응답 없이 실패하면 키가 지워져 다시 누를 수 있다
+    // 다시 시도가 실제로 답을 살렸는지(SUCCESS), 또 실패했는지(AI_xxx), 거절됐는지(CHAT_004)를 센다
     private ChatMessageResponse processRetry(Long roomId, Long userId, Long messageId) {
-        ChatMessage userMessage = chatMessageService.getRetryTarget(roomId, userId, messageId);
-        List<ChatMessage> history = chatMessageService.findHistory(roomId, userMessage.getId());
-        return replyTo(roomId, userId, history, userMessage.getContent(), Function.identity());
+        try {
+            ChatMessage userMessage = chatMessageService.getRetryTarget(roomId, userId, messageId);
+            List<ChatMessage> history = chatMessageService.findHistory(roomId, userMessage.getId());
+            ChatMessageResponse response = replyTo(roomId, userId, history, userMessage.getContent(), Function.identity());
+            businessMetrics.count(BusinessMetric.CHAT_RETRY, "result", SUCCESS);
+            return response;
+        } catch (BusinessException e) {
+            businessMetrics.count(BusinessMetric.CHAT_RETRY, "result", e.getErrorCode().getCode());
+            throw e;
+        }
     }
 
     // 견적 카드는 저장된 그대로 두고, 목록을 줄 때마다 방의 현재 견적(Redis)과 주문을 보고 카드마다 상태를 붙인다.
@@ -198,6 +215,7 @@ public class ChatMessageCommandService {
         if (!chatIdempotencyRepository.saveIfAbsent(userId, idempotencyKey, ChatIdempotencyRecord.processing(requestHash))) {
             return replay(userId, idempotencyKey, requestHash, rebuild);
         }
+        countIdempotency("FIRST");
 
         AtomicBoolean committed = new AtomicBoolean();
         T result;
@@ -227,14 +245,21 @@ public class ChatMessageCommandService {
     private <T> T replay(Long userId, String idempotencyKey, String requestHash,
                          BiFunction<Long, ChatMessageResponse, T> rebuild) {
         // 선점에 실패한 사이 TTL로 사라졌으면 처리 중이었던 것과 같게 보고 다시 보내게 한다
-        ChatIdempotencyRecord record = chatIdempotencyRepository.find(userId, idempotencyKey)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+        Optional<ChatIdempotencyRecord> found = chatIdempotencyRepository.find(userId, idempotencyKey);
+        if (found.isEmpty()) {
+            countIdempotency("EXPIRED");
+            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
+        }
+        ChatIdempotencyRecord record = found.get();
         if (!record.requestHash().equals(requestHash)) {
+            countIdempotency("KEY_REUSED");
             throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
         }
         if (!record.done()) {
+            countIdempotency("IN_PROGRESS");
             throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
         }
+        countIdempotency("REPLAY");
         if (record.messageId() == null) {
             throw new BusinessException(record.failure());
         }
@@ -265,6 +290,7 @@ public class ChatMessageCommandService {
             chatIdempotencyRepository.delete(userId, idempotencyKey);
         } catch (RuntimeException e) {
             log.warn("메시지 전송 멱등 키 삭제 실패 userId={}", userId, e);
+            businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY_STORE_FAILURE, "operation", "DELETE");
         }
     }
 
@@ -274,6 +300,7 @@ public class ChatMessageCommandService {
             chatIdempotencyRepository.save(userId, idempotencyKey, record);
         } catch (RuntimeException e) {
             log.warn("메시지 전송 멱등 결과 저장 실패 userId={}", userId, e);
+            businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY_STORE_FAILURE, "operation", "SAVE");
         }
     }
 
@@ -286,16 +313,22 @@ public class ChatMessageCommandService {
         }
     }
 
+    private void countIdempotency(String result) {
+        businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY, "result", result);
+    }
+
     // 견적 카드의 ✕, −/+ 버튼. LLM 없이 견적을 바로 고치고, 새 카드와 정해진 문장을 AI 메시지로 저장해 돌려준다.
     // 화면이 보던 카드(quoteId)가 지금 견적일 때만 고치며, 말로 고칠 때와 같은 방 락 안에서 다시 확인하고 적용한다
     public ChatMessageResponse updateQuoteItem(Long roomId, Long userId, UpdateQuoteItemRequest request) {
         chatRoomService.getOwnedChatRoom(roomId, userId);
         Optional<Quote> current = quoteService.findQuote(roomId);
         if (current.isEmpty()) {
+            countEdit(EditSource.BUTTON, ErrorCode.QUOTE_EXPIRED.name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT));
         }
         Quote quote = current.get();
         if (!quote.quoteId().equals(request.quoteId())) {
+            countEdit(EditSource.BUTTON, ErrorCode.QUOTE_NOT_CURRENT.name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_CHANGED));
         }
 
@@ -305,13 +338,16 @@ public class ChatMessageCommandService {
         QuoteEditPlan editPlan = QuoteEditPlan.of(List.of(edit), "");
         Optional<EditResult> locked = withQuoteLock(roomId, () -> applyEdits(userId, roomId, quote, editPlan));
         if (locked.isEmpty()) {
+            countEdit(EditSource.BUTTON, BUSY);
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_IN_PROGRESS));
         }
         EditResult result = locked.get();
         if (result.appliedEdits().isEmpty()) {
+            countEdit(EditSource.BUTTON, result.failure().name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId,
                     EDIT_FAILURE_REPLIES.get(result.failure())));
         }
+        countEdit(EditSource.BUTTON, APPLIED);
 
         String reply = buttonEditReply(quote, request);
         Quote edited = result.edited();
@@ -328,24 +364,29 @@ public class ChatMessageCommandService {
         chatRoomService.getOwnedChatRoom(roomId, userId);
         Optional<Quote> current = quoteService.findQuote(roomId);
         if (current.isEmpty()) {
+            countEdit(EditSource.SUBSTITUTE, ErrorCode.QUOTE_EXPIRED.name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT));
         }
         Quote quote = current.get();
         if (!quote.quoteId().equals(request.quoteId())) {
+            countEdit(EditSource.SUBSTITUTE, ErrorCode.QUOTE_NOT_CURRENT.name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_CHANGED));
         }
         Optional<SubstituteItem> substitute = quote.substitutes().stream()
                 .filter(candidate -> candidate.name().equals(request.ingredientName()))
                 .findFirst();
         if (substitute.isEmpty()) {
+            countEdit(EditSource.SUBSTITUTE, ErrorCode.PRODUCT_NOT_FOUND.name());
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, SUBSTITUTE_NOT_FOUND));
         }
 
         Optional<EditResult> locked = withQuoteLock(roomId, () -> applySubstituteChoice(userId, roomId, quote, request));
         if (locked.isEmpty()) {
+            countEdit(EditSource.SUBSTITUTE, BUSY);
             return assistantResponse(chatMessageService.createAssistantMessage(roomId, userId, QUOTE_IN_PROGRESS));
         }
         EditResult result = locked.get();
+        countEdit(EditSource.SUBSTITUTE, result.failure() == null ? APPLIED : result.failure().name());
         if (result.failure() != null) {
             // 견적 담당은 없는 후보를 PRODUCT_NOT_FOUND로 알린다(같은 후보를 두 번 누른 경우)
             String reply = result.failure() == ErrorCode.PRODUCT_NOT_FOUND
@@ -364,24 +405,44 @@ public class ChatMessageCommandService {
 
     // 메시지가 장보기 요청인지, 견적 수정인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
     // 견적 발급·수정은 LLM이 아니라 서버가 직접 부른다(매번 같은 순서라 예측·테스트할 수 있고, LLM 재시도와 얽히지 않는다)
+    // 메시지 하나를 답하는 데 걸린 전체 시간(LLM 여러 번 + 견적 발급·수정 + 저장)을 의도·결과별로 남긴다.
+    // 의도를 정하기 전에 실패하면 intent=UNKNOWN이다
     private <T> T replyTo(Long roomId, Long userId, List<ChatMessage> history, String text,
                           Function<ChatMessageResponse, T> toResponse) {
-        // 재료 목록은 요청마다 재료 테이블에서 읽어, 프롬프트와 답의 단위 검증이 같은 목록을 쓰게 한다
-        Map<String, BaseUnit> ingredientUnits = productService.findIngredientUnits();
-        // 담은 상품도 대체 후보도 없는 견적은 고칠 것도 주문할 것도 없어서 견적이 없는 것으로 본다
-        Optional<Quote> currentQuote = quoteService.findQuote(roomId).filter(quote -> !isEmpty(quote));
-        String currentMenuName = currentQuote.map(Quote::menuName).orElse(null);
-        MenuPlan menuPlan = planMenu(roomId, userId, history, text, ingredientUnits, currentMenuName, toResponse);
-        ChatMessage assistantMessage = switch (menuPlan.intent()) {
-            case SHOPPING_REQUEST -> replyWithQuote(roomId, userId, menuPlan, toResponse);
-            // 현재 견적이 "없음"이면 프롬프트가 QUOTE_EDIT를 막지만, LLM 답을 믿지 않고 한 번 더 본다
-            case QUOTE_EDIT -> currentQuote
-                    .map(quote -> editQuote(roomId, userId, history, text, ingredientUnits, quote, toResponse))
-                    .orElseGet(() -> chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT));
-            case GENERAL_QUESTION -> chatMessageService.createAssistantMessage(roomId, userId,
-                    explain(roomId, userId, chatPrompt.systemPrompt(), history, text, toResponse).text());
-        };
-        return toResponse.apply(assistantResponse(assistantMessage));
+        long start = System.nanoTime();
+        String intent = "UNKNOWN";
+        String outcome = SUCCESS;
+        try {
+            // 재료 목록은 요청마다 재료 테이블에서 읽어, 프롬프트와 답의 단위 검증이 같은 목록을 쓰게 한다
+            Map<String, BaseUnit> ingredientUnits = productService.findIngredientUnits();
+            // 담은 상품도 대체 후보도 없는 견적은 고칠 것도 주문할 것도 없어서 견적이 없는 것으로 본다
+            Optional<Quote> currentQuote = quoteService.findQuote(roomId).filter(quote -> !isEmpty(quote));
+            String currentMenuName = currentQuote.map(Quote::menuName).orElse(null);
+            MenuPlan menuPlan = planMenu(roomId, userId, history, text, ingredientUnits, currentMenuName, toResponse);
+            intent = menuPlan.intent().name();
+            ChatMessage assistantMessage = switch (menuPlan.intent()) {
+                case SHOPPING_REQUEST -> replyWithQuote(roomId, userId, menuPlan, toResponse);
+                // 현재 견적이 "없음"이면 프롬프트가 QUOTE_EDIT를 막지만, LLM 답을 믿지 않고 한 번 더 본다
+                case QUOTE_EDIT -> currentQuote
+                        .map(quote -> editQuote(roomId, userId, history, text, ingredientUnits, quote, toResponse))
+                        .orElseGet(() -> {
+                            countEdit(EditSource.CHAT, ErrorCode.QUOTE_EXPIRED.name());
+                            return chatMessageService.createAssistantMessage(roomId, userId, NO_QUOTE_TO_EDIT);
+                        });
+                case GENERAL_QUESTION -> chatMessageService.createAssistantMessage(roomId, userId,
+                        explain(roomId, userId, chatPrompt.systemPrompt(), history, text, toResponse).text());
+            };
+            return toResponse.apply(assistantResponse(assistantMessage));
+        } catch (BusinessException e) {
+            outcome = e.getErrorCode().getCode();
+            throw e;
+        } catch (RuntimeException e) {
+            outcome = ErrorCode.INTERNAL_ERROR.getCode();
+            throw e;
+        } finally {
+            businessMetrics.record(BusinessMetric.CHAT_REPLY, Duration.ofNanos(System.nanoTime() - start),
+                    "intent", intent, "outcome", outcome);
+        }
     }
 
     // 방금 만든 카드는 방의 현재 견적이다
@@ -451,11 +512,13 @@ public class ChatMessageCommandService {
                                       Function<ChatMessageResponse, T> toResponse) {
         QuoteEditPlan editPlan = planQuoteEdit(roomId, userId, history, text, ingredientUnits, quote, toResponse);
         if (editPlan.edits().isEmpty()) {
+            countEdit(EditSource.CHAT, "ASK_AGAIN");
             String question = StringUtils.hasText(editPlan.question()) ? editPlan.question() : ASK_EDIT_AGAIN;
             return chatMessageService.createAssistantMessage(roomId, userId, question);
         }
         // 하나라도 현재 견적에 없는 상품을 가리키면 아무것도 고치지 않아, 견적이 일부만 바뀌지 않게 한다
         if (!editPlan.isApplicableTo(quote)) {
+            countEdit(EditSource.CHAT, "NOT_IN_QUOTE");
             return chatMessageService.createAssistantMessage(roomId, userId, NOT_IN_QUOTE);
         }
 
@@ -463,12 +526,15 @@ public class ChatMessageCommandService {
         // 확인과 적용 사이에 같은 방의 다른 발급·수정이 끼지 않게 그 구간만 방 단위로 잠근다. LLM 호출까지 잠그면 같은 방의 다음 메시지가 락 대기(3초)를 넘겨 실패하므로, 안내 문장(LLM)과 메시지 저장은 락이 풀린 뒤에 한다
         Optional<EditResult> locked = withQuoteLock(roomId, () -> applyEdits(userId, roomId, quote, editPlan));
         if (locked.isEmpty()) {
+            countEdit(EditSource.CHAT, BUSY);
             return chatMessageService.createAssistantMessage(roomId, userId, QUOTE_IN_PROGRESS);
         }
         EditResult result = locked.get();
         if (result.appliedEdits().isEmpty()) {
+            countEdit(EditSource.CHAT, result.failure().name());
             return chatMessageService.createAssistantMessage(roomId, userId, EDIT_FAILURE_REPLIES.get(result.failure()));
         }
+        countEdit(EditSource.CHAT, result.failedEdit() == null ? APPLIED : PARTIAL);
         String editedText = quoteExplainPrompt.editedText(quote, result.edited(), result.appliedEdits(),
                 result.failedEdit(), result.failure());
         return replyWithQuoteCard(roomId, userId, result.edited(), editedText, toResponse);
@@ -483,6 +549,7 @@ public class ChatMessageCommandService {
             if (e.getErrorCode() != ErrorCode.TIMEOUT_EXCEPTION) {
                 throw e;
             }
+            businessMetrics.count(BusinessMetric.CHAT_QUOTE_BUSY);
             return Optional.empty();
         }
     }
@@ -579,6 +646,7 @@ public class ChatMessageCommandService {
         try {
             return llmGateway.explain(quoteExplainPrompt.systemPrompt(), List.of(), quoteText).text();
         } catch (BusinessException e) {
+            businessMetrics.count(BusinessMetric.CHAT_EXPLAIN_DEGRADED, "code", e.getErrorCode().getCode());
             return QUOTE_READY;
         }
     }
@@ -599,10 +667,22 @@ public class ChatMessageCommandService {
     private <T> BusinessException fallback(Long roomId, Long userId, BusinessException e,
                                            Function<ChatMessageResponse, T> toResponse) {
         ChatMessage fallbackMessage = chatMessageService.createFallbackMessage(roomId, userId, e.getErrorCode());
+        businessMetrics.count(BusinessMetric.CHAT_FALLBACK, "code", e.getErrorCode().getCode());
         // 방금 저장한 FALLBACK이 방의 마지막 메시지라 오류 코드만 보고 [다시 시도] 여부를 정한다
         T data = toResponse.apply(ChatMessageResponse.from(fallbackMessage)
                 .withRetryable(chatMessageService.isRetryable(fallbackMessage.getPayload())));
         return new BusinessException(e.getErrorCode(), e.getMessage(), data);
+    }
+
+    // 견적 수정이 어디서 왔고(source) 어떻게 끝났는지(result: APPLIED, PARTIAL, BUSY, 거절 이유) 센다
+    private void countEdit(EditSource source, String result) {
+        businessMetrics.count(BusinessMetric.CHAT_QUOTE_EDIT, "source", source.name(), "result", result);
+    }
+
+    private enum EditSource {
+        CHAT, // 말로 고침 (LLM 수정 계획)
+        BUTTON, // 카드 ✕, −/+ 버튼
+        SUBSTITUTE // 대체 후보 [좋아요]·[빼기]
     }
 
     // 락 안에서 고친 결과. 고치지 못한 경우 failure에 그 이유를 담아, 안내 문장·카드는 락이 풀린 뒤에 만든다

@@ -5,14 +5,21 @@ import com.server.zelo.common.monitoring.LogContextInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedRetryMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedTimeLimiterMetrics;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
 import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextRegistry;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.context.integration.Slf4jThreadLocalAccessor;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,9 +35,10 @@ public class LlmResilienceConfig {
 
     private static final String NAME = "llm";
 
+    // 세 부품을 레지스트리에서 만든다. resilience4j-micrometer가 레지스트리 단위로만 지표를 붙일 수 있기 때문이다
     @Bean
-    public TimeLimiter llmTimeLimiter(@Value("${zelo.llm.timeout}") Duration timeout) {
-        return TimeLimiter.of(NAME, TimeLimiterConfig.custom()
+    public TimeLimiterRegistry llmTimeLimiterRegistry(@Value("${zelo.llm.timeout}") Duration timeout) {
+        return TimeLimiterRegistry.of(TimeLimiterConfig.custom()
                 .timeoutDuration(timeout)
                 // 기다리기를 포기한 호출은 끊어서(interrupt) 뒤에서 계속 돌지 않게 한다
                 .cancelRunningFuture(true)
@@ -38,27 +46,37 @@ public class LlmResilienceConfig {
     }
 
     @Bean
-    public Retry llmRetry(
+    public TimeLimiter llmTimeLimiter(TimeLimiterRegistry llmTimeLimiterRegistry) {
+        return llmTimeLimiterRegistry.timeLimiter(NAME);
+    }
+
+    @Bean
+    public RetryRegistry llmRetryRegistry(
             @Value("${zelo.llm.retry.max-attempts}") int maxAttempts,
             @Value("${zelo.llm.retry.wait-duration}") Duration waitDuration) {
-        Retry retry = Retry.of(NAME, RetryConfig.custom()
+        return RetryRegistry.of(RetryConfig.custom()
                 .maxAttempts(maxAttempts)
                 .waitDuration(waitDuration)
                 .retryOnException(LlmErrorClassifier::isRetryable)
                 .build());
+    }
+
+    @Bean
+    public Retry llmRetry(RetryRegistry llmRetryRegistry) {
+        Retry retry = llmRetryRegistry.retry(NAME);
         retry.getEventPublisher().onRetry(event -> log.warn("LLM 재시도 {}회차: {}",
                 event.getNumberOfRetryAttempts(), LlmErrorClassifier.classify(event.getLastThrowable()).getCode()));
         return retry;
     }
 
     @Bean
-    public CircuitBreaker llmCircuitBreaker(
+    public CircuitBreakerRegistry llmCircuitBreakerRegistry(
             @Value("${zelo.llm.circuit-breaker.sliding-window-size}") int slidingWindowSize,
             @Value("${zelo.llm.circuit-breaker.minimum-number-of-calls}") int minimumNumberOfCalls,
             @Value("${zelo.llm.circuit-breaker.failure-rate-threshold}") float failureRateThreshold,
             @Value("${zelo.llm.circuit-breaker.wait-duration-in-open-state}") Duration waitDurationInOpenState,
             @Value("${zelo.llm.circuit-breaker.permitted-number-of-calls-in-half-open-state}") int permittedCalls) {
-        CircuitBreaker circuitBreaker = CircuitBreaker.of(NAME, CircuitBreakerConfig.custom()
+        return CircuitBreakerRegistry.of(CircuitBreakerConfig.custom()
                 .slidingWindowType(SlidingWindowType.COUNT_BASED) // "최근 몇 번"을 기준
                 .slidingWindowSize(slidingWindowSize) // 최근 10번의 시도
                 .minimumNumberOfCalls(minimumNumberOfCalls) // 최소 5번은 쌓여야 판단
@@ -67,9 +85,26 @@ public class LlmResilienceConfig {
                 .permittedNumberOfCallsInHalfOpenState(permittedCalls) // 30초 뒤 시험 삼아 3번 보냄
                 .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable)) // 4xx 요청 거절은 장부에 적지 않음
                 .build());
+    }
+
+    @Bean
+    public CircuitBreaker llmCircuitBreaker(CircuitBreakerRegistry llmCircuitBreakerRegistry) {
+        CircuitBreaker circuitBreaker = llmCircuitBreakerRegistry.circuitBreaker(NAME);
         circuitBreaker.getEventPublisher().onStateTransition(event ->
                 log.warn("LLM 서킷 상태 변경: {}", event.getStateTransition()));
         return circuitBreaker;
+    }
+
+    // 서킷 상태·실패율·막힌 호출 수, 재시도 결과, 시간 초과 수를 resilience4j.* 지표로 내보낸다 (name=llm 태그)
+    @Bean
+    public MeterBinder llmResilienceMetrics(CircuitBreakerRegistry llmCircuitBreakerRegistry,
+                                            RetryRegistry llmRetryRegistry,
+                                            TimeLimiterRegistry llmTimeLimiterRegistry) {
+        return meterRegistry -> {
+            TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(llmCircuitBreakerRegistry).bindTo(meterRegistry);
+            TaggedRetryMetrics.ofRetryRegistry(llmRetryRegistry).bindTo(meterRegistry);
+            TaggedTimeLimiterMetrics.ofTimeLimiterRegistry(llmTimeLimiterRegistry).bindTo(meterRegistry);
+        };
     }
 
     // 시도마다 별도 스레드에서 실행해야 시간 제한을 걸 수 있다. 대부분 응답을 기다리는 시간이라 가상 스레드를 쓴다.

@@ -2,7 +2,6 @@ package com.server.zelo.domain.payment.entity;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-
 @Getter
 @RequiredArgsConstructor
 public enum PaymentStatus {

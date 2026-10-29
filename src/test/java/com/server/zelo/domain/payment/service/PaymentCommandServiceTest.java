@@ -11,6 +11,7 @@ import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
+import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentMethodType;
@@ -145,7 +146,7 @@ class PaymentCommandServiceTest {
     }
 
     @Test
-    void 포트원_결제가_실패면_결제와_주문을_실패_처리한다() {
+    void 포트원_결제가_실패면_결제만_실패_처리하고_주문은_유지한다() {
         // given
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
@@ -157,8 +158,7 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
         then(paymentService).should().fail(PORTONE_ID);
-        then(orderCommandService).should().failPaymentIfPossible(ORDER_ID);
-        then(orderCommandService).should(never()).cancelIfPossible(anyLong());
+        then(orderCommandService).shouldHaveNoInteractions();
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
     }
@@ -235,7 +235,7 @@ class PaymentCommandServiceTest {
     }
 
     @Test
-    void 포트원_결제가_취소면_결제와_주문을_취소한다() {
+    void 포트원_결제가_취소면_결제만_취소하고_주문은_유지한다() {
         // given
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
         given(portOneClient.getPayment(PORTONE_ID))
@@ -247,8 +247,7 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.CANCELED);
         then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
-        then(orderCommandService).should().cancelIfPossible(ORDER_ID);
-        then(orderCommandService).should(never()).failPaymentIfPossible(anyLong());
+        then(orderCommandService).shouldHaveNoInteractions();
         then(paymentService).should(never()).fail(any());
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
@@ -407,7 +406,7 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
         then(paymentService).should().fail(PORTONE_ID);
-        then(orderCommandService).should().failPaymentIfPossible(ORDER_ID);
+        then(orderCommandService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -472,6 +471,207 @@ class PaymentCommandServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ALREADY_PROCESSED_PAYMENT);
         then(portOneClient).should(never()).payWithBillingKey(any(), any(), any(), any());
+    }
+
+    @Test
+    void 실패한_결제가_포트원에서_늦게_승인되면_환불하고_취소로_바꾼다() {
+        // given
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        payment.fail();
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
+        givenChatRoomOrder(5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CANCELED);
+        then(portOneClient).should().cancelPayment(eq(PORTONE_ID), anyString());
+        then(paymentService).should().cancelLatePaid(PORTONE_ID, AMOUNT);
+        then(orderCommandService).shouldHaveNoInteractions();
+        then(deliveryService).shouldHaveNoInteractions();
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.reason()).isEqualTo(PaymentCardPayload.LATE_PAID);
+    }
+
+    @Test
+    void 실패한_결제가_포트원에서도_실패면_아무것도_바꾸지_않는다() {
+        // given
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        payment.fail();
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null));
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
+        then(paymentService).should(never()).cancelLatePaid(any(), any());
+    }
+
+    @Test
+    void 최신_결제가_실패면_같은_주문에_새_결제를_만든다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        given(order.getTotalAmount()).willReturn(AMOUNT);
+        Payment failed = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        failed.fail();
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(failed);
+        given(paymentService.createPayment(ORDER_ID, AMOUNT)).willReturn(Payment.of(ORDER_ID, "payment-uuid-2", AMOUNT));
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.portoneId()).isEqualTo("payment-uuid-2");
+        assertThat(response.status()).isEqualTo(PaymentStatus.READY);
+    }
+
+    @Test
+    void 최신_결제가_결제창_닫음이면_같은_주문에_새_결제를_만든다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        given(order.getTotalAmount()).willReturn(AMOUNT);
+        Payment closed = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        closed.startConfirm();
+        closed.cancel(null);
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(closed);
+        given(paymentService.createPayment(ORDER_ID, AMOUNT)).willReturn(Payment.of(ORDER_ID, "payment-uuid-2", AMOUNT));
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.portoneId()).isEqualTo("payment-uuid-2");
+    }
+
+    @Test
+    void 최신_결제가_결제_전이면_기존_결제를_그대로_돌려준다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.portoneId()).isEqualTo(PORTONE_ID);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 최신_결제가_확인_대기면_PAYMENT_CONFIRM_PENDING이_발생하고_새_결제를_만들지_않는다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        Payment pending = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        pending.startConfirm();
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(pending);
+
+        // when & then
+        assertThatThrownBy(() -> paymentCommandService.retryPayment(USER_ID, ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PAYMENT_CONFIRM_PENDING);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 이미_결제된_주문이면_PAID를_돌려주고_새_결제를_만들지_않는다() {
+        // given
+        givenRetryOrder(USER_ID);
+        Payment paid = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        paid.startConfirm();
+        paid.complete(AMOUNT, PAID_AT, "TEST_CARD");
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paid);
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.status()).isEqualTo(PaymentStatus.PAID);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 결제_대기가_아닌_주문이면_INVALID_ORDER_STATUS가_발생한다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.CANCELED);
+        Payment failed = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        failed.fail();
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(failed);
+
+        // when & then
+        assertThatThrownBy(() -> paymentCommandService.retryPayment(USER_ID, ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_ORDER_STATUS);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 다른_사용자의_주문이면_ORDER_ACCESS_DENIED가_발생한다() {
+        // given
+        givenRetryOrder(99L);
+
+        // when & then
+        assertThatThrownBy(() -> paymentCommandService.retryPayment(USER_ID, ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ORDER_ACCESS_DENIED);
+        then(paymentService).should(never()).getLatestPayment(any());
+    }
+
+    @Test
+    void 만료_시각이_지난_주문이면_ORDER_PAYMENT_EXPIRED가_발생하고_새_결제를_만들지_않는다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        given(order.isPaymentExpired(any())).willReturn(true);
+        Payment failed = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        failed.fail();
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(failed);
+
+        // when & then
+        assertThatThrownBy(() -> paymentCommandService.retryPayment(USER_ID, ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ORDER_PAYMENT_EXPIRED);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 만료_시각이_지나도_이미_결제된_주문이면_PAID를_돌려준다() {
+        // given
+        givenRetryOrder(USER_ID);
+        Payment paid = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        paid.startConfirm();
+        paid.complete(AMOUNT, PAID_AT, "TEST_CARD");
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paid);
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.status()).isEqualTo(PaymentStatus.PAID);
+    }
+
+    private Order givenRetryOrder(Long ownerId) {
+        Order order = mock(Order.class);
+        User user = mock(User.class);
+        given(orderService.getOrderWithItemsForUpdate(ORDER_ID)).willReturn(order);
+        given(order.getUser()).willReturn(user);
+        given(user.getId()).willReturn(ownerId);
+        return order;
     }
 
     private Payment givenBillingPayment(OrderStatus orderStatus) {

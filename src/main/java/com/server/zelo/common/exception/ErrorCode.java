@@ -56,6 +56,7 @@ public enum ErrorCode {
     ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ORDER_003", "해당 주문에 접근할 권한이 없습니다."),
     PENDING_ORDER_EXISTS(HttpStatus.CONFLICT, "ORDER_004", "결제 대기 중인 주문이 이미 있습니다."),
     INVALID_STOCK_STATUS(HttpStatus.BAD_REQUEST, "ORDER_005", "유효하지 않은 주문 상품의 재고 상태 변경입니다."),
+    ORDER_PAYMENT_EXPIRED(HttpStatus.CONFLICT, "ORDER_006", "결제 가능 시간이 지난 주문입니다. 견적을 다시 받아 주세요."),
 
     // Payment
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제 정보를 찾을 수 없습니다."),
@@ -70,6 +71,7 @@ public enum ErrorCode {
     PAYMENT_METHOD_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_010", "결제 수단을 찾을 수 없습니다."),
     PAYMENT_METHOD_ALREADY_REGISTERED(HttpStatus.CONFLICT, "PAYMENT_011", "이미 등록된 결제 수단입니다."),
     INVALID_BILLING_KEY(HttpStatus.BAD_REQUEST, "PAYMENT_012", "유효하지 않은 빌링키입니다."),
+    PAYMENT_CONFIRM_PENDING(HttpStatus.CONFLICT, "PAYMENT_013", "결제 결과를 확인하고 있습니다. 잠시 후 다시 시도해 주세요."),
 
     // Refund
     REFUND_IN_PROGRESS(HttpStatus.CONFLICT, "REFUND_003", "이미 진행 중인 환불이 있습니다."),

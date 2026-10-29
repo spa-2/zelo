@@ -4,7 +4,9 @@ import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.domain.payment.dto.request.CreateWithPaymentMethodRequest;
+import com.server.zelo.domain.payment.dto.request.RetryPaymentRequest;
 import com.server.zelo.domain.payment.dto.response.PaymentConfirmResponse;
+import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.service.PaymentFacade;
 import jakarta.validation.Valid;
@@ -35,5 +37,12 @@ public class PaymentController {
             @Valid @RequestBody CreateWithPaymentMethodRequest request) {
         PaymentStatus status = paymentFacade.payWithPaymentMethod(authUser.id(), portoneId, request.paymentMethodId());
         return ResponseEntity.ok(ApiResponse.ok(PaymentConfirmResponse.of(portoneId, status)));
+    }
+
+    // 결제가 끝나지 않은 주문을 다시 결제한다. 결제할 결제 ID를 돌려주고, 이미 결제됐으면 PAID를 돌려준다
+    @PostMapping
+    public ResponseEntity<ApiResponse<RetryPaymentResponse>> retryPayment(@Auth AuthUser authUser,
+                                                                          @Valid @RequestBody RetryPaymentRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(paymentFacade.retryPayment(authUser.id(), request.orderId())));
     }
 }

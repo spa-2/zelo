@@ -89,6 +89,17 @@ public class Payment extends BaseTimeEntity {
         return status == PaymentStatus.PAID;
     }
 
+    public boolean isConfirmPending() {return status == PaymentStatus.CONFIRM_PENDING;}
+
+    // 실패·결제창 닫음으로 끝난 결제가 늦게 승인돼 돌려준 경우.
+    public void cancelLatePaid(Long pgAmount) {
+        if (status != PaymentStatus.FAILED && status != PaymentStatus.CANCELED) {
+            throw new BusinessException(ErrorCode.INVALID_PAYMENT_STATUS);
+        }
+        this.status = PaymentStatus.CANCELED;
+        this.pgAmount = pgAmount;
+    }
+
     // 포트원 확인이 끝나 결과가 반영된 결제
     public boolean isConfirmed() {
         return status == PaymentStatus.PAID ||

@@ -69,6 +69,7 @@ public enum ErrorCode {
     PAYMENT_METHOD_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_010", "결제 수단을 찾을 수 없습니다."),
     PAYMENT_METHOD_ALREADY_REGISTERED(HttpStatus.CONFLICT, "PAYMENT_011", "이미 등록된 결제 수단입니다."),
     INVALID_BILLING_KEY(HttpStatus.BAD_REQUEST, "PAYMENT_012", "유효하지 않은 빌링키입니다."),
+    PAYMENT_CONFIRM_PENDING(HttpStatus.CONFLICT, "PAYMENT_013", "결제 결과를 확인하고 있습니다. 잠시 후 다시 시도해 주세요."),
 
     // Refund
     REFUND_IN_PROGRESS(HttpStatus.CONFLICT, "REFUND_003", "이미 진행 중인 환불이 있습니다."),

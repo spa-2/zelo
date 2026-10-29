@@ -11,6 +11,7 @@ public class LockKey {
     private static final String ORDER_CREATE = "lock:order:create:";
     private static final String REFUND = "lock:refund:";
     private static final String QUOTE = "lock:quote:";
+    private static final String PAYMENT_RETRY = "lock:payment:retry:";
 
     // 같은 이메일로 동시에 가입해도 중복 검사를 같이 통과하지 못하게 이메일 단위로 락을 잡음
     public static String createUser(String email) {
@@ -42,4 +43,9 @@ public class LockKey {
     public static String quote(Long roomId) {
         return QUOTE + roomId;
     }
+
+    // 재결제 연타로 같은 주문에 새 결제가 여러 개 생기지 않도록 주문 단위로 잠금
+    public static String retryPayment(Long orderId) {return PAYMENT_RETRY + orderId;}
+
+
 }

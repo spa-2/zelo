@@ -7,7 +7,6 @@ import com.server.zelo.domain.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,7 +16,6 @@ import java.util.UUID;
 public class PaymentService {
 
     private static final String PORTONE_ID_PREFIX = "payment-";
-
     private final PaymentRepository paymentRepository;
 
     // 주문이 결제 대기 상태가 될 때 주문 Command의 트랜잭션 안에서 호출한다.
@@ -68,5 +66,9 @@ public class PaymentService {
         payment.validateReady();
         payment.startConfirm();
         return payment;
+    }
+
+    public void cancelLatePaid(String portoneId, Long pgAmount) {
+        getPayment(portoneId).cancelLatePaid(pgAmount);
     }
 }

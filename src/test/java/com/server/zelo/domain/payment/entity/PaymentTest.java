@@ -134,4 +134,32 @@ class PaymentTest {
                 .isEqualTo(ErrorCode.ALREADY_PROCESSED_PAYMENT);
     }
 
+    @Test
+    void 실패한_결제는_늦게_승인되면_취소로_바꾸고_승인_금액을_남긴다() {
+        // given
+        Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
+        payment.fail();
+
+        // when
+        payment.cancelLatePaid(10_000L);
+
+        // then
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(payment.getPgAmount()).isEqualTo(10_000L);
+    }
+
+    @Test
+    void 결제_완료된_결제는_늦게_승인된_결제로_취소할_수_없다() {
+        // given
+        Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
+        payment.startConfirm();
+        payment.complete(10_000L, LocalDateTime.now(), "TEST_CARD");
+
+        // when & then
+        assertThatThrownBy(() -> payment.cancelLatePaid(10_000L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_PAYMENT_STATUS);
+    }
+
 }

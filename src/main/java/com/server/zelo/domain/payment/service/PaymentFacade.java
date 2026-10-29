@@ -2,6 +2,7 @@ package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,5 +29,13 @@ public class PaymentFacade {
     public PaymentStatus payWithPaymentMethod(Long userId, String portoneId, Long paymentMethodId) {
         return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
                 () -> paymentCommandService.payWithPaymentMethod(userId, portoneId, paymentMethodId));
+    }
+
+    // 재결제 연타를 주문 단위로 막고, 확인 대기 결제는 웹훅과 겹치지 않도록 결제 확인 락 안에서 포트원에 다시 조회한 뒤 재결제한다
+    public RetryPaymentResponse retryPayment(Long userId, Long orderId) {
+        return lockDistributeService.execute(LockKey.retryPayment(orderId), () -> {
+            paymentCommandService.findConfirmPendingPortoneId(userId, orderId).ifPresent(this::confirmPayment);
+            return paymentCommandService.retryPayment(userId, orderId);
+        });
     }
 }

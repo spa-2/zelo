@@ -9,6 +9,7 @@ import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
+import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -28,6 +30,7 @@ public class PaymentCommandService {
 
     private static final String AMOUNT_MISMATCH_REASON = "결제 금액 불일치";
     private static final String CLOSED_ORDER_REASON = "결제 대기 중이 아닌 주문";
+    private static final String LATE_PAID_REASON = "실패 처리 후 늦게 승인된 결제";
 
     private final OrderService orderService;
     private final PortOneClient portOneClient;
@@ -48,8 +51,11 @@ public class PaymentCommandService {
     // 포트원 조회와 환불은 외부 HTTP 호출이라 DB 커넥션을 붙잡지 않도록 트랜잭션 밖에서 하고, 상태 반영만 트랜잭션으로 묶는다
     public PaymentStatus confirmPayment(String portoneId) {
         Payment payment = transactionOperations.execute(status -> paymentService.startConfirm(portoneId));
+        if (payment.isPaid()) {
+            return PaymentStatus.PAID;
+        }
         if (payment.isConfirmed()) {
-            return payment.getStatus();
+            return refundIfLatePaid(payment);
         }
 
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
@@ -89,12 +95,9 @@ public class PaymentCommandService {
             return failPayment(portoneId, orderId);
         }
 
-        // 결제창에서 취소된 결제는 실패가 아니라 주문 취소로 반영한다
+        // 결제창을 닫아도 같은 주문으로 재결제할 수 있도록 결제만 취소하고 주문과 재고 선점은 그대로 둔다
         if (pgPayment.isCancelled()) {
-            transactionOperations.executeWithoutResult(status -> {
-                paymentService.cancel(portoneId, pgPayment.amount());
-                orderCommandService.cancelIfPossible(orderId);
-            });
+            transactionOperations.executeWithoutResult(status -> paymentService.cancel(portoneId, pgPayment.amount()));
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED, null, null);
             return PaymentStatus.CANCELED;
         }
@@ -158,12 +161,56 @@ public class PaymentCommandService {
     }
 
     private PaymentStatus failPayment(String portoneId, Long orderId) {
-        transactionOperations.executeWithoutResult(status -> {
-            paymentService.fail(portoneId);
-            orderCommandService.failPaymentIfPossible(orderId);
-        });
+        transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId));
         createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
         return PaymentStatus.FAILED;
+    }
+
+    // 확인 대기 결제는 재결제 전에 결제 확인 락을 걸고 다시 조회해야 해서 결제 ID를 먼저 꺼낸다
+    public Optional<String> findConfirmPendingPortoneId(Long userId, Long orderId) {
+        orderService.validateOwner(orderId, userId);
+        return paymentService.findLatestPayment(orderId)
+                .filter(Payment::isConfirmPending)
+                .map(Payment::getPortoneId);
+    }
+
+    // 실패 원인은 다양해서 원인 대신 최신 결제 상태로 다시 결제할 결제를 정한다
+    public RetryPaymentResponse retryPayment(Long userId, Long orderId) {
+        return transactionOperations.execute(status -> {
+            Order order = orderService.getOrderWithItemsForUpdate(orderId);
+            if (!userId.equals(order.getUser().getId())) {
+                throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
+            }
+            Payment latest = paymentService.getLatestPayment(orderId);
+            if (latest.isPaid()) {
+                return RetryPaymentResponse.from(order, latest);
+            }
+            if (order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+                throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+            }
+            // 다시 조회해도 결과를 모르면 이미 결제됐을 수 있어 새 결제를 만들지 않는다
+            if (latest.isConfirmPending()) {
+                throw new BusinessException(ErrorCode.PAYMENT_CONFIRM_PENDING);
+            }
+            if (latest.isReady()) {
+                return RetryPaymentResponse.from(order, latest);
+            }
+            return RetryPaymentResponse.from(order, paymentService.createPayment(orderId, order.getTotalAmount()));
+        });
+    }
+
+    // 실패·결제창 닫음으로 끝난 결제가 포트원에서 늦게 승인되면 재결제와 겹쳐 돈이 두 번 나갈 수 있어 돌려준다
+    private PaymentStatus refundIfLatePaid(Payment payment) {
+        String portoneId = payment.getPortoneId();
+        PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
+        if (!pgPayment.isPaid()) {
+            return payment.getStatus();
+        }
+        log.warn("실패 처리 후 늦게 승인된 결제 환불 portoneId={}, orderId={}", portoneId, payment.getOrderId());
+        portOneClient.cancelPayment(portoneId, LATE_PAID_REASON);
+        transactionOperations.executeWithoutResult(status -> paymentService.cancelLatePaid(portoneId, pgPayment.amount()));
+        createPaymentCard(payment.getOrderId(), PaymentStatus.CANCELED, PaymentCardPayload.ORDER_CLOSED, pgPayment.amount(), null);
+        return PaymentStatus.CANCELED;
     }
 
 

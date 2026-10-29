@@ -51,7 +51,7 @@ public class CacheConfig implements CachingConfigurer {
         JavaType ingredientUnits = jsonMapper.getTypeFactory()
                 .constructMapType(LinkedHashMap.class, String.class, BaseUnit.class);
         JavaType productDetail = jsonMapper.getTypeFactory().constructType(ProductDetail.class);
-              // 기본은 Redis 쓰기를 비동기로 해서, 조회가 캐시에 넣는 중에 관리자 수정의 삭제가 먼저 끝나면 옛 값이 다시 남을 수 있음
+        // 기본은 Redis 쓰기를 비동기로 해서, 조회가 캐시에 넣는 중에 관리자 수정의 삭제가 먼저 끝나면 옛 값이 다시 남을 수 있음
         // 캐시가 빈 순간 요청이 몰려도 DB는 한 번만 읽게 sync = true인 캐시는 Redis 락(캐시이름~lock)을 잡고 채움. 서버가 여러 대여도 막힘
         // 락이 캐시 단위라 키가 하나인 카테고리·재료 단위에만 sync를 씀. 상품 상세에 쓰면 다른 상품 조회까지 기다리게 됨
         RedisCacheWriter cacheWriter = RedisCacheWriter.create(redisConnectionFactory, configurer -> configurer.immediateWrites()

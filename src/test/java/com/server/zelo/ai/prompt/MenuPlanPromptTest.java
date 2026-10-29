@@ -71,6 +71,17 @@ class MenuPlanPromptTest {
     }
 
     @Test
+    void 개수_단위_재료는_그램이_아니라_사는_개수로_적는_규칙이_들어_있다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
+
+        // then
+        assertThat(systemPrompt)
+                .contains("EA·BUNCH 재료의 amount는 그램이 아니라 실제로 사는 개수야")
+                .contains("콩나물밥 3인분의 쪽파(BUNCH) → 1");
+    }
+
+    @Test
     void 자리_표시가_모두_채워진다() {
         // when
         String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), "김치볶음밥");

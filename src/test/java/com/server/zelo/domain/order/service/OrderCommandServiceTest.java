@@ -4,26 +4,20 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
-import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
-import com.server.zelo.domain.order.entity.ActorType;
-import com.server.zelo.domain.order.entity.Order;
-import com.server.zelo.domain.order.entity.ShippingAddress;
-import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.order.entity.OrderStatus;
-import com.server.zelo.domain.order.entity.StockState;
-import com.server.zelo.domain.order.repository.OrderRepository;
+import com.server.zelo.domain.order.entity.*;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
-import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.payment.service.PaymentService;
+import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserService;
-import com.server.zelo.domain.product.service.ProductService;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,20 +28,15 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderCommandServiceTest {
@@ -136,6 +125,8 @@ class OrderCommandServiceTest {
                 .containsExactly(StockState.DEDUCTED, StockState.DEDUCTED);
         assertQuantities(fixture.firstInventory(), 7, 1, 6);
         assertQuantities(fixture.secondInventory(), 18, 1, 17);
+        then(productService).should().increaseSalesCount(7L, 3);
+        then(productService).should().increaseSalesCount(9L, 2);
     }
 
     @Test
@@ -172,6 +163,7 @@ class OrderCommandServiceTest {
                 .containsExactly(StockState.RELEASED, StockState.RELEASED);
         assertQuantities(fixture.firstInventory(), 10, 1, 9);
         assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        then(productService).should(never()).decreaseSalesCount(any(), any());
     }
 
     @Test
@@ -191,6 +183,8 @@ class OrderCommandServiceTest {
                 .containsExactly(StockState.RESTORED, StockState.RESTORED);
         assertQuantities(fixture.firstInventory(), 10, 1, 9);
         assertQuantities(fixture.secondInventory(), 20, 1, 19);
+        then(productService).should().decreaseSalesCount(7L, 3);
+        then(productService).should().decreaseSalesCount(9L, 2);
     }
 
     @Test

@@ -4,22 +4,17 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
-import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
-import com.server.zelo.domain.order.entity.ActorType;
-import com.server.zelo.domain.order.entity.Order;
-import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.order.entity.OrderStatus;
-import com.server.zelo.domain.order.entity.ShippingAddress;
-import com.server.zelo.domain.order.entity.StockState;
+import com.server.zelo.domain.order.entity.*;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.service.QuoteService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserService;
@@ -45,9 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderPartialCancellationCommandServiceTest {
@@ -118,7 +111,8 @@ class OrderPartialCancellationCommandServiceTest {
         assertQuantities(fixture.secondInventory(), 18, 1, 17);
         then(inventoryRepository).should(never()).findInventoryByProduct_Id(10L);
         assertSnapshots(fixture);
-        verifyNoInteractions(paymentService, quoteService, userService, productService,
+        then(productService).should().decreaseSalesCount(20L, 1);
+        verifyNoInteractions(paymentService, quoteService, userService,
                 chatRoomService, userAddressService, orderConfirmationRepository);
     }
 
@@ -401,6 +395,7 @@ class OrderPartialCancellationCommandServiceTest {
         // then
         assertFullyCanceled(fixture);
         assertSnapshots(fixture);
+        then(productService).should().decreaseSalesCount(20L, 2);
     }
 
     @Test

@@ -5,26 +5,22 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatRoomService;
 import com.server.zelo.domain.delivery.service.DeliveryService;
-import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
-import com.server.zelo.domain.order.entity.ActorType;
-import com.server.zelo.domain.order.entity.Order;
-import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.order.entity.OrderStatus;
-import com.server.zelo.domain.order.entity.ShippingAddress;
-import com.server.zelo.domain.order.entity.StockState;
+import com.server.zelo.domain.order.entity.*;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.model.OrderConfirmation;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
+import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.entity.ProductStatus;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.service.QuoteService;
-import com.server.zelo.domain.payment.service.PaymentService;
+import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.service.UserAddressService;
@@ -56,15 +52,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.BDDMockito.willDoNothing;
-import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderCreationCommandServiceTest {
@@ -289,6 +278,22 @@ class OrderCreationCommandServiceTest {
         // when
         // then
         assertError(ErrorCode.PRODUCT_NOT_FOUND);
+        then(orderService).should(never()).createOrder(any());
+        verifyNoInteractions(inventoryService);
+    }
+
+    @Test
+    void 판매중지된_상품이_있으면_주문_생성을_거부한다() {
+        // given
+        stubStart(quote(List.of(item(10L, 1_000L, 1, 1_000L)), 1_000L));
+        Product product = mock(Product.class);
+        given(product.getId()).willReturn(10L);
+        given(product.getStatus()).willReturn(ProductStatus.STOP_SALE);
+        given(productService.findProducts(anyList())).willReturn(List.of(product));
+
+        // when
+        // then
+        assertError(ErrorCode.PRODUCT_NOT_ON_SALE);
         then(orderService).should(never()).createOrder(any());
         verifyNoInteractions(inventoryService);
     }

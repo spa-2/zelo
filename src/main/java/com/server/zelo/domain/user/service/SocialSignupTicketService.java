@@ -17,7 +17,7 @@ import java.util.Optional;
 public class SocialSignupTicketService {
 
     private final ObjectMapper objectMapper;
-    private final SecureRandom secureRandom = new SecureRandom();
+    private final SecureRandom secureRandom;
     private final SocialSignupTicketRepository socialSignupTicketRepository;
 
     // 처음 소셜 로그인으로 왔다면 티켓을 발급해줌

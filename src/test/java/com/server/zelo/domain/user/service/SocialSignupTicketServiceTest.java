@@ -14,6 +14,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.security.SecureRandom;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +38,10 @@ class SocialSignupTicketServiceTest {
     // JSON 변환이 실제로 왕복되는지 확인하려고 mock이 아닌 실제 변환기를 씀
     @Spy
     private JsonMapper jsonMapper = JsonMapper.builder().build();
+
+    // 번호표가 서로 달라지는지 확인하려고 mock이 아닌 실제 난수 생성기를 씀
+    @Spy
+    private SecureRandom secureRandom = new SecureRandom();
 
     @Test
     void 발급하면_번호표를_반환하고_같은_번호표로_프로필을_저장한다() {

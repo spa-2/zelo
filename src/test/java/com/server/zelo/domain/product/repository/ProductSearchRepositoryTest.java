@@ -124,6 +124,23 @@ class ProductSearchRepositoryTest {
         assertThat(names).containsExactly(TAG + " 포기김치 500g", TAG + " 백김치 1kg");
     }
 
+    @Test
+    void 이스케이프한_밑줄은_글자_그대로_찾는다() {
+        // given
+        Product baek = productRepository.findByProductCode("SEARCH-9000501").orElseThrow();
+        persist("SEARCH-9000505", baek.getIngredient(), "브랜드 C", TAG + "_특가 백김치", 7900L, 3);
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<String> names = productRepository.findNames(TAG + "\\_", ProductStatus.ON_SALE, Limit.of(10));
+        Page<Product> products = search(TAG + "\\_", null, false, ProductSort.SALES);
+
+        // then
+        assertThat(names).containsExactly(TAG + "_특가 백김치");
+        assertThat(products.getContent()).extracting(Product::getProductCode).containsExactly("SEARCH-9000505");
+    }
+
     private Page<Product> search(String keyword, Long categoryId, boolean inStock, ProductSort sort) {
         return productRepository.search(keyword, categoryId, inStock, ProductStatus.ON_SALE,
                 PageRequest.of(0, 20, sort.toSort()));

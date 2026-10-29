@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import com.server.zelo.domain.quote.model.BudgetOption;
 import com.server.zelo.domain.quote.model.ExcludedItem;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.product.entity.Keyword;
@@ -89,7 +90,7 @@ class QuoteRepositoryTest {
     }
 
     @Test
-    void 조건과_후보가_없던_예전_견적도_빈_값으로_읽는다() {
+    void 조건_후보_예산이_없던_예전_견적도_빈_값으로_읽는다() {
         // given
         given(valueOperations.get("quote:5")).willReturn("""
                 {"quoteId":"q-old","userId":12,"roomId":5,"menuName":"김치볶음밥","items":[],"excludedItems":[],
@@ -101,6 +102,8 @@ class QuoteRepositoryTest {
         // then
         assertThat(quote.conditions()).isEmpty();
         assertThat(quote.substitutes()).isEmpty();
+        assertThat(quote.budget()).isNull();
+        assertThat(quote.budgetOptions()).isEmpty();
     }
 
     private Quote quote(Long roomId) {
@@ -112,6 +115,8 @@ class QuoteRepositoryTest {
                 List.of(new ExcludedItem("소주", "CATEGORY_NOT_ALLOWED")),
                 8900L, createdAt, createdAt.plus(QuoteRepository.QUOTE_TTL), Set.of(Keyword.NOT_SPICY),
                 List.of(new SubstituteItem("계란", "무항생제 계란 10구", new QuoteItem(4L, "P-EGG-002", "계란 10구", "10구",
-                        3900L, 1, 3900L))));
+                        3900L, 1, 3900L))),
+                15000L, List.of(new BudgetOption(3L, new QuoteItem(5L, "P-KIMCHI-002", "썰은김치 1kg", "1kg",
+                        6900L, 1, 6900L))));
     }
 }

@@ -77,6 +77,12 @@ public class EmailVerificationRepository {
             return 2
             """, Long.class);
 
+    private static final RedisScript<Long> DELETE_SCRIPT = new DefaultRedisScript<>("""
+                redis.call('DEL', KEYS[1])
+                redis.call('DEL', KEYS[2])
+                return 1
+            """, Long.class);
+
     private final HashUtil hashUtil;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -92,7 +98,7 @@ public class EmailVerificationRepository {
 
     // 동일한 이메일에는 cooldown 동안 1번만 보냄(목적별로 분리), 선점에 성공하면 true
     public boolean acquireCooldown(String email, EmailVerificationPurpose purpose, Duration cooldown) {
-        String key = EMAIL_COOLDOWN + purpose + ":" + hash(email);
+        String key = cooldownKey(purpose, email);
         // Set nx ex : 키가 없을때만 저장
         return Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(key, "1", cooldown));
     }
@@ -130,6 +136,14 @@ public class EmailVerificationRepository {
         stringRedisTemplate.opsForValue().set(EMAIL_TICKET + hash(ticket), purpose + ":" + email, ttl);
     }
 
+    // 장애시 다시 시도할 수 있게 발급한 코드와 쿨다운을 모두 제거한다.
+    public void deleteCodeAndCooldown(String email, EmailVerificationPurpose purpose) {
+        stringRedisTemplate.execute(
+                DELETE_SCRIPT,
+                List.of(cooldownKey(purpose, email), codeKey(purpose, email))
+        );
+    }
+
     private long increaseCount(String key, int maxCount, Duration window, Duration block) {
         return stringRedisTemplate.execute(
                 COUNT_SCRIPT,
@@ -147,7 +161,12 @@ public class EmailVerificationRepository {
     private String codeKey(EmailVerificationPurpose purpose, String email) {
         return EMAIL_CODE + purpose + ":" + hash(email);
     }
+
     private String failedKey(EmailVerificationPurpose purpose, String email) {
         return EMAIL_CODE_FAILED + purpose + ":" + hash(email);
+    }
+
+    private String cooldownKey(EmailVerificationPurpose purpose, String email) {
+        return EMAIL_COOLDOWN + purpose + ":" + hash(email);
     }
 }

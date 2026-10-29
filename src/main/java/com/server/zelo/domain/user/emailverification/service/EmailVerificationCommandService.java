@@ -9,6 +9,7 @@ import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import com.server.zelo.domain.user.emailverification.repository.EmailVerificationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -16,6 +17,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Locale;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailVerificationCommandService {
@@ -65,7 +67,14 @@ public class EmailVerificationCommandService {
         emailVerificationRepository.saveCode(email, purpose, code, CODE_TTL);
 
         // 코드 저장 성공 후 이메일 발송
-        emailSender.send(email, TITLE, BODY_FORMAT.formatted(code, CODE_TTL.toMinutes()));
+        try {
+            emailSender.send(email, TITLE, BODY_FORMAT.formatted(code, CODE_TTL.toMinutes()));
+        } catch ( BusinessException e) {
+            // 코드 및 쿨다운 제거
+            log.warn("이메일 전송 실패로 코드와 쿨다운을 제거, purpose={}", purpose);
+            emailVerificationRepository.deleteCodeAndCooldown(email, purpose);
+            throw e;
+        }
     }
 
     public ValidateEmailResponse validateEmail(String email, EmailVerificationPurpose purpose, String code) {

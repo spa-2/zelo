@@ -29,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
@@ -68,6 +69,39 @@ class EmailVerificationCommandServiceTest {
         InOrder inOrder = inOrder(emailVerificationRepository, emailSender);
         inOrder.verify(emailVerificationRepository).saveCode(EMAIL, PURPOSE, "123456", CODE_TTL);
         inOrder.verify(emailSender).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 메일_발송에_실패하면_코드와_쿨다운을_지우고_예외를_그대로_던진다() {
+        // given
+        givenIpCount(1);
+        givenCooldownAcquired();
+        givenSendCount(1);
+        given(secureRandom.nextInt(1_000_000)).willReturn(123456);
+        willThrow(new BusinessException(ErrorCode.EMAIL_SEND_FAILED))
+                .given(emailSender).send(anyString(), anyString(), anyString());
+
+        // when & then 사용자가 쿨다운을 기다리지 않고 바로 다시 요청할 수 있어야 함
+        assertThatThrownBy(() -> emailVerificationCommandService.sendEmail(EMAIL, PURPOSE, IP))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.EMAIL_SEND_FAILED);
+        then(emailVerificationRepository).should().deleteCodeAndCooldown(EMAIL, PURPOSE);
+    }
+
+    @Test
+    void 메일_발송에_성공하면_코드와_쿨다운을_지우지_않는다() {
+        // given
+        givenIpCount(1);
+        givenCooldownAcquired();
+        givenSendCount(1);
+        given(secureRandom.nextInt(1_000_000)).willReturn(123456);
+
+        // when
+        emailVerificationCommandService.sendEmail(EMAIL, PURPOSE, IP);
+
+        // then
+        then(emailVerificationRepository).should(never()).deleteCodeAndCooldown(anyString(), any());
     }
 
     @Test

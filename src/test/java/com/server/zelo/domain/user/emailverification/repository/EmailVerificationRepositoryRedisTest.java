@@ -328,6 +328,24 @@ class EmailVerificationRepositoryRedisTest {
     }
 
     @Test
+    void 코드와_쿨다운을_지우면_다시_요청할_수_있고_다른_이메일은_영향이_없다() {
+        // given
+        String other = "other-" + email;
+        repository.acquireCooldown(email, PURPOSE, Duration.ofSeconds(60));
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+        repository.acquireCooldown(other, PURPOSE, Duration.ofSeconds(60));
+
+        // when
+        repository.deleteCodeAndCooldown(email, PURPOSE);
+
+        // then
+        assertThat(redisTemplate.keys("EMAIL_CODE:*" + hashUtil.hash(email))).isEmpty();
+        assertThat(repository.acquireCooldown(email, PURPOSE, Duration.ofSeconds(60))).isTrue();
+        assertThat(repository.acquireCooldown(other, PURPOSE, Duration.ofSeconds(60))).isFalse();
+        redisTemplate.delete(redisTemplate.keys("EMAIL_COOLDOWN:*" + hashUtil.hash(other)));
+    }
+
+    @Test
     void 다른_이메일의_코드로는_통과할_수_없다() {
         // given
         repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));

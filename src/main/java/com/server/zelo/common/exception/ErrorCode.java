@@ -127,6 +127,7 @@ public enum ErrorCode {
     INVALID_EMAIL_CODE(HttpStatus.BAD_REQUEST, "MAIL_002", "인증 코드가 올바르지 않습니다."),
     EXPIRED_EMAIL_CODE(HttpStatus.BAD_REQUEST, "MAIL_003", "인증 코드가 만료되었거나 요청 이력이 없습니다. 인증 코드를 다시 요청해 주세요."),
     TOO_MANY_EMAIL_CODE_FAILURES(HttpStatus.TOO_MANY_REQUESTS, "MAIL_004", "인증 코드를 너무 많이 틀렸습니다. 인증 코드를 다시 요청해 주세요."),
+    EMAIL_SEND_FAILED(HttpStatus.BAD_GATEWAY, "MAIL_005", "메일 전송에 실패했습니다. 잠시 후 다시 시도하거나 메일 주소를 확인해 주세요."),
 
     //Refund
     INVALID_REFUND_STATUS(HttpStatus.BAD_REQUEST, "REFUND_001", "유효하지 않은 환불 상태 변경입니다."),

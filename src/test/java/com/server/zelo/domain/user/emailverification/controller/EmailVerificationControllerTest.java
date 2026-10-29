@@ -1,12 +1,16 @@
 package com.server.zelo.domain.user.emailverification.controller;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import com.server.zelo.domain.user.emailverification.service.EmailVerificationCommandService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -18,6 +22,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -90,6 +95,85 @@ class EmailVerificationControllerTest {
         // when & then
         perform("{\"email\": \"" + longEmail + "\", \"purpose\": \"SIGNUP\"}")
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 코드가_맞으면_200과_인증_토큰을_반환한다() throws Exception {
+        // given
+        given(emailVerificationCommandService.validateEmail("jieun@example.com", EmailVerificationPurpose.SIGNUP, "123456"))
+                .willReturn(new ValidateEmailResponse("ticket"));
+
+        // when & then
+        confirm("""
+                {"email": "jieun@example.com", "purpose": "SIGNUP", "code": "123456"}
+                """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.verificationToken").value("ticket"));
+    }
+
+    @Test
+    void 이메일은_소문자로_바꿔서_서비스에_전달한다() throws Exception {
+        // given
+        given(emailVerificationCommandService.validateEmail(anyString(), any(), anyString()))
+                .willReturn(new ValidateEmailResponse("ticket"));
+
+        // when
+        confirm("""
+                {"email": "Jieun@Example.COM", "purpose": "SIGNUP", "code": "123456"}
+                """).andExpect(status().isOk());
+
+        // then 발송 때와 같은 키로 찾으려면 대소문자가 같아야 함
+        then(emailVerificationCommandService).should()
+                .validateEmail("jieun@example.com", EmailVerificationPurpose.SIGNUP, "123456");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "EXPIRED_EMAIL_CODE, 400, MAIL_003",
+            "INVALID_EMAIL_CODE, 400, MAIL_002",
+            "TOO_MANY_EMAIL_CODE_FAILURES, 429, MAIL_004"
+    })
+    void 코드_확인에_실패하면_오류_코드에_맞는_상태와_응답이_내려간다(ErrorCode errorCode, int status, String code) throws Exception {
+        // given
+        given(emailVerificationCommandService.validateEmail(anyString(), any(), anyString()))
+                .willThrow(new BusinessException(errorCode));
+
+        // when & then
+        confirm("""
+                {"email": "jieun@example.com", "purpose": "SIGNUP", "code": "123456"}
+                """)
+                .andExpect(status().is(status))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(code));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            """
+            {"email": "jieun@example.com", "purpose": "SIGNUP"}
+            """,
+            """
+            {"email": "jieun@example.com", "purpose": "SIGNUP", "code": ""}
+            """,
+            """
+            {"email": "not-an-email", "purpose": "SIGNUP", "code": "123456"}
+            """,
+            """
+            {"email": "jieun@example.com", "code": "123456"}
+            """
+    })
+    void 코드_확인_요청이_올바르지_않으면_400이고_서비스를_호출하지_않는다(String body) throws Exception {
+        // when & then
+        confirm(body).andExpect(status().isBadRequest());
+
+        then(emailVerificationCommandService).should(never()).validateEmail(anyString(), any(), anyString());
+    }
+
+    private ResultActions confirm(String body) throws Exception {
+        return mockMvc.perform(post("/api/auth/email-verifications/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
     }
 
     private ResultActions perform(String body) throws Exception {

@@ -20,9 +20,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // 로그인 시도 횟수 제한
-    @ExceptionHandler(LoginLockedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleLoginLockedException(LoginLockedException e) {
+    // 요청 횟수 제한(로그인 시도, 메일 발송 등), 429와 함께 Retry-After 헤더를 내려줌
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimitExceededException(RateLimitExceededException e) {
         HttpHeaders headers = new HttpHeaders();
         // 몇 초 후 재시도 가능한지 명요
         headers.add("Retry-After", String.valueOf(e.getRetryAfterSeconds()));

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -91,6 +92,10 @@ public class EmailVerificationCommandService {
     }
 
     private String generate() {
-        return String.format("%0" + CODE_LENGTH + "d", secureRandom.nextInt(CODE_BOUND));
+        return String.format(
+                Locale.ROOT,
+                "%0" + CODE_LENGTH + "d",
+                secureRandom.nextInt(CODE_BOUND)
+        );
     }
 }

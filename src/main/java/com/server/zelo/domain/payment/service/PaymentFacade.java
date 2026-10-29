@@ -1,5 +1,7 @@
 package com.server.zelo.domain.payment.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
@@ -34,8 +36,20 @@ public class PaymentFacade {
     // 재결제 연타를 주문 단위로 막고, 확인 대기 결제는 웹훅과 겹치지 않도록 결제 확인 락 안에서 포트원에 다시 조회한 뒤 재결제한다
     public RetryPaymentResponse retryPayment(Long userId, Long orderId) {
         return lockDistributeService.execute(LockKey.retryPayment(orderId), () -> {
-            paymentCommandService.findConfirmPendingPortoneId(userId, orderId).ifPresent(this::confirmPayment);
+            paymentCommandService.findConfirmPendingPortoneId(userId, orderId).ifPresent(this::recheckConfirmPending);
             return paymentCommandService.retryPayment(userId, orderId);
         });
+    }
+
+    // 포트원 조회가 실패하면 결과를 여전히 모르는 상태라 PG 오류 대신 확인 대기로 응답한다. 다른 오류는 그대로 둔다
+    private void recheckConfirmPending(String portoneId) {
+        try {
+            confirmPayment(portoneId);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.PG_TIMEOUT || e.getErrorCode() == ErrorCode.PG_REQUEST_FAILED) {
+                throw new BusinessException(ErrorCode.PAYMENT_CONFIRM_PENDING);
+            }
+            throw e;
+        }
     }
 }

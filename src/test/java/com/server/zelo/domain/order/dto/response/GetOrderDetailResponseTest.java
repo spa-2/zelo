@@ -39,9 +39,12 @@ class GetOrderDetailResponseTest {
     private static final LocalDateTime DELIVERED_AT = SHIPPED_AT.plusDays(1);
     private static final LocalDateTime REFUNDED_AT = CREATED_AT.plusHours(1);
 
-    @Mock private User user;
-    @Mock private Product firstProduct;
-    @Mock private Product secondProduct;
+    @Mock
+    private User user;
+    @Mock
+    private Product firstProduct;
+    @Mock
+    private Product secondProduct;
 
     @Test
     void 주문과_품목의_구매_스냅샷과_누적_취소_수량을_변환한다() {
@@ -52,7 +55,7 @@ class GetOrderDetailResponseTest {
         fixture.first().cancelQuantity(1);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null,0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
 
         // then
         assertThat(response.orderId()).isEqualTo(101L);
@@ -78,7 +81,7 @@ class GetOrderDetailResponseTest {
         Fixture fixture = fixture();
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null,0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
 
         // then
         assertThat(response.payment()).isNull();
@@ -101,7 +104,7 @@ class GetOrderDetailResponseTest {
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                201L, "payment-detail-169", status, 7_000L, null, null));
+                201L, "payment-detail-169", status, 7_000L, null, null, null));
     }
 
     @Test
@@ -118,7 +121,7 @@ class GetOrderDetailResponseTest {
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                201L, "payment-detail-169", PaymentStatus.PAID, 7_000L, "신한카드", CREATED_AT));
+                201L, "payment-detail-169", PaymentStatus.PAID, 7_000L, "신한카드", CREATED_AT, null));
     }
 
     @ParameterizedTest
@@ -158,7 +161,7 @@ class GetOrderDetailResponseTest {
 
         // then
         assertThat(response.refund()).isEqualTo(new GetOrderDetailResponse.RefundInfo(
-                401L, status, RefundType.PARTIAL, 1_000L, completedAt));
+                401L, status, RefundType.PARTIAL, 1_000L, completedAt, "부분 환불"));
         assertThat(response.totalAmount()).isEqualTo(7_000L);
     }
 
@@ -241,5 +244,6 @@ class GetOrderDetailResponseTest {
         return order;
     }
 
-    private record Fixture(Order order, OrderItem first, OrderItem second) { }
+    private record Fixture(Order order, OrderItem first, OrderItem second) {
+    }
 }

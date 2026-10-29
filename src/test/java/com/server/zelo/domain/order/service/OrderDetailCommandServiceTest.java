@@ -102,7 +102,7 @@ class OrderDetailCommandServiceTest {
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().productName()).isEqualTo("구매 당시 사과");
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                PAYMENT_ID, "payment-detail-169", status, 3_000L, null, null));
+                PAYMENT_ID, "payment-detail-169", status, 3_000L, null, null,null));
         assertThat(response.delivery()).isNull();
         assertThat(response.refund()).isNull();
         InOrder calls = inOrder(orderService, paymentService);
@@ -165,7 +165,7 @@ class OrderDetailCommandServiceTest {
         // then
         assertThat(response.orderId()).isEqualTo(ORDER_ID);
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
-                PAYMENT_ID, "payment-detail-169", PaymentStatus.PAID, 3_000L, "TEST_CARD", PAID_AT));
+                PAYMENT_ID, "payment-detail-169", PaymentStatus.PAID, 3_000L, "TEST_CARD", PAID_AT,null));
         assertThat(response.delivery()).isEqualTo(hasDelivery ? deliveryInfo() : null);
         assertThat(response.refund()).isEqualTo(hasRefund ? refundInfo() : null);
         assertThat(response.items().getFirst().productName()).isEqualTo("구매 당시 사과");
@@ -321,7 +321,7 @@ class OrderDetailCommandServiceTest {
 
     private GetOrderDetailResponse.RefundInfo refundInfo() {
         return new GetOrderDetailResponse.RefundInfo(
-                401L, RefundStatus.COMPLETED, RefundType.PARTIAL, 1_000L, REFUNDED_AT);
+                401L, RefundStatus.COMPLETED, RefundType.PARTIAL, 1_000L, REFUNDED_AT, "부분 환불");
     }
 
     private Order order() {

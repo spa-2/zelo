@@ -40,6 +40,9 @@ public class CacheConfig implements CachingConfigurer {
     // 상품 상세는 관리자 API에서 바꿀 때 바로 지움
     private static final Duration TTL = Duration.ofHours(1);
 
+    // 락 잡은 서버가 죽어도 이 시간 뒤엔 풀리게 함
+    private static final Duration LOCK_TIMEOUT = Duration.ofSeconds(10);
+
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory redisConnectionFactory, JsonMapper jsonMapper) {
         // 캐시마다 타입을 정해서 JSON으로 저장 (타입 정보를 JSON에 같이 넣지 않으려고)
@@ -48,8 +51,11 @@ public class CacheConfig implements CachingConfigurer {
         JavaType ingredientUnits = jsonMapper.getTypeFactory()
                 .constructMapType(LinkedHashMap.class, String.class, BaseUnit.class);
         JavaType productDetail = jsonMapper.getTypeFactory().constructType(ProductDetail.class);
-        // 기본은 Redis 쓰기를 비동기로 해서, 조회가 캐시에 넣는 중에 관리자 수정의 삭제가 먼저 끝나면 옛 값이 다시 남을 수 있음
-        RedisCacheWriter cacheWriter = RedisCacheWriter.create(redisConnectionFactory, RedisCacheWriter.RedisCacheWriterConfigurer::immediateWrites);
+              // 기본은 Redis 쓰기를 비동기로 해서, 조회가 캐시에 넣는 중에 관리자 수정의 삭제가 먼저 끝나면 옛 값이 다시 남을 수 있음
+        // 캐시가 빈 순간 요청이 몰려도 DB는 한 번만 읽게 sync = true인 캐시는 Redis 락(캐시이름~lock)을 잡고 채움. 서버가 여러 대여도 막힘
+        // 락이 캐시 단위라 키가 하나인 카테고리·재료 단위에만 sync를 씀. 상품 상세에 쓰면 다른 상품 조회까지 기다리게 됨
+        RedisCacheWriter cacheWriter = RedisCacheWriter.create(redisConnectionFactory, configurer -> configurer.immediateWrites()
+                .enableLocking(lock -> lock.lockTimeout(RedisCacheWriter.TtlFunction.just(LOCK_TIMEOUT))));
         return RedisCacheManager.builder(cacheWriter)
                 .withCacheConfiguration(CATEGORIES, cacheConfiguration(jsonMapper, categories))
                 .withCacheConfiguration(INGREDIENT_UNITS, cacheConfiguration(jsonMapper, ingredientUnits))

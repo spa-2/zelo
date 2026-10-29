@@ -44,7 +44,7 @@ public class ProductService {
     // AI 메뉴 계획이 재료 이름·단위를 이 목록에서만 고르게 한다. 견적이 재료 이름으로 상품을 찾고 단위로 수량을 계산하기 때문.
     // 프롬프트에 매번 같은 순서로 들어가도록 id 순서를 지킨다
     // 채팅 메시지마다 부르는데 재료는 거의 안 바뀌어서 캐시함
-    @Cacheable(cacheNames = CacheConfig.INGREDIENT_UNITS)
+    @Cacheable(cacheNames = CacheConfig.INGREDIENT_UNITS, sync = true)
     @Transactional(readOnly = true)
     public Map<String, BaseUnit> findIngredientUnits() {
         return ingredientRepository.findAll(Sort.by("id")).stream()

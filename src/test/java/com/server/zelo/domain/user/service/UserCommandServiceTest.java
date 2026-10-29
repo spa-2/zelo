@@ -4,7 +4,7 @@ import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.common.exception.LoginLockedException;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
@@ -141,14 +141,14 @@ class UserCommandServiceTest {
     void 시도_횟수를_초과하면_자격_증명을_검증하지_않고_토큰도_발급하지_않는다() {
         // given
         LoginRequest request = new LoginRequest("jieun@example.com", "DemoPass!2026");
-        willThrow(new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540))
+        willThrow(new RateLimitExceededException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540))
                 .given(loginAttemptService).attempt("jieun@example.com", CLIENT_IP);
 
         // when & then
         // 잠긴 동안에는 맞는 비밀번호여도 거절해야 하므로 검증 자체를 하지 않음
         assertThatThrownBy(() -> userCommandService.login(request, CLIENT_IP))
-                .isInstanceOf(LoginLockedException.class)
-                .extracting(e -> ((LoginLockedException) e).getRetryAfterSeconds())
+                .isInstanceOf(RateLimitExceededException.class)
+                .extracting(e -> ((RateLimitExceededException) e).getRetryAfterSeconds())
                 .isEqualTo(540L);
         then(userService).shouldHaveNoInteractions();
         then(jwtUtil).shouldHaveNoInteractions();

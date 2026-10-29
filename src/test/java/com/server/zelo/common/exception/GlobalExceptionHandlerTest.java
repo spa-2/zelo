@@ -71,8 +71,8 @@ class GlobalExceptionHandlerTest {
     @Test
     void 로그인_시도_횟수_초과는_429와_Retry_After_헤더를_반환한다() {
         // when
-        ResponseEntity<ApiResponse<Void>> response = handler.handleLoginLockedException(
-                new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540));
+        ResponseEntity<ApiResponse<Void>> response = handler.handleRateLimitExceededException(
+                new RateLimitExceededException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540));
 
         // then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);

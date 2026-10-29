@@ -103,6 +103,9 @@ zelo:
       connect-timeout: 3s
       read-timeout: 5s
 
+  mail:
+    mode: ${MAIL_MODE:fake}
+
 logging:
   level:
     # SimpleLoggerAdvisor가 LLM 요청·응답을 DEBUG로 남기므로 이 클래스만 연다

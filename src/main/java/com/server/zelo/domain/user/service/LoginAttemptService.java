@@ -2,7 +2,7 @@ package com.server.zelo.domain.user.service;
 
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.user.dto.login.AttemptResult;
-import com.server.zelo.common.exception.LoginLockedException;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.repository.LoginAttemptRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ public class LoginAttemptService {
     public void attempt(String email, String remoteAddr) {
         AttemptResult result = loginAttemptRepository.increment(email, remoteAddr,MAX_ATTEMPTS, LOCK, WINDOW);
         if (result.count() > MAX_ATTEMPTS){
-            throw new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, result.retryAfterSeconds());
+            throw new RateLimitExceededException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, result.retryAfterSeconds());
         }
     }
 

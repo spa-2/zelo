@@ -310,6 +310,24 @@ class EmailVerificationRepositoryRedisTest {
     }
 
     @Test
+    void 재발송된_코드는_이전_코드의_실패_횟수를_물려받지_않는다() {
+        // given
+        repository.saveCode(email, PURPOSE, "111111", Duration.ofMinutes(5));
+        for (int i = 0; i < MAX - 1; i++) {
+            repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+        }
+
+        // when 재발송 후 새 코드를 처음 틀림
+        repository.saveCode(email, PURPOSE, "222222", Duration.ofMinutes(5));
+        CodeValidationResult result = repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+
+        // then 이전 실패가 이어졌다면 TOO_MANY_FAILURES가 나온다
+        assertThat(result).isEqualTo(CodeValidationResult.MISMATCH);
+        assertThat(repository.validateCode(email, PURPOSE, "222222", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.SUCCESS);
+    }
+
+    @Test
     void 다른_이메일의_코드로는_통과할_수_없다() {
         // given
         repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));

@@ -60,6 +60,7 @@ public class EmailVerificationCommandService {
         }
 
         String code = generate();
+        // 코드를 저장할 때 실패횟수를 지운다.
         emailVerificationRepository.saveCode(email, purpose, code, CODE_TTL);
 
         // 코드 저장 성공 후 이메일 발송

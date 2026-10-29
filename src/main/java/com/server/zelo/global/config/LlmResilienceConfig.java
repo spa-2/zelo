@@ -1,6 +1,7 @@
 package com.server.zelo.global.config;
 
 import com.server.zelo.ai.gateway.LlmErrorClassifier;
+import com.server.zelo.common.monitoring.LogContextInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
@@ -8,6 +9,10 @@ import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextRegistry;
+import io.micrometer.context.ContextSnapshotFactory;
+import io.micrometer.context.integration.Slf4jThreadLocalAccessor;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -67,9 +72,14 @@ public class LlmResilienceConfig {
         return circuitBreaker;
     }
 
-    // 시도마다 별도 스레드에서 실행해야 시간 제한을 걸 수 있다. 대부분 응답을 기다리는 시간이라 가상 스레드를 쓴다
+    // 시도마다 별도 스레드에서 실행해야 시간 제한을 걸 수 있다. 대부분 응답을 기다리는 시간이라 가상 스레드를 쓴다.
+    // 스레드가 바뀌면 요청 스레드의 traceId·MDC가 따라오지 않아, 그 안의 로그(Spring AI 요청·응답, 오류)가 어느 요청인지 모르게 된다.
+    // 그래서 작업을 넘길 때 요청 스레드의 컨텍스트(trace, MDC의 userId·roomId)를 복사해 가게 감싼다
     @Bean(destroyMethod = "shutdownNow")
     public ExecutorService llmExecutorService() {
-        return Executors.newVirtualThreadPerTaskExecutor();
+        ContextRegistry.getInstance().registerThreadLocalAccessor(
+                new Slf4jThreadLocalAccessor(LogContextInterceptor.USER_ID, LogContextInterceptor.ROOM_ID));
+        return ContextExecutorService.wrap(Executors.newVirtualThreadPerTaskExecutor(),
+                ContextSnapshotFactory.builder().build());
     }
 }

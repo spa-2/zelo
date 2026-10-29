@@ -27,3 +27,8 @@ output "ssm_prefix" {
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
 }
+
+# SES 도메인 인증 상태는 콘솔(SES > Identities)에서 Verified인지 확인한다
+output "mail_from_address" {
+  value = local.mail_from
+}

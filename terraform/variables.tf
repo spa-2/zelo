@@ -161,3 +161,15 @@ variable "github_deploy_branch" {
   type    = string
   default = "dev"
 }
+
+# 메일을 보낼 도메인. Route53에 같은 이름의 호스팅 존이 있어야 한다(SES 인증 레코드를 거기에 만든다)
+variable "mail_domain" {
+  type    = string
+  default = "wyshin.click"
+}
+
+# SES 샌드박스 동안 메일을 받을 수 있는 주소(인증 메일의 링크를 눌러야 활성화된다). 프로덕션 액세스 승인 후에는 비워도 된다
+variable "mail_sandbox_recipients" {
+  type    = list(string)
+  default = []
+}

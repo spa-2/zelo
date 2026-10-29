@@ -1,3 +1,6 @@
 # 이 파일을 terraform.tfvars로 복사해서 값을 채운다 (terraform.tfvars는 .gitignore 대상)
 allowed_ssh_cidrs = ["203.0.113.10/32"]
 key_name          = "zelo-dev-key"
+
+# SES 샌드박스 동안 테스트 메일을 받을 주소 (프로덕션 액세스 승인 후에는 비워도 된다)
+# mail_sandbox_recipients = ["me@example.com"]

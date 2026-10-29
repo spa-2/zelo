@@ -25,6 +25,8 @@ locals {
     PORTONE_WEBHOOK_SECRET = "CHANGE_ME"
     # fake는 포트원 키 없이 동작하는 모드. 실제 결제를 붙일 때 real로 바꾼다
     PORTONE_MODE = "fake"
+    # fake는 메일을 보내지 않고 로그에만 남기는 모드. SES 프로덕션 액세스 승인 후 real로 바꾼다
+    MAIL_MODE = "fake"
   }
 }
 
@@ -64,6 +66,7 @@ resource "aws_ssm_parameter" "generated" {
     "spring.datasource.username" = { type = "String", value = var.db_username }
     "spring.datasource.password" = { type = "SecureString", value = random_password.db.result }
     "spring.data.redis.host"     = { type = "String", value = local.redis_private_ip }
+    "zelo.mail.from"             = { type = "String", value = local.mail_from }
   }
 
   name  = "${local.ssm_prefix}/${each.key}"

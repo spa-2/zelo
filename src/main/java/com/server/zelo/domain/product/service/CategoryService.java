@@ -21,7 +21,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
 
-    @Cacheable(cacheNames = CacheConfig.CATEGORIES)
+    @Cacheable(cacheNames = CacheConfig.CATEGORIES, sync = true)
     @Transactional(readOnly = true)
     public List<GetCategoryResponse> getCategories() {
         // 카테고리가 몇십 개라 한 번에 다 가져와서 묶음 (대분류마다 조회하면 N+1)

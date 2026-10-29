@@ -1,16 +1,7 @@
 package com.server.zelo.global.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.times;
-
 import com.server.zelo.domain.product.dto.response.GetCategoryResponse;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Category;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.model.ProductDetail;
 import com.server.zelo.domain.product.repository.CategoryRepository;
 import com.server.zelo.domain.product.repository.IngredientRepository;
@@ -18,10 +9,6 @@ import com.server.zelo.domain.product.repository.ProductKeywordRepository;
 import com.server.zelo.domain.product.repository.ProductRepository;
 import com.server.zelo.domain.product.service.CategoryService;
 import com.server.zelo.domain.product.service.ProductService;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +23,21 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 
 // 실제 Redis(localhost:6379)에 캐시를 저장해서 두 번째 조회가 DB를 안 타는지 확인
 @SpringJUnitConfig({CacheConfig.class, CategoryService.class, ProductService.class, CacheConfigTest.RedisTestConfig.class})
@@ -104,6 +106,36 @@ class CacheConfigTest {
         assertThat(cached.status()).isEqualTo(ProductStatus.ON_SALE);
         assertThat(afterStop.status()).isEqualTo(ProductStatus.STOP_SALE);
         then(productKeywordRepository).should(times(2)).findAllByProduct_IdIn(List.of(1L));
+    }
+
+    @Test
+    void 캐시가_비었을_때_동시에_조회해도_DB는_한_번만_읽는다() throws Exception {
+        // given
+        Category parent = category(1L, "국·반찬", null);
+        given(categoryRepository.findAllByOrderByIdAsc()).willAnswer(invocation -> {
+            Thread.sleep(200);
+            return List.of(parent);
+        });
+        CountDownLatch start = new CountDownLatch(1);
+
+        // when
+        try (ExecutorService executor = Executors.newFixedThreadPool(10)) {
+            List<CompletableFuture<List<GetCategoryResponse>>> results = IntStream.range(0, 10)
+                    .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                        try {
+                            start.await();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return categoryService.getCategories();
+                    }, executor))
+                    .toList();
+            start.countDown();
+
+            // then
+            results.forEach(result -> assertThat(result.join()).hasSize(1));
+        }
+        then(categoryRepository).should().findAllByOrderByIdAsc();
     }
 
     @Test

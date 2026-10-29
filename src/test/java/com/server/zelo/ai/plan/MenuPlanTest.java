@@ -180,6 +180,28 @@ class MenuPlanTest {
     }
 
     @Test
+    void 같은_재료를_나눠_적어도_합친_양이_상한을_넘으면_실패한다() {
+        // given: 줄마다는 상한(10단) 안이지만 견적이 합치면 16단이 된다
+        List<MenuPlanIngredient> ingredients = List.of(
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH),
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH));
+
+        // when & then
+        assertInvalid(shopping(4, null, ingredients));
+    }
+
+    @Test
+    void 같은_재료를_나눠_적고_합친_양이_상한이면_통과한다() {
+        // given
+        MenuPlan menuPlan = shopping(4, null, List.of(
+                MenuPlanIngredient.of("쪽파", 4, BaseUnit.BUNCH),
+                MenuPlanIngredient.of("쪽파", 6, BaseUnit.BUNCH)));
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
     void 재료_단위가_없으면_실패한다() {
         // when & then
         assertInvalid(shopping(4, null, List.of(MenuPlanIngredient.of("김치", 400, null))));

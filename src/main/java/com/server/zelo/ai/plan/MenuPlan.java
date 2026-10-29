@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.util.StringUtils;
@@ -60,5 +61,10 @@ public record MenuPlan(
             throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
         }
         ingredients.forEach(ingredient -> ingredient.validate(ingredientUnits));
+        // 견적은 이름이 같은 재료를 양을 합쳐 한 줄로 고른다(QuoteCommandService.select).
+        // 줄마다 상한 안이어도 합친 양이 넘을 수 있어(쪽파 8단 + 8단), 합친 양도 같은 기준으로 본다
+        Map<String, MenuPlanIngredient> merged = new LinkedHashMap<>();
+        ingredients.forEach(ingredient -> merged.merge(ingredient.name(), ingredient, MenuPlanIngredient::plus));
+        merged.values().forEach(ingredient -> ingredient.validate(ingredientUnits));
     }
 }

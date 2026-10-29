@@ -24,6 +24,11 @@ public record MenuPlanIngredient(
         return new MenuPlanIngredient(name, amount, unit);
     }
 
+    // 같은 재료를 합칠 때 쓴다. 단위는 견적과 같게 앞 줄을 따른다(줄마다 상한 안이고 최대 20줄이라 int를 넘지 않는다)
+    public MenuPlanIngredient plus(MenuPlanIngredient other) {
+        return of(name, amount + other.amount, unit);
+    }
+
     // 목록에 없는 재료는 오류가 아니다. 견적 단계에서 "상품 없음"으로 빠진다
     public void validate(Map<String, BaseUnit> ingredientUnits) {
         if (!StringUtils.hasText(name) || amount == null || unit == null || amount <= 0 || amount > MAX_AMOUNTS.get(unit)) {

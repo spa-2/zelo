@@ -12,17 +12,14 @@ import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
 import com.server.zelo.domain.order.dto.response.*;
-import com.server.zelo.domain.order.entity.ActorType;
-import com.server.zelo.domain.order.entity.Order;
-import com.server.zelo.domain.order.entity.OrderItem;
-import com.server.zelo.domain.order.entity.OrderStatus;
-import com.server.zelo.domain.order.entity.ShippingAddress;
+import com.server.zelo.domain.order.entity.*;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import com.server.zelo.domain.order.model.OrderConfirmation;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.entity.ProductStatus;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
@@ -45,12 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -79,7 +71,7 @@ public class OrderCommandService {
         for(OrderItem orderItem : getItemsInProductOrder(order)) {
             orderItem.deduct(); // StockState: RESERVED → DEDUCTED
             inventoryService.deduct(orderItem.getProduct().getId(), orderItem.getQuantity());
-            // TODO: 판매량 반영 - productService.increaseSalesCount(productId, quantity) (견적 점수 판매량이 지금 계속 0)
+            productService.increaseSalesCount(orderItem.getProduct().getId(), orderItem.getQuantity());
         }
     }
 
@@ -133,7 +125,8 @@ public class OrderCommandService {
 
                     orderItem.restore();
                     inventoryService.restore(orderItem.getProduct().getId(), remainingQuantity);
-                    // TODO: 결제 후 취소라 판매량 되돌리기 - productService.decreaseSalesCount(productId, remainingQuantity)
+                    // 결제 후 취소라 판매량도 되돌림
+                    productService.decreaseSalesCount(orderItem.getProduct().getId(), remainingQuantity);
                 }
 
                 case RESTORED -> {
@@ -334,7 +327,7 @@ public class OrderCommandService {
 
             orderItem.cancelQuantity(requestedQuantity);
             inventoryService.restore(orderItem.getProduct().getId(), requestedQuantity);
-            // TODO: 부분 취소·환불 수량만큼 판매량 내리기 - productService.decreaseSalesCount(productId, requestedQuantity)
+            productService.decreaseSalesCount(orderItem.getProduct().getId(), requestedQuantity);
         }
 
         // 재고 복원이 끝났으므로 주문 상태만 변경
@@ -538,7 +531,11 @@ public class OrderCommandService {
                     throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
                 }
 
-                // TODO: 판매중지(STOP_SALE) 상품이면 주문 막기 (관리자 API로 판매중지가 생김)
+                // 견적 뒤에 관리자가 판매중지했을 수 있음
+                if (product.getStatus() == ProductStatus.STOP_SALE) {
+                    throw new BusinessException(ErrorCode.PRODUCT_NOT_ON_SALE);
+                }
+
                 if (!product.getPrice().equals(item.unitPrice())) {
                     throw new BusinessException(ErrorCode.PRICE_CHANGED);
                 }

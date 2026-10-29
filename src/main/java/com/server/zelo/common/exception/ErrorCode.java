@@ -37,6 +37,7 @@ public enum ErrorCode {
     INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_007", "재료를 찾을 수 없습니다."),
     INVALID_PRODUCT_STATUS(HttpStatus.CONFLICT, "PRODUCT_008", "지금 상품 상태에서는 할 수 없습니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_009", "카테고리를 찾을 수 없습니다."),
+    PRODUCT_NOT_ON_SALE(HttpStatus.CONFLICT, "PRODUCT_010", "판매가 중지된 상품이 있습니다."),
 
     // Quote
     QUOTE_EXPIRED(HttpStatus.CONFLICT, "QUOTE_001", "견적이 만료되었습니다. 견적을 다시 받아 주세요."),

@@ -107,6 +107,9 @@ zelo:
     mode: ${MAIL_MODE:fake}
 
 logging:
+  pattern:
+    # 모든 로그 줄 앞에 요청 추적 값을 붙인다. traceId·spanId는 Micrometer Tracing이, userId·roomId는 LogContextInterceptor가 넣는다
+    correlation: "[%X{traceId:-},%X{spanId:-},user=%X{userId:-},room=%X{roomId:-}] "
   level:
     # SimpleLoggerAdvisor가 LLM 요청·응답을 DEBUG로 남기므로 이 클래스만 연다
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: debug
@@ -135,6 +138,14 @@ management:
   metrics:
     tags:
       application: zelo   # 모든 지표에 앱 이름 태그
+    distribution:
+      # 응답 시간 분포를 Prometheus 히스토그램으로 내보내, 서버가 여러 대여도 합쳐서 p95를 계산할 수 있게 한다
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      # 아직 trace를 보낼 곳(Zipkin 등)이 없어 전부 남겨도 비용이 없다. 보낼 곳을 붙이면 낮춘다
+      probability: 1.0
 
 info:
   app:

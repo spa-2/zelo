@@ -17,9 +17,11 @@ import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.ai.plan.QuoteEdit;
 import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.ai.prompt.ReviewSummaryPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -28,6 +30,7 @@ import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +46,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.io.ClassPathResource;
 
 // 실제 설정(5초, 30초)과 같은 구조를 짧은 시간으로 만들어, 시간 제한·재시도·서킷 브레이커의 동작을 빠르게 확인한다
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
@@ -65,6 +69,8 @@ class ResilientLlmGatewayTest {
 
     private CircuitBreaker circuitBreaker;
     private ExecutorService executorService;
+    private SimpleMeterRegistry meterRegistry;
+    private QuoteExplainPrompt quoteExplainPrompt;
     private ResilientLlmGateway resilientLlmGateway;
 
     @BeforeEach
@@ -87,8 +93,10 @@ class ResilientLlmGatewayTest {
                 .ignoreException(throwable -> !LlmErrorClassifier.isCircuitFailure(throwable))
                 .build());
         executorService = Executors.newVirtualThreadPerTaskExecutor();
+        meterRegistry = new SimpleMeterRegistry();
+        quoteExplainPrompt = new QuoteExplainPrompt(new ClassPathResource("prompts/quote-explain.md"));
         resilientLlmGateway = new ResilientLlmGateway(retry, CONFIGURED_MODEL, REVIEW_SUMMARY_MODEL, delegate, timeLimiter,
-                circuitBreaker, executorService);
+                circuitBreaker, new BusinessMetrics(meterRegistry), executorService, quoteExplainPrompt);
     }
 
     @AfterEach
@@ -663,6 +671,88 @@ class ResilientLlmGatewayTest {
 
     private static MenuPlan planWithoutIngredients() {
         return MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 4, null, List.of(), List.of(), List.of());
+    }
+
+    @Test
+    void 성공하면_operation별로_호출_시도_시간과_토큰_수를_지표로_남긴다(CapturedOutput output) {
+        // given
+        given(delegate.explain("system", List.of(), "질문")).willReturn(REPLY);
+
+        // when
+        resilientLlmGateway.explain("system", List.of(), "질문");
+
+        // then
+        assertThat(timerCount("zelo.llm.attempt", "CHAT_ANSWER", "SUCCESS")).isEqualTo(1);
+        assertThat(timerCount("zelo.llm.call", "CHAT_ANSWER", "SUCCESS")).isEqualTo(1);
+        assertThat(tokens("CHAT_ANSWER", "prompt")).isEqualTo(10);
+        assertThat(tokens("CHAT_ANSWER", "completion")).isEqualTo(5);
+        assertThat(attemptLogLines(output).getFirst()).contains("operation=CHAT_ANSWER");
+    }
+
+    @Test
+    void 견적_안내_프롬프트로_부르면_일반_답변과_나눠_QUOTE_EXPLAIN으로_남긴다() {
+        // given
+        given(delegate.explain(quoteExplainPrompt.systemPrompt(), List.of(), "견적")).willReturn(REPLY);
+
+        // when
+        resilientLlmGateway.explain(quoteExplainPrompt.systemPrompt(), List.of(), "견적");
+
+        // then
+        assertThat(timerCount("zelo.llm.call", "QUOTE_EXPLAIN", "SUCCESS")).isEqualTo(1);
+        assertThat(meterRegistry.find("zelo.llm.call").tag("operation", "CHAT_ANSWER").timer()).isNull();
+    }
+
+    @Test
+    void 재시도까지_실패하면_시도는_두_번_호출은_한_건으로_실패_코드와_함께_남긴다() {
+        // given
+        given(delegate.explain(anyString(), anyList(), anyString())).willThrow(OpenAiErrors.serverError(500));
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", List.of(), "질문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(timerCount("zelo.llm.attempt", "CHAT_ANSWER", "AI_004")).isEqualTo(2);
+        assertThat(timerCount("zelo.llm.call", "CHAT_ANSWER", "AI_004")).isEqualTo(1);
+        assertThat(meterRegistry.find("zelo.llm.tokens").counter()).isNull();
+    }
+
+    @Test
+    void 서킷에_막힌_호출은_AI_008_시도로_남아_막힌_수를_셀_수_있다() {
+        // given
+        circuitBreaker.transitionToOpenState();
+
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", List.of(), "질문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(timerCount("zelo.llm.attempt", "CHAT_ANSWER", "AI_008")).isEqualTo(1);
+        assertThat(timerCount("zelo.llm.call", "CHAT_ANSWER", "AI_008")).isEqualTo(1);
+    }
+
+    @Test
+    void 메뉴_계획과_리뷰_요약은_각자의_operation으로_남긴다() {
+        // given
+        given(delegate.planMenu("system", List.of(), "질문", INGREDIENT_UNITS)).willReturn(planResult(validPlan()));
+        given(delegate.summarizeReviews("system", "리뷰")).willReturn(LlmReply.of("요약", "gpt-test", 3, 2));
+
+        // when
+        resilientLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS);
+        resilientLlmGateway.summarizeReviews("system", "리뷰");
+
+        // then
+        assertThat(timerCount("zelo.llm.call", "MENU_PLAN", "SUCCESS")).isEqualTo(1);
+        assertThat(timerCount("zelo.llm.call", "REVIEW_SUMMARY", "SUCCESS")).isEqualTo(1);
+    }
+
+    private long timerCount(String name, String operation, String outcome) {
+        return meterRegistry.get(name).tag("operation", operation).tag("outcome", outcome).timer().count();
+    }
+
+    private double tokens(String operation, String type) {
+        return meterRegistry.get("zelo.llm.tokens").tag("operation", operation).tag("model", "gpt-test")
+                .tag("type", type).counter().count();
     }
 
     private List<String> attemptLogLines(CapturedOutput output) {

@@ -32,6 +32,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.common.util.HashUtil;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
@@ -55,6 +56,7 @@ import com.server.zelo.domain.quote.model.QuoteItem;
 import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import com.server.zelo.domain.quote.service.QuoteService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -127,6 +129,11 @@ class ChatMessageCommandServiceTest {
     @Spy
     private HashUtil hashUtil = new HashUtil("SHA-256");
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
+
     // 실제 프롬프트 파일과 견적 글이 LLM으로 가는지 보려고 진짜 객체를 쓴다
     @Spy
     private ChatPrompt chatPrompt = new ChatPrompt(new ClassPathResource("prompts/chat.md"));
@@ -175,6 +182,8 @@ class ChatMessageCommandServiceTest {
         order.verify(chatMessageService).createAssistantMessage(10L, 1L, "김치와 밥이 필요해요.");
         assertThat(response.sender()).isEqualTo(ChatSender.ASSISTANT);
         assertThat(response.content()).isEqualTo("김치와 밥이 필요해요.");
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "GENERAL_QUESTION").tag("outcome", "SUCCESS")
+                .timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -197,6 +206,9 @@ class ChatMessageCommandServiceTest {
                 });
         then(chatMessageService).should().createUserMessage(10L, 1L, "안녕");
         then(chatMessageService).should(never()).createAssistantMessage(anyLong(), anyLong(), anyString());
+        assertThat(counter("zelo.chat.fallback", "code", "AI_002")).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "GENERAL_QUESTION").tag("outcome", "AI_002")
+                .timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -425,6 +437,7 @@ class ChatMessageCommandServiceTest {
         // then
         assertThat(response.content()).isEqualTo(QUOTE_IN_PROGRESS);
         then(quoteCommandService).should(never()).createQuote(any(), any(), any());
+        assertThat(counter("zelo.chat.quote.busy")).isEqualTo(1);
         then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
     }
 
@@ -447,6 +460,7 @@ class ChatMessageCommandServiceTest {
         // then
         assertThat(response.content()).isEqualTo("견적을 준비했어요. 내용을 확인해 주세요.");
         then(chatMessageService).should(never()).createFallbackMessage(anyLong(), anyLong(), any());
+        assertThat(counter("zelo.chat.explain.degraded", "code", "AI_002")).isEqualTo(1);
     }
 
     @Test
@@ -704,6 +718,7 @@ class ChatMessageCommandServiceTest {
         // then
         assertThat(response.content()).isEqualTo(QUOTE_CHANGED);
         then(quoteCommandService).should(never()).removeItem(any(), any(), any());
+        assertThat(counter("zelo.chat.quote.edit", "source", "CHAT", "result", "QUOTE_NOT_CURRENT")).isEqualTo(1);
         then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
     }
 
@@ -761,6 +776,7 @@ class ChatMessageCommandServiceTest {
         assertThat(response.content()).isEqualTo("백김치 (1kg) 상품을 뺐어요.");
         assertThat(response.quoteCardStatus()).isEqualTo(QuoteCardStatus.ACTIVE);
         then(llmGateway).shouldHaveNoInteractions();
+        assertThat(counter("zelo.chat.quote.edit", "source", "BUTTON", "result", "APPLIED")).isEqualTo(1);
     }
 
     @Test
@@ -1151,6 +1167,7 @@ class ChatMessageCommandServiceTest {
         assertThat(saved.getValue().failure()).isNull();
         assertThat(saved.getValue().requestHash()).isEqualTo(hashUtil.hash("room:10:안녕"));
         assertThat(response.messageId()).isEqualTo(42L);
+        assertThat(counter("zelo.chat.idempotency", "result", "FIRST")).isEqualTo(1);
     }
 
     @Test
@@ -1166,6 +1183,7 @@ class ChatMessageCommandServiceTest {
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TIMEOUT_EXCEPTION));
         then(chatMessageService).shouldHaveNoInteractions();
         then(llmGateway).shouldHaveNoInteractions();
+        assertThat(counter("zelo.chat.idempotency", "result", "IN_PROGRESS")).isEqualTo(1);
     }
 
     @Test
@@ -1185,6 +1203,7 @@ class ChatMessageCommandServiceTest {
         assertThat(response.messageId()).isEqualTo(42L);
         assertThat(response.content()).isEqualTo("계란을 2개 더했어요.");
         assertThat(response.quoteCardStatus()).isEqualTo(QuoteCardStatus.ACTIVE);
+        assertThat(counter("zelo.chat.idempotency", "result", "REPLAY")).isEqualTo(1);
         then(chatMessageService).should(never()).createUserMessage(any(), any(), any());
         then(quoteCommandService).shouldHaveNoInteractions();
         then(llmGateway).shouldHaveNoInteractions();
@@ -1362,6 +1381,7 @@ class ChatMessageCommandServiceTest {
 
         // then
         assertThat(response.messageId()).isEqualTo(42L);
+        assertThat(counter("zelo.chat.idempotency.store.failure", "operation", "SAVE")).isEqualTo(1);
     }
 
     @Test
@@ -1595,6 +1615,7 @@ class ChatMessageCommandServiceTest {
         then(chatIdempotencyRepository).should().save(eq(1L), eq(RETRY_KEY), saved.capture());
         assertThat(saved.getValue().messageId()).isEqualTo(43L);
         assertThat(saved.getValue().requestHash()).isEqualTo(hashUtil.hash("room:10:retry:42"));
+        assertThat(counter("zelo.chat.retry", "result", "SUCCESS")).isEqualTo(1);
     }
 
     @Test
@@ -1644,6 +1665,7 @@ class ChatMessageCommandServiceTest {
         then(chatIdempotencyRepository).should().delete(1L, RETRY_KEY);
         then(chatIdempotencyRepository).should(never()).save(any(), any(), any());
         then(llmGateway).shouldHaveNoInteractions();
+        assertThat(counter("zelo.chat.retry", "result", "CHAT_004")).isEqualTo(1);
     }
 
     @Test
@@ -1693,6 +1715,10 @@ class ChatMessageCommandServiceTest {
     private ChatMessageResponse messageResponse(Long messageId, String payload) {
         return new ChatMessageResponse(messageId, ChatSender.ASSISTANT, "메시지 " + messageId, payload, null, false,
                 LocalDateTime.of(2026, 10, 27, 12, 0));
+    }
+
+    private double counter(String name, String... tags) {
+        return meterRegistry.get(name).tags(tags).counter().count();
     }
 
     private void givenEditRequest(Quote current, QuoteEditPlan editPlan) {

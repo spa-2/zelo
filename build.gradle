@@ -43,6 +43,8 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.4.0'
     implementation 'io.github.resilience4j:resilience4j-retry:2.4.0'
     implementation 'io.github.resilience4j:resilience4j-timelimiter:2.4.0'
+    // 위 부품의 서킷 상태·재시도·시간 초과를 Micrometer 지표로 내보낸다
+    implementation 'io.github.resilience4j:resilience4j-micrometer:2.4.0'
 
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
@@ -81,6 +83,9 @@ dependencies {
     // Actuator & Prometheus
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+    // 요청마다 traceId를 만들어 로그(MDC)에 찍고, 스레드가 바뀌어도 이어지게 한다
+    implementation 'org.springframework.boot:spring-boot-micrometer-tracing-brave'
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
 
     // aws SSM
     implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store:4.0.2'

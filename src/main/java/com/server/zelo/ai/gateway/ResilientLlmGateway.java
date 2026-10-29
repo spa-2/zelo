@@ -2,14 +2,18 @@ package com.server.zelo.ai.gateway;
 
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.ai.prompt.ReviewSummaryPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -33,6 +37,8 @@ public class ResilientLlmGateway implements LlmGateway {
 
     // 감싸는 대상(real/fake 구현)을 이 이름으로 등록해, 이 클래스가 자기 자신을 주입받지 않게 한다
     public static final String DELEGATE = "llmDelegate";
+    // [모니터링] 지표의 outcome 태그 값. 실패는 오류 코드(AI_002 등)를 그대로 쓴다
+    private static final String SUCCESS = "SUCCESS";
 
     private final Retry retry;
     private final String model;
@@ -40,7 +46,11 @@ public class ResilientLlmGateway implements LlmGateway {
     private final LlmGateway llmGateway;
     private final TimeLimiter timeLimiter;
     private final CircuitBreaker circuitBreaker;
+    // [모니터링] zelo.llm.call, zelo.llm.attempt, zelo.llm.tokens 지표를 남기는 데만 쓴다
+    private final BusinessMetrics businessMetrics;
     private final ExecutorService executorService;
+    // [모니터링] explain 호출을 QUOTE_EXPLAIN과 CHAT_ANSWER로 나눠 기록하는 데만 쓴다 (explainOperation)
+    private final QuoteExplainPrompt quoteExplainPrompt;
 
     public ResilientLlmGateway(
             Retry retry,
@@ -50,25 +60,35 @@ public class ResilientLlmGateway implements LlmGateway {
             @Qualifier(DELEGATE) LlmGateway llmGateway,
             TimeLimiter timeLimiter,
             CircuitBreaker circuitBreaker,
-            ExecutorService executorService) {
+            BusinessMetrics businessMetrics,
+            ExecutorService executorService,
+            QuoteExplainPrompt quoteExplainPrompt) {
         this.retry = retry;
         this.model = model;
         this.reviewSummaryModel = reviewSummaryModel;
         this.llmGateway = llmGateway;
         this.timeLimiter = timeLimiter;
         this.circuitBreaker = circuitBreaker;
+        this.businessMetrics = businessMetrics;
         this.executorService = executorService;
+        this.quoteExplainPrompt = quoteExplainPrompt;
     }
 
     @Override
     public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
-        return call(model, () -> withUsage(requireText(llmGateway.explain(systemPrompt, history, userText)))).content();
+        return call(explainOperation(systemPrompt), model,
+                () -> withUsage(requireText(llmGateway.explain(systemPrompt, history, userText)))).content();
+    }
+
+    // [모니터링] explain은 견적 안내와 일반 답변이 함께 쓴다. 프롬프트가 달라 걸리는 시간·토큰도 달라서, 견적 안내 프롬프트인지로 나눠 기록한다
+    private LlmOperation explainOperation(String systemPrompt) {
+        return quoteExplainPrompt.systemPrompt().equals(systemPrompt) ? LlmOperation.QUOTE_EXPLAIN : LlmOperation.CHAT_ANSWER;
     }
 
     @Override
     public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
                                         Map<String, BaseUnit> ingredientUnits) {
-        return call(model, () -> requireValidPlan(
+        return call(LlmOperation.MENU_PLAN, model, () -> requireValidPlan(
                 llmGateway.planMenu(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
     }
 
@@ -76,18 +96,19 @@ public class ResilientLlmGateway implements LlmGateway {
     @Override
     public LlmResult<QuoteEditPlan> planQuoteEdit(String systemPrompt, List<ChatMessage> history, String userText,
                                                   Map<String, BaseUnit> ingredientUnits) {
-        return call(model, () -> requireValidEditPlan(
+        return call(LlmOperation.QUOTE_EDIT_PLAN, model, () -> requireValidEditPlan(
                 llmGateway.planQuoteEdit(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
     }
 
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
-        return call(reviewSummaryModel, () -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
+        return call(LlmOperation.REVIEW_SUMMARY, reviewSummaryModel, () -> withUsage(requireSummary(llmGateway.summarizeReviews(systemPrompt, reviewText)))).content();
     }
 
     // 재시도(바깥) → 서킷 브레이커 → 시도당 시간 제한(안쪽) 순서로 감싼다.
     // 그래서 재시도한 시도도 서킷 브레이커가 한 번씩 세고, 서킷이 열려 막힌 호출은 재시도하지 않는다
-    private <T> LlmResult<T> call(String requestModel, Supplier<LlmResult<T>> request) {
+    // 지표는 두 단계로 남긴다: 시도 1번(zelo.llm.attempt)과, 재시도까지 끝난 호출 1건(zelo.llm.call = 사용자가 실제로 기다린 시간)
+    private <T> LlmResult<T> call(LlmOperation operation, String requestModel, Supplier<LlmResult<T>> request) {
 
         // (가) 시도 1번 = 다른 스레드에서 실행하고, 5초만 기다린다.
         Callable<LlmResult<T>> attempt = () -> timeLimiter.executeFutureSupplier(
@@ -98,10 +119,13 @@ public class ResilientLlmGateway implements LlmGateway {
 
         // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
         AtomicInteger attemptNumber = new AtomicInteger();
-        Callable<LlmResult<T>> logged = () -> logAttempt(requestModel, attemptNumber.incrementAndGet(), guarded);
+        Callable<LlmResult<T>> logged = () -> logAttempt(operation, requestModel, attemptNumber.incrementAndGet(), guarded);
+        long start = System.nanoTime(); // [모니터링] zelo.llm.call 시간 측정 시작
         try {
             // (다) 그걸 다시 재시도로 감싸서 실행한다.
-            return Retry.decorateCallable(retry, logged).call();
+            LlmResult<T> result = Retry.decorateCallable(retry, logged).call();
+            recordElapsed(BusinessMetric.LLM_CALL, operation, start, SUCCESS); // [모니터링]
+            return result;
         } catch (Exception e) {
             // (라) 끝내 실패하면 우리 프로젝트 예외로 바꿔 던진다.
             if (e instanceof InterruptedException) {
@@ -110,6 +134,7 @@ public class ResilientLlmGateway implements LlmGateway {
             // 시도마다 한 줄 로그는 이미 남겼다. BusinessException에는 원인 예외를 담을 수 없어,
             // 알 수 없는 오류만 원인을 찾을 수 있게 여기서 스택을 남긴다
             ErrorCode errorCode = LlmErrorClassifier.classify(e);
+            recordElapsed(BusinessMetric.LLM_CALL, operation, start, errorCode.getCode()); // [모니터링]
             if (errorCode == ErrorCode.AI_RESPONSE_FAILED) {
                 log.warn("LLM 호출 실패 원인: {}", errorCode.getCode(), e);
             }
@@ -118,19 +143,44 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     // 프롬프트·사용자 메시지 원문은 남기지 않는다
-    private <T> LlmResult<T> logAttempt(String requestModel, int attemptNumber, Callable<LlmResult<T>> guarded)
-            throws Exception {
+    // 서킷에 막힌 시도(AI_008)도 시도 지표에 남아, 막힌 호출 수를 operation별로 볼 수 있다
+    private <T> LlmResult<T> logAttempt(LlmOperation operation, String requestModel, int attemptNumber,
+                                        Callable<LlmResult<T>> guarded) throws Exception {
         long start = System.nanoTime();
         try {
             LlmResult<T> result = guarded.call();
-            log.info("LLM 호출 attempt={} model={} latencyMs={} success=true error=- promptTokens={} completionTokens={}",
+            log.info("LLM 호출 attempt={} model={} latencyMs={} success=true error=- promptTokens={} completionTokens={} operation={}",
                     attemptNumber, orDash(result.model()), elapsedMillis(start),
-                    orDash(result.promptTokens()), orDash(result.completionTokens()));
+                    orDash(result.promptTokens()), orDash(result.completionTokens()), operation);
+            recordElapsed(BusinessMetric.LLM_ATTEMPT, operation, start, SUCCESS); // [모니터링]
+            countTokens(operation, result); // [모니터링]
             return result;
         } catch (Exception e) {
-            log.warn("LLM 호출 attempt={} model={} latencyMs={} success=false error={} promptTokens=- completionTokens=-",
-                    attemptNumber, requestModel, elapsedMillis(start), LlmErrorClassifier.classify(e).getCode());
+            String errorCode = LlmErrorClassifier.classify(e).getCode();
+            log.warn("LLM 호출 attempt={} model={} latencyMs={} success=false error={} promptTokens=- completionTokens=- operation={}",
+                    attemptNumber, requestModel, elapsedMillis(start), errorCode, operation);
+            recordElapsed(BusinessMetric.LLM_ATTEMPT, operation, start, errorCode); // [모니터링]
             throw e;
+        }
+    }
+
+    // [모니터링] 걸린 시간을 operation·outcome 태그와 함께 타이머 지표로 남긴다
+    private void recordElapsed(BusinessMetric metric, LlmOperation operation, long startNanos, String outcome) {
+        businessMetrics.record(metric, Duration.ofNanos(System.nanoTime() - startNanos),
+                "operation", operation.name(), "outcome", outcome);
+    }
+
+    // [모니터링] 비용은 토큰 수 × 모델 단가라서 모델도 태그로 남긴다. 단가는 바뀔 수 있어 코드가 아니라 대시보드에서 곱한다.
+    // 시간 초과로 끊긴 시도는 응답이 없어 토큰을 알 수 없으므로, 그 수는 zelo.llm.attempt의 AI_002로 따로 본다
+    private void countTokens(LlmOperation operation, LlmResult<?> result) {
+        String model = result.model() == null ? "unknown" : result.model();
+        if (result.promptTokens() != null) {
+            businessMetrics.count(BusinessMetric.LLM_TOKENS, result.promptTokens(),
+                    "operation", operation.name(), "model", model, "type", "prompt");
+        }
+        if (result.completionTokens() != null) {
+            businessMetrics.count(BusinessMetric.LLM_TOKENS, result.completionTokens(),
+                    "operation", operation.name(), "model", model, "type", "completion");
         }
     }
 

@@ -547,4 +547,27 @@ class HttpPortOneClientTest {
                 .isEqualTo(ErrorCode.PG_TIMEOUT);
         assertThat(output).doesNotContain(BILLING_KEY);
     }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "{\"type\":\"PG_PROVIDER\",\"message\":\"포트원 사유\",\"pgMessage\":\"한도 초과\"} | 한도 초과",
+            "{\"type\":\"PG_PROVIDER\",\"message\":\"포트원 사유\",\"pgMessage\":\" \"}       | 포트원 사유",
+            "{\"type\":\"PG_PROVIDER\",\"message\":\"포트원 사유\"}                           | 포트원 사유",
+            "{\"type\":\"PG_PROVIDER\",\"message\":\"\",\"pgMessage\":\"\"}                   | ",
+            "not-json                                                                     | "
+    })
+    void 빌링키_결제가_거절되면_PG_문구를_우선해_거절_사유를_예외에_담는다(String body, String expectedReason) {
+        // given
+        server.expect(requestTo(BILLING_PAYMENT_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body));
+
+        // when // then
+        assertThatThrownBy(() -> portOneClient.payWithBillingKey(PORTONE_ID, BILLING_KEY, "티셔츠 외 1건", 15000L))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PG_REQUEST_REJECTED);
+                    assertThat(exception.getData()).isEqualTo(expectedReason);
+                });
+    }
 }

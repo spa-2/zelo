@@ -192,6 +192,9 @@ public class PaymentCommandService {
             if (latest.isConfirmPending()) {
                 throw new BusinessException(ErrorCode.PAYMENT_CONFIRM_PENDING);
             }
+            if (order.isPaymentExpired(LocalDateTime.now())) {
+                throw new BusinessException(ErrorCode.ORDER_PAYMENT_EXPIRED);
+            }
             if (latest.isReady()) {
                 return RetryPaymentResponse.from(order, latest);
             }
@@ -209,7 +212,7 @@ public class PaymentCommandService {
         log.warn("실패 처리 후 늦게 승인된 결제 환불 portoneId={}, orderId={}", portoneId, payment.getOrderId());
         portOneClient.cancelPayment(portoneId, LATE_PAID_REASON);
         transactionOperations.executeWithoutResult(status -> paymentService.cancelLatePaid(portoneId, pgPayment.amount()));
-        createPaymentCard(payment.getOrderId(), PaymentStatus.CANCELED, PaymentCardPayload.ORDER_CLOSED, pgPayment.amount(), null);
+        createPaymentCard(payment.getOrderId(), PaymentStatus.CANCELED, PaymentCardPayload.LATE_PAID, pgPayment.amount(), null);
         return PaymentStatus.CANCELED;
     }
 

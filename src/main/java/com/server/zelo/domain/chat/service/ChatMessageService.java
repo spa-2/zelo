@@ -51,6 +51,7 @@ public class ChatMessageService {
     private static final String PAYMENT_CANCELED_CONTENT = "결제를 취소했어요.";
     private static final String PAYMENT_AMOUNT_MISMATCH_CONTENT = "결제 금액이 주문 금액과 달라 결제를 취소하고 환불했어요.";
     private static final String PAYMENT_ORDER_CLOSED_CONTENT = "이미 처리가 끝난 주문이라 결제된 금액을 환불했어요.";
+    private static final String PAYMENT_LATE_PAID_CONTENT = "이전 결제가 늦게 승인돼 결제된 금액을 환불했어요.";
     // LLM에 함께 보내는 앞 대화의 상한. 사용자·AI가 다섯 번쯤 주고받은 양이고,
     // 메시지 하나는 1000자 제한이 있어도 기록이 쌓이면 프롬프트가 끝없이 길어지므로 글자 수로도 자른다
     private static final int HISTORY_SIZE = 10;
@@ -181,6 +182,7 @@ public class ChatMessageService {
             case CANCELED -> switch (Objects.requireNonNullElse(paymentCard.reason(), "")) {
                 case PaymentCardPayload.AMOUNT_MISMATCH -> PAYMENT_AMOUNT_MISMATCH_CONTENT;
                 case PaymentCardPayload.ORDER_CLOSED -> PAYMENT_ORDER_CLOSED_CONTENT;
+                case PaymentCardPayload.LATE_PAID -> PAYMENT_LATE_PAID_CONTENT;
                 default -> PAYMENT_CANCELED_CONTENT;
             };
             case READY, CONFIRM_PENDING -> throw new BusinessException(ErrorCode.INVALID_INPUT);

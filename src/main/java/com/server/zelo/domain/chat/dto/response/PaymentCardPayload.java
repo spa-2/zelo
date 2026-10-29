@@ -26,6 +26,9 @@ public record PaymentCardPayload(
     public static final String AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
     // 결제가 들어왔을 때 주문이 결제 대기가 아니던 경우. 취소뿐 아니라 이미 결제됨·결제 실패도 포함한다
     public static final String ORDER_CLOSED = "ORDER_CLOSED";
+    // 실패·결제창 닫음으로 끝난 결제가 늦게 승인된 경우. 주문은 그대로라 ORDER_CLOSED와 안내가 달라야 한다
+    public static final String LATE_PAID = "LATE_PAID";
+
 
     public static PaymentCardPayload from(Order order, PaymentStatus status, String reason,
                                           Long paidAmount, LocalDateTime paidAt) {

@@ -481,6 +481,7 @@ class PaymentCommandServiceTest {
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
         given(portOneClient.getPayment(PORTONE_ID))
                 .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, AMOUNT, PAID_AT));
+        givenChatRoomOrder(5L);
 
         // when
         PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
@@ -491,6 +492,8 @@ class PaymentCommandServiceTest {
         then(paymentService).should().cancelLatePaid(PORTONE_ID, AMOUNT);
         then(orderCommandService).shouldHaveNoInteractions();
         then(deliveryService).shouldHaveNoInteractions();
+        PaymentCardPayload card = capturedPaymentCard(5L);
+        assertThat(card.reason()).isEqualTo(PaymentCardPayload.LATE_PAID);
     }
 
     @Test
@@ -626,6 +629,40 @@ class PaymentCommandServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ORDER_ACCESS_DENIED);
         then(paymentService).should(never()).getLatestPayment(any());
+    }
+
+    @Test
+    void 만료_시각이_지난_주문이면_ORDER_PAYMENT_EXPIRED가_발생하고_새_결제를_만들지_않는다() {
+        // given
+        Order order = givenRetryOrder(USER_ID);
+        given(order.getStatus()).willReturn(OrderStatus.PAYMENT_PENDING);
+        given(order.isPaymentExpired(any())).willReturn(true);
+        Payment failed = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        failed.fail();
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(failed);
+
+        // when & then
+        assertThatThrownBy(() -> paymentCommandService.retryPayment(USER_ID, ORDER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ORDER_PAYMENT_EXPIRED);
+        then(paymentService).should(never()).createPayment(any(), any());
+    }
+
+    @Test
+    void 만료_시각이_지나도_이미_결제된_주문이면_PAID를_돌려준다() {
+        // given
+        givenRetryOrder(USER_ID);
+        Payment paid = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        paid.startConfirm();
+        paid.complete(AMOUNT, PAID_AT, "TEST_CARD");
+        given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paid);
+
+        // when
+        RetryPaymentResponse response = paymentCommandService.retryPayment(USER_ID, ORDER_ID);
+
+        // then
+        assertThat(response.status()).isEqualTo(PaymentStatus.PAID);
     }
 
     private Order givenRetryOrder(Long ownerId) {

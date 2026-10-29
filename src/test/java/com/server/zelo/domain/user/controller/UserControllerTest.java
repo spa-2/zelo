@@ -7,7 +7,7 @@ import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
-import com.server.zelo.common.exception.LoginLockedException;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
@@ -154,7 +154,7 @@ class UserControllerTest {
     void 시도_횟수를_초과하면_429와_Retry_After_헤더를_반환하고_쿠키를_내리지_않는다() throws Exception {
         // given
         given(userCommandService.login(any(LoginRequest.class), anyString()))
-                .willThrow(new LoginLockedException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540));
+                .willThrow(new RateLimitExceededException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, 540));
 
         // when & then
         mockMvc.perform(post("/api/users/login")

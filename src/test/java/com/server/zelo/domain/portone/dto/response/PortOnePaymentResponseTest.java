@@ -79,6 +79,24 @@ class PortOnePaymentResponseTest {
         assertThat(response.failureReason()).isNull();
     }
 
+    @Test
+    void PG_문구가_비어_있으면_포트원_사유를_쓴다() {
+        // given
+        PortOnePaymentResponse response = failedResponse(new PortOnePaymentResponse.Failure("포트원 사유", " "));
+
+        // when // then
+        assertThat(response.failureReason()).isEqualTo("포트원 사유");
+    }
+
+    @Test
+    void PG_문구와_포트원_사유가_모두_비어_있으면_실패_사유는_null이다() {
+        // given
+        PortOnePaymentResponse response = failedResponse(new PortOnePaymentResponse.Failure("", ""));
+
+        // when // then
+        assertThat(response.failureReason()).isNull();
+    }
+
     private PortOnePaymentResponse response(PortOnePaymentResponse.Method method) {
         return new PortOnePaymentResponse("payment-1", "PAID", null, null, method, null);
     }

@@ -263,7 +263,10 @@ public class HttpPortOneClient implements PortOneClient {
             if (error == null) {
                 return null;
             }
-            return error.pgMessage() != null ? error.pgMessage() : error.message();
+            if (error.pgMessage() != null && !error.pgMessage().isBlank()) {
+                return error.pgMessage();
+            }
+            return error.message() == null || error.message().isBlank() ? null : error.message();
         } catch (RuntimeException parseError) {
             return null;
         }

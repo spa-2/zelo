@@ -48,11 +48,13 @@ public record PortOnePaymentResponse(
     public record Failure(String reason, String pgMessage) {
     }
 
-    // PG사가 준 문구(pgMessage)가 사용자에게 가장 구체적이라 먼저 전달해주고, 없으면 포트원 사유를 전달해준다
     public String failureReason() {
         if (failure == null) {
             return null;
         }
-        return failure.pgMessage() != null ? failure.pgMessage() : failure.reason();
+        if (failure.pgMessage() != null && !failure.pgMessage().isBlank()) {
+            return failure.pgMessage();
+        }
+        return failure.reason() == null || failure.reason().isBlank() ? null : failure.reason();
     }
 }

@@ -142,7 +142,8 @@ public class HttpPortOneClient implements PortOneClient {
                 return;
             }
             log.warn("포트원 빌링키 결제 거절 portoneId={}, status={}", portoneId, e.getStatusCode());
-            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
+            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
+                    ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
         } catch (RestClientResponseException e) {
             log.error("포트원 빌링키 결제 실패 portoneId={}, status={}", portoneId, e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
@@ -253,6 +254,18 @@ public class HttpPortOneClient implements PortOneClient {
             return error != null && type.equals(error.type());
         } catch (RuntimeException parseError) {
             return false;
+        }
+    }
+
+    private String rejectReason(HttpClientErrorException e) {
+        try {
+            PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
+            if (error == null) {
+                return null;
+            }
+            return error.pgMessage() != null ? error.pgMessage() : error.message();
+        } catch (RuntimeException parseError) {
+            return null;
         }
     }
 }

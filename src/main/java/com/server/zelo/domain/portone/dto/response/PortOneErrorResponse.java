@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PortOneErrorResponse(
         String type,
-        String message
+        String message,
+        String pgMessage
 ) {
 }

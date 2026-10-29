@@ -22,6 +22,8 @@ import java.time.LocalDateTime;
 )
 public class Payment extends BaseTimeEntity {
 
+    private static final int MAX_FAILURE_REASON_LENGTH = 255;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,6 +52,9 @@ public class Payment extends BaseTimeEntity {
     @Column(name = "payment_method_name", length = 50)
     private String paymentMethodName;
 
+    @Column(name = "failure_reason", length = MAX_FAILURE_REASON_LENGTH)
+    private String failureReason;
+
     private Payment(Long orderId, String portoneId, Long amount) {
         this.orderId = orderId;
         this.portoneId = portoneId;
@@ -65,22 +70,6 @@ public class Payment extends BaseTimeEntity {
         changeStatus(PaymentStatus.CONFIRM_PENDING);
     }
 
-    public void complete(Long pgAmount, LocalDateTime paidAt, String paymentMethodName) {
-        changeStatus(PaymentStatus.PAID);
-        this.pgAmount = pgAmount;
-        this.paidAt = paidAt;
-        this.paymentMethodName = paymentMethodName;
-    }
-
-    public void fail() {
-        changeStatus(PaymentStatus.FAILED);
-    }
-
-    public void cancel(Long pgAmount) {
-        changeStatus(PaymentStatus.CANCELED);
-        this.pgAmount = pgAmount;
-    }
-
     public boolean isReady() {
         return status == PaymentStatus.READY;
     }
@@ -90,6 +79,20 @@ public class Payment extends BaseTimeEntity {
     }
 
     public boolean isConfirmPending() {return status == PaymentStatus.CONFIRM_PENDING;}
+
+    public void fail() {fail(null);}
+
+    public void complete(Long pgAmount, LocalDateTime paidAt, String paymentMethodName) {
+        changeStatus(PaymentStatus.PAID);
+        this.pgAmount = pgAmount;
+        this.paidAt = paidAt;
+        this.paymentMethodName = paymentMethodName;
+    }
+
+    public void cancel(Long pgAmount) {
+        changeStatus(PaymentStatus.CANCELED);
+        this.pgAmount = pgAmount;
+    }
 
     // 실패·결제창 닫음으로 끝난 결제가 늦게 승인돼 돌려준 경우.
     public void cancelLatePaid(Long pgAmount) {
@@ -128,5 +131,12 @@ public class Payment extends BaseTimeEntity {
         if (status != PaymentStatus.READY) {
             throw new BusinessException(ErrorCode.ALREADY_PROCESSED_PAYMENT);
         }
+    }
+
+    public void fail(String failureReason) {
+        changeStatus(PaymentStatus.FAILED);
+        this.failureReason = failureReason == null || failureReason.length() <= MAX_FAILURE_REASON_LENGTH
+                ? failureReason
+                : failureReason.substring(0, MAX_FAILURE_REASON_LENGTH);
     }
 }

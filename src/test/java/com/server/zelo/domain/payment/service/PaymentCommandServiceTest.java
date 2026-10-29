@@ -157,7 +157,7 @@ class PaymentCommandServiceTest {
 
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
-        then(paymentService).should().fail(PORTONE_ID);
+        then(paymentService).should().fail(PORTONE_ID, null);
         then(orderCommandService).shouldHaveNoInteractions();
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
@@ -176,7 +176,7 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.CONFIRM_PENDING);
         then(paymentService).should(never()).complete(any(), any(), any(), any());
-        then(paymentService).should(never()).fail(any());
+        then(paymentService).should(never()).fail(any(), any());
         then(paymentService).should(never()).cancel(any(), any());
         then(orderCommandService).shouldHaveNoInteractions();
         then(deliveryService).shouldHaveNoInteractions();
@@ -248,7 +248,7 @@ class PaymentCommandServiceTest {
         assertThat(status).isEqualTo(PaymentStatus.CANCELED);
         then(paymentService).should().cancel(PORTONE_ID, AMOUNT);
         then(orderCommandService).shouldHaveNoInteractions();
-        then(paymentService).should(never()).fail(any());
+        then(paymentService).should(never()).fail(any(), any());
         then(portOneClient).should(never()).cancelPayment(anyString(), anyString());
         then(deliveryService).shouldHaveNoInteractions();
     }
@@ -405,7 +405,7 @@ class PaymentCommandServiceTest {
 
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
-        then(paymentService).should().fail(PORTONE_ID);
+        then(paymentService).should().fail(PORTONE_ID, null);
         then(orderCommandService).shouldHaveNoInteractions();
     }
 
@@ -421,7 +421,7 @@ class PaymentCommandServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PG_TIMEOUT);
-        then(paymentService).should(never()).fail(any());
+        then(paymentService).should(never()).fail(any(), any());
     }
 
     @Test
@@ -663,6 +663,38 @@ class PaymentCommandServiceTest {
 
         // then
         assertThat(response.status()).isEqualTo(PaymentStatus.PAID);
+    }
+
+    @Test
+    void 포트원_결제가_실패하면_실패_사유를_결제와_결제_카드에_남긴다() {
+        // given
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(
+                PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null, PortOnePaymentResponse.ETC, "잔액이 부족합니다"));
+        givenChatRoomOrder(5L);
+
+        // when
+        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID, "잔액이 부족합니다");
+        assertThat(capturedPaymentCard(5L).failureReason()).isEqualTo("잔액이 부족합니다");
+    }
+
+    @Test
+    void 등록_카드가_거절되면_거절_사유를_결제에_남긴다() {
+        // given
+        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED, "거절", "한도를 초과했습니다"))
+                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+
+        // when
+        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID, "한도를 초과했습니다");
     }
 
     private Order givenRetryOrder(Long ownerId) {

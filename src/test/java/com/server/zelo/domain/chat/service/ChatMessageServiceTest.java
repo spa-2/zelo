@@ -22,10 +22,12 @@ import com.server.zelo.domain.chat.repository.ChatMessageRepository;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.quote.model.Quote;
 import com.server.zelo.domain.quote.model.QuoteItem;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -575,7 +577,7 @@ class ChatMessageServiceTest {
     private PaymentCardPayload paymentCard(PaymentStatus status, String reason) {
         return new PaymentCardPayload(PaymentCardPayload.TYPE, 3L, "김치볶음밥 재료",
                 List.of(new PaymentCardPayload.Item("김치", "1kg", 1, 12_000L)),
-                12_000L, status, reason, LocalDateTime.of(2026, 10, 24, 12, 0));
+                12_000L, status, reason, LocalDateTime.of(2026, 10, 24, 12, 0), null);
     }
 
     private ChatMessage message(Long id, ChatSender sender, String payload) {

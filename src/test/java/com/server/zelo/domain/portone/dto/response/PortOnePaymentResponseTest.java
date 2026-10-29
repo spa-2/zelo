@@ -52,7 +52,38 @@ class PortOnePaymentResponseTest {
         assertThat(response.methodName()).isEqualTo(PortOnePaymentResponse.ETC);
     }
 
+    @Test
+    void PG_문구가_있으면_실패_사유로_PG_문구를_쓴다() {
+        // given
+        PortOnePaymentResponse response = failedResponse(new PortOnePaymentResponse.Failure("포트원 사유", "잔액 부족"));
+
+        // when // then
+        assertThat(response.failureReason()).isEqualTo("잔액 부족");
+    }
+
+    @Test
+    void PG_문구가_없으면_포트원_사유를_쓴다() {
+        // given
+        PortOnePaymentResponse response = failedResponse(new PortOnePaymentResponse.Failure("포트원 사유", null));
+
+        // when // then
+        assertThat(response.failureReason()).isEqualTo("포트원 사유");
+    }
+
+    @Test
+    void 실패_정보가_없으면_실패_사유는_null이다() {
+        // given
+        PortOnePaymentResponse response = failedResponse(null);
+
+        // when // then
+        assertThat(response.failureReason()).isNull();
+    }
+
     private PortOnePaymentResponse response(PortOnePaymentResponse.Method method) {
-        return new PortOnePaymentResponse("payment-1", "PAID", null, null, method);
+        return new PortOnePaymentResponse("payment-1", "PAID", null, null, method, null);
+    }
+
+    private PortOnePaymentResponse failedResponse(PortOnePaymentResponse.Failure failure) {
+        return new PortOnePaymentResponse("payment-1", "FAILED", null, null, null, failure);
     }
 }

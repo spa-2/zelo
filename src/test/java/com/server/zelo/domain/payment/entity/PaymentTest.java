@@ -162,4 +162,17 @@ class PaymentTest {
                 .isEqualTo(ErrorCode.INVALID_PAYMENT_STATUS);
     }
 
+    @Test
+    void 실패_사유가_255자를_넘으면_잘라서_저장한다() {
+        // given
+        Payment payment = Payment.of(1L, "payment-uuid-1", 10_000L);
+
+        // when
+        payment.fail("가".repeat(300));
+
+        // then
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getFailureReason()).hasSize(255);
+    }
+
 }

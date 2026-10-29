@@ -97,7 +97,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(payment, "status", status);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null, 0L);
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
@@ -114,7 +114,7 @@ class GetOrderDetailResponseTest {
         payment.complete(7_000L, CREATED_AT, "신한카드");
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), payment, null, null, 0L);
 
         // then
         assertThat(response.payment()).isEqualTo(new GetOrderDetailResponse.PaymentInfo(
@@ -133,7 +133,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(delivery, "deliveredAt", DELIVERED_AT);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, delivery, null, 0L);
 
         // then
         assertThat(response.delivery()).isEqualTo(new GetOrderDetailResponse.DeliveryInfo(
@@ -154,7 +154,7 @@ class GetOrderDetailResponseTest {
         ReflectionTestUtils.setField(refund, "refundedAt", completedAt);
 
         // when
-        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, null, 0L);
+        GetOrderDetailResponse response = GetOrderDetailResponse.from(fixture.order(), null, null, refund, 0L);
 
         // then
         assertThat(response.refund()).isEqualTo(new GetOrderDetailResponse.RefundInfo(

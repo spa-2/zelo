@@ -21,7 +21,7 @@ public record GetOrderSummaryResponse(
     }
 
     // 결제된 적 없는 주문(결제 대기·실패, 결제 전 취소)은 보여 줄 결제 금액이 없어 null로 둔다
-    private static Long paidAmount(Order order, Long refundedAmount) {
+   static Long paidAmount(Order order, Long refundedAmount) {
         boolean paid = order.getStatus() == OrderStatus.PAID
                 || (order.getStatus() == OrderStatus.CANCELED && refundedAmount > 0);
         return paid ? order.getTotalAmount() - refundedAmount : null;

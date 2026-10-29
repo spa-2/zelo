@@ -27,13 +27,16 @@ public record GetOrderDetailResponse(
         List<OrderItemInfo> items,
         PaymentInfo payment,
         DeliveryInfo delivery,
-        RefundInfo refund
+        RefundInfo refund,
+        Long refundedAmount,
+        Long paidAmount
 ) {
     public static GetOrderDetailResponse from(
             Order order,
             Payment payment,
             Delivery delivery,
-            Refund refund
+            Refund refund,
+            Long refundedAmount
     ) {
         return new GetOrderDetailResponse(
                 order.getId(),
@@ -46,7 +49,9 @@ public record GetOrderDetailResponse(
                 order.getOrderItems().stream().map(OrderItemInfo::from).toList(),
                 payment == null ? null : PaymentInfo.from(payment),
                 delivery == null ? null : DeliveryInfo.from(delivery),
-                refund == null ? null : RefundInfo.from(refund)
+                refund == null ? null : RefundInfo.from(refund),
+                refundedAmount,
+                GetOrderSummaryResponse.paidAmount(order, refundedAmount)
         );
     }
 

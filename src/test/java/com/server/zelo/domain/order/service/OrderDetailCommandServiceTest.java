@@ -157,6 +157,7 @@ class OrderDetailCommandServiceTest {
                 .willReturn(hasDelivery ? Optional.of(delivery()) : Optional.empty());
         given(refundService.findLatestRefund(PAYMENT_ID))
                 .willReturn(hasRefund ? Optional.of(refund) : Optional.empty());
+        given(refundService.calculateRefundedAmount(PAYMENT_ID)).willReturn(hasRefund ? 1_000L : 0L);
 
         // when
         GetOrderDetailResponse response = command.getOrderDetail(USER_ID, ORDER_ID);
@@ -170,6 +171,7 @@ class OrderDetailCommandServiceTest {
         assertThat(response.items().getFirst().productName()).isEqualTo("구매 당시 사과");
         assertThat(response.totalAmount()).isEqualTo(3_000L);
         assertThat(response.shippingAddress().address()).isEqualTo("주문 당시 주소");
+        assertThat(response.refundedAmount()).isEqualTo(hasRefund ? 1_000L : 0L);
         then(deliveryService).should().findDelivery(ORDER_ID);
         then(refundService).should().findLatestRefund(PAYMENT_ID);
         then(refundService).should(never()).findLatestRefund(ORDER_ID);

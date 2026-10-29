@@ -92,7 +92,9 @@ class OrderDetailControllerTest {
                 .andExpect(jsonPath("$.data.payment.amount").value(3_000))
                 .andExpect(jsonPath("$.data.payment.paymentMethodName").value("신한카드"))
                 .andExpect(jsonPath("$.data.delivery.deliveryStatus").value("READY"))
-                .andExpect(jsonPath("$.data.refund.refundStatus").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.refund.refundStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.refundedAmount").value(1_000))
+                .andExpect(jsonPath("$.data.paidAmount").value(2_000));
         then(command).should().getOrderDetail(USER_ID, ORDER_ID);
         verifyNoInteractions(facade);
     }
@@ -105,7 +107,7 @@ class OrderDetailControllerTest {
         given(command.getOrderDetail(USER_ID, ORDER_ID)).willReturn(new GetOrderDetailResponse(
                 detail.orderId(), detail.quoteId(), detail.orderName(), detail.status(),
                 detail.totalAmount(), detail.createdAt(), detail.shippingAddress(), detail.items(),
-                null, null, null));
+                null, null, null, 0L, null));
 
         // when
         // then
@@ -194,7 +196,7 @@ class OrderDetailControllerTest {
                         3_000L, "신한카드", CREATED_AT),
                 new GetOrderDetailResponse.DeliveryInfo(301L, DeliveryStatus.READY, null, null),
                 new GetOrderDetailResponse.RefundInfo(401L, RefundStatus.COMPLETED, RefundType.PARTIAL,
-                        1_000L, CREATED_AT.plusMinutes(10)));
+                        1_000L, CREATED_AT.plusMinutes(10)), 1_000L, 2_000L);
     }
 
     private void authenticate() {

@@ -71,14 +71,14 @@ class MenuPlanPromptTest {
     }
 
     @Test
-    void 날짜와_상황은_반영하지_못한_조건에_적지_않는_규칙이_들어_있다() {
+    void 일정과_상황은_적지_않고_유통기한_같은_상품_날짜는_조건으로_남기는_규칙이_들어_있다() {
         // when
         String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
 
         // then: "토요일에"를 반영하지 못한 조건으로 적으면 안내 문장이 "토요일 요청은 반영하지 못했다"고 말한다
         assertThat(systemPrompt)
-                .contains("조건은 어떤 상품을 고를지에 대한 요청(맛, 원산지, 먹는 사람 등)만이야")
-                .contains("날짜·시간·상황(예: 토요일, 내일 아침, 생일 파티)은 상품 고르기와 상관없으니 어디에도 적지 마");
+                .contains("조건은 어떤 상품을 고를지에 대한 요청(맛, 원산지, 먹는 사람, 유통기한·제조일 등)만이야")
+                .contains("언제 먹거나 받는지 같은 일정(예: 토요일, 내일 아침)과 상황(예: 생일 파티)은 상품 고르기와 상관없으니 어디에도 적지 마");
     }
 
     @Test

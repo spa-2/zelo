@@ -2,6 +2,7 @@ package com.server.zelo.domain.product.service;
 
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.domain.inventory.service.InventoryService;
+import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
@@ -88,6 +89,28 @@ class ProductCommandServiceTest {
         assertThat(result.keywords()).containsExactly(Keyword.NOT_SPICY, Keyword.DOMESTIC);
         assertThat(result.availableQuantity()).isEqualTo(3);
         assertThat(result.categoryName()).isEqualTo("김치·젓갈");
+    }
+    @Test
+    void 자동완성은_검색어가_비면_상품을_안_찾는다() {
+        // when
+        List<String> result = productCommandService.autocomplete(new AutocompleteCondition("  "));
+
+        // then
+        assertThat(result).isEmpty();
+        then(productService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 자동완성은_인기_검색어로_안_센다() {
+        // given
+        given(productService.findProductNames("김치", 10)).willReturn(List.of("백김치 1kg"));
+
+        // when
+        List<String> result = productCommandService.autocomplete(new AutocompleteCondition(" 김치 "));
+
+        // then
+        assertThat(result).containsExactly("백김치 1kg");
+        then(popularKeywordService).shouldHaveNoInteractions();
     }
 
     private Product product(Long id, String name) {

@@ -1,14 +1,8 @@
 package com.server.zelo.domain.product.repository;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.product.dto.request.ProductSort;
-import com.server.zelo.domain.product.entity.BaseUnit;
-import com.server.zelo.domain.product.entity.Category;
-import com.server.zelo.domain.product.entity.Ingredient;
-import com.server.zelo.domain.product.entity.Product;
-import com.server.zelo.domain.product.entity.ProductStatus;
+import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.global.config.AuditingConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,9 +11,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -106,6 +105,40 @@ class ProductSearchRepositoryTest {
 
         // then
         assertThat(product.getCategory().getName()).isEqualTo(TAG + "-양념");
+    }
+
+    @Test
+    void 자동완성은_같은_이름을_한_번만_많이_팔린_순으로_주고_판매중지는_뺀다() {
+        // given
+        Product baek = productRepository.findByProductCode("SEARCH-9000501").orElseThrow();
+        persist("SEARCH-9000504", baek.getIngredient(), "브랜드 C", TAG + " 백김치 1kg", 9900L, 3);
+        productRepository.increaseSalesCount(productRepository.findByProductCode("SEARCH-9000502").orElseThrow().getId(), 5);
+        productRepository.findByProductCode("SEARCH-9000503").orElseThrow().stopSale();
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<String> names = productRepository.findNames(TAG, ProductStatus.ON_SALE, Limit.of(10));
+
+        // then
+        assertThat(names).containsExactly(TAG + " 포기김치 500g", TAG + " 백김치 1kg");
+    }
+
+    @Test
+    void 이스케이프한_밑줄은_글자_그대로_찾는다() {
+        // given
+        Product baek = productRepository.findByProductCode("SEARCH-9000501").orElseThrow();
+        persist("SEARCH-9000505", baek.getIngredient(), "브랜드 C", TAG + "_특가 백김치", 7900L, 3);
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<String> names = productRepository.findNames(TAG + "\\_", ProductStatus.ON_SALE, Limit.of(10));
+        Page<Product> products = search(TAG + "\\_", null, false, ProductSort.SALES);
+
+        // then
+        assertThat(names).containsExactly(TAG + "_특가 백김치");
+        assertThat(products.getContent()).extracting(Product::getProductCode).containsExactly("SEARCH-9000505");
     }
 
     private Page<Product> search(String keyword, Long categoryId, boolean inStock, ProductSort sort) {

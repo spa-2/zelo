@@ -2,9 +2,7 @@ package com.server.zelo.domain.product.repository;
 
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.entity.ProductStatus;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -13,12 +11,17 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @EntityGraph(attributePaths = {"ingredient", "category"})
     List<Product> findAllByIngredient_NameInAndStatus(Collection<String> ingredientNames, ProductStatus status);
 
+    // keyword는 %, _를 이스케이프해서 넘김 (ProductService.escapeLike)
     // 대분류로 찾으면 그 아래 소분류 상품까지 나오게 parent도 같이 봄 (대분류는 parent가 없어서 left join)
     // 재고 있는 것만은 페이지 나누기 전에 걸러야 해서 Inventory를 서브쿼리로 확인
     @EntityGraph(attributePaths = {"category"})
@@ -27,12 +30,22 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             join p.category c
             left join c.parent pc
             where p.status = :status
-              and (p.name like concat('%', :keyword, '%') or p.brand like concat('%', :keyword, '%'))
+              and (p.name like concat('%', :keyword, '%') escape '\\' or p.brand like concat('%', :keyword, '%') escape '\\')
               and (:categoryId is null or c.id = :categoryId or pc.id = :categoryId)
               and (:inStock = false or exists (
                     select 1 from Inventory i where i.product = p and i.availableQuantity > 0))
             """)
     Page<Product> search(String keyword, Long categoryId, boolean inStock, ProductStatus status, Pageable pageable);
+
+    // 자동완성용. 브랜드만 다르고 이름이 같은 상품은 한 번만, 많이 팔린 이름부터
+    @Query("""
+            select p.name from Product p
+            where p.status = :status
+              and p.name like concat('%', :keyword, '%') escape '\\'
+            group by p.name
+            order by max(p.salesCount) desc, p.name
+            """)
+    List<String> findNames(String keyword, ProductStatus status, Limit limit);
 
     @EntityGraph(attributePaths = {"category"})
     Optional<Product> findByProductCode(String productCode);

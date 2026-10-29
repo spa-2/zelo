@@ -1,6 +1,7 @@
 package com.server.zelo.domain.user.emailverification.repository;
 
 import com.server.zelo.common.util.HashUtil;
+import com.server.zelo.domain.user.emailverification.dto.CodeValidationResult;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -16,9 +17,11 @@ import java.util.List;
 public class EmailVerificationRepository {
 
     private static final String EMAIL_CODE = "EMAIL_CODE:";
+    private static final String EMAIL_TICKET = "EMAIL_TICKET:";
     private static final String EMAIL_COOLDOWN = "EMAIL_COOLDOWN:";
-    private static final String EMAIL_SEND_COUNT = "EMAIL_SEND_COUNT:";
     private static final String EMAIL_IP_COUNT = "EMAIL_IP_COUNT:";
+    private static final String EMAIL_SEND_COUNT = "EMAIL_SEND_COUNT:";
+    private static final String EMAIL_CODE_FAILED = "EMAIL_CODE_FAILED:";
 
     // 이메일별, ip별 카운터가 같은 방식(윈도우 동안 세다가 초과하면 차단 시간으로 전환)이라 스크립트를 같이 쓰고 키만 다르게 한다
     private static final RedisScript<Long> COUNT_SCRIPT = new DefaultRedisScript<>("""
@@ -35,6 +38,43 @@ public class EmailVerificationRepository {
 
             -- 현재 횟수 반환
             return count
+            """, Long.class);
+
+    private static final RedisScript<Long> SAVE_CODE_SCRIPT = new DefaultRedisScript<>("""
+            -- 새 코드가 이전 코드의 실패 횟수를 물려받지 않도록 같이 지운다
+            redis.call('DEL', KEYS[2])
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+            return 1
+            """, Long.class);
+
+    private static final RedisScript<Long> VALID_SCRIPT = new DefaultRedisScript<>("""
+            -- 반환값: 1 일치, 0 코드 없음/만료, 2 불일치, -1 실패 횟수 초과(코드 폐기)
+            local stored = redis.call('GET', KEYS[1])
+
+            -- 코드가 없거나 만료
+            if not stored then
+                return 0
+            end
+
+            -- 일치하면 코드와 실패 횟수를 지운다(같은 코드로 다시 확인할 수 없게)
+            if stored == ARGV[1] then
+                redis.call('DEL', KEYS[1], KEYS[2])
+                return 1
+            end
+
+            -- 틀리면 실패 횟수 증가, 처음 틀렸을 때만 TTL 설정
+            local fails = redis.call('INCR', KEYS[2])
+            if fails == 1 then
+                redis.call('EXPIRE', KEYS[2], ARGV[2])
+            end
+
+            -- 횟수를 넘으면 코드를 폐기해서 새로 요청하게 한다
+            if fails >= tonumber(ARGV[3]) then
+                redis.call('DEL', KEYS[1], KEYS[2])
+                return -1
+            end
+
+            return 2
             """, Long.class);
 
     private final HashUtil hashUtil;
@@ -57,10 +97,37 @@ public class EmailVerificationRepository {
         return Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(key, "1", cooldown));
     }
 
+    // 코드를 저장하는데 만약 이전에 연이은 코드검증 실패로 코드를 재발급을 받는 상황이라면 이전 실패 기록은 지워준다
     public void saveCode(String email, EmailVerificationPurpose purpose, String code, Duration ttl) {
-        String key = EMAIL_CODE + purpose + ":" + hash(email);
-        // 코드 원문은 저장하지 않고 해시로 저장하여 redis가 유출되어도 코드를 알 수 없음(이메일을 섞어 같은 코드도 값이 달라지게 함)
-        stringRedisTemplate.opsForValue().set(key, hash(email + ":" + code), ttl);
+        stringRedisTemplate.execute(
+                SAVE_CODE_SCRIPT,
+                List.of(codeKey(purpose, email), failedKey(purpose, email)), // key1, key2
+                hash(email + ":" + code), // argv1 (코드 원본은 이메일 조합을 해시 처리)
+                String.valueOf(ttl.toSeconds())
+        );
+    }
+
+    // 저장할 때와 같은 방식으로 해시해서 비교한다(해시 방식은 저장소만 알게 함), 실패 횟수는 failTtl 동안만 센다
+    public CodeValidationResult validateCode(
+            String email, EmailVerificationPurpose purpose, String code, int maxFailures, Duration failTtl) {
+        Long result = stringRedisTemplate.execute(
+                VALID_SCRIPT,
+                List.of(codeKey(purpose, email), failedKey(purpose, email)), // key 1, 2
+                hash(email + ":" + code), // argv 1
+                String.valueOf(failTtl.toSeconds()), // argv 2
+                String.valueOf(maxFailures) // argv 3
+        );
+        return switch (result.intValue()) {
+            case 1 -> CodeValidationResult.SUCCESS;
+            case 0 -> CodeValidationResult.EXPIRED;
+            case -1 -> CodeValidationResult.TOO_MANY_FAILURES;
+            default -> CodeValidationResult.MISMATCH;
+        };
+    }
+
+    // 가입 요청에서 이메일 인증을 증명하는 티켓, 값에 목적과 이메일을 저장해서 사용할 때 요청과 같은지 비교할 수 있게 한다
+    public void saveTicket(String ticket, EmailVerificationPurpose purpose, String email, Duration ttl) {
+        stringRedisTemplate.opsForValue().set(EMAIL_TICKET + hash(ticket), purpose + ":" + email, ttl);
     }
 
     private long increaseCount(String key, int maxCount, Duration window, Duration block) {
@@ -75,5 +142,12 @@ public class EmailVerificationRepository {
 
     private String hash(String value) {
         return hashUtil.hash(value);
+    }
+
+    private String codeKey(EmailVerificationPurpose purpose, String email) {
+        return EMAIL_CODE + purpose + ":" + hash(email);
+    }
+    private String failedKey(EmailVerificationPurpose purpose, String email) {
+        return EMAIL_CODE_FAILED + purpose + ":" + hash(email);
     }
 }

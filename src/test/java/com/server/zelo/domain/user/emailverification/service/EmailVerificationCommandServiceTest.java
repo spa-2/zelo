@@ -1,12 +1,17 @@
 package com.server.zelo.domain.user.emailverification.service;
 
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.mail.EmailSender;
+import com.server.zelo.domain.user.emailverification.dto.CodeValidationResult;
+import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import com.server.zelo.domain.user.emailverification.repository.EmailVerificationRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -160,6 +165,40 @@ class EmailVerificationCommandServiceTest {
 
         then(emailVerificationRepository).should(never()).saveCode(anyString(), any(), anyString(), any());
         then(emailSender).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 코드가_일치하면_티켓을_발급하고_30분간_저장한다() {
+        // given
+        given(emailVerificationRepository.validateCode(EMAIL, PURPOSE, "123456", 5, CODE_TTL))
+                .willReturn(CodeValidationResult.SUCCESS);
+
+        // when
+        ValidateEmailResponse response = emailVerificationCommandService.validateEmail(EMAIL, PURPOSE, "123456");
+
+        // then SecureRandom이 mock이라 난수는 전부 0이고, 32바이트의 URL-safe Base64는 'A' 43자
+        assertThat(response.verificationToken()).isEqualTo("A".repeat(43));
+        then(emailVerificationRepository).should()
+                .saveTicket(response.verificationToken(), PURPOSE, EMAIL, Duration.ofMinutes(30));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "EXPIRED, EXPIRED_EMAIL_CODE",
+            "MISMATCH, INVALID_EMAIL_CODE",
+            "TOO_MANY_FAILURES, TOO_MANY_EMAIL_CODE_FAILURES"
+    })
+    void 코드가_실패하면_결과에_맞는_예외가_발생하고_티켓은_발급되지_않는다(CodeValidationResult result, ErrorCode expected) {
+        // given
+        given(emailVerificationRepository.validateCode(EMAIL, PURPOSE, "123456", 5, CODE_TTL)).willReturn(result);
+
+        // when & then
+        assertThatThrownBy(() -> emailVerificationCommandService.validateEmail(EMAIL, PURPOSE, "123456"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(expected);
+
+        then(emailVerificationRepository).should(never()).saveTicket(anyString(), any(), anyString(), any());
     }
 
     private void givenIpCount(long count) {

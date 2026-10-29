@@ -1,6 +1,7 @@
 package com.server.zelo.domain.user.emailverification.repository;
 
 import com.server.zelo.common.util.HashUtil;
+import com.server.zelo.domain.user.emailverification.dto.CodeValidationResult;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -237,6 +238,119 @@ class EmailVerificationRepositoryRedisTest {
         // then
         String key = redisTemplate.keys("EMAIL_CODE:*" + hashUtil.hash(email)).iterator().next();
         assertThat(redisTemplate.opsForValue().get(key)).isEqualTo(hashUtil.hash(email + ":222222"));
+    }
+
+    @Test
+    void 코드가_일치하면_성공이고_코드와_실패_횟수가_삭제된다() {
+        // given
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+        repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5)); // 실패 1회
+
+        // when
+        CodeValidationResult result = repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5));
+
+        // then
+        assertThat(result).isEqualTo(CodeValidationResult.SUCCESS);
+        assertThat(redisTemplate.keys("EMAIL_CODE*:*" + hashUtil.hash(email))).isEmpty();
+    }
+
+    @Test
+    void 같은_코드로_다시_확인하면_만료로_처리된다() {
+        // given
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+        repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5));
+
+        // when & then 1회용이라 재사용할 수 없다
+        assertThat(repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.EXPIRED);
+    }
+
+    @Test
+    void 코드가_없으면_만료다() {
+        // when & then
+        assertThat(repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.EXPIRED);
+    }
+
+    @Test
+    void 코드가_틀리면_불일치이고_실패_횟수가_TTL과_함께_쌓인다() {
+        // given
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+
+        // when
+        CodeValidationResult result = repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+
+        // then
+        assertThat(result).isEqualTo(CodeValidationResult.MISMATCH);
+        String failedKey = redisTemplate.keys("EMAIL_CODE_FAILED:*" + hashUtil.hash(email)).iterator().next();
+        assertThat(redisTemplate.opsForValue().get(failedKey)).isEqualTo("1");
+        assertThat(redisTemplate.getExpire(failedKey)).isBetween(295L, 300L);
+        // 코드는 아직 유효해서 이어서 맞출 수 있다
+        assertThat(repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.SUCCESS);
+    }
+
+    @Test
+    void 실패가_한도에_도달하면_코드가_폐기되고_맞는_코드도_더는_통하지_않는다() {
+        // given
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+        for (int i = 0; i < MAX - 1; i++) {
+            assertThat(repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5)))
+                    .isEqualTo(CodeValidationResult.MISMATCH);
+        }
+
+        // when 5번째 실패
+        CodeValidationResult last = repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+
+        // then
+        assertThat(last).isEqualTo(CodeValidationResult.TOO_MANY_FAILURES);
+        assertThat(repository.validateCode(email, PURPOSE, "123456", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.EXPIRED);
+        assertThat(redisTemplate.keys("EMAIL_CODE*:*" + hashUtil.hash(email))).isEmpty();
+    }
+
+    @Test
+    void 재발송된_코드는_이전_코드의_실패_횟수를_물려받지_않는다() {
+        // given
+        repository.saveCode(email, PURPOSE, "111111", Duration.ofMinutes(5));
+        for (int i = 0; i < MAX - 1; i++) {
+            repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+        }
+
+        // when 재발송 후 새 코드를 처음 틀림
+        repository.saveCode(email, PURPOSE, "222222", Duration.ofMinutes(5));
+        CodeValidationResult result = repository.validateCode(email, PURPOSE, "000000", MAX, Duration.ofMinutes(5));
+
+        // then 이전 실패가 이어졌다면 TOO_MANY_FAILURES가 나온다
+        assertThat(result).isEqualTo(CodeValidationResult.MISMATCH);
+        assertThat(repository.validateCode(email, PURPOSE, "222222", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.SUCCESS);
+    }
+
+    @Test
+    void 다른_이메일의_코드로는_통과할_수_없다() {
+        // given
+        repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
+
+        // when & then
+        assertThat(repository.validateCode("other-" + email, PURPOSE, "123456", MAX, Duration.ofMinutes(5)))
+                .isEqualTo(CodeValidationResult.EXPIRED);
+    }
+
+    @Test
+    void 티켓은_원문이_아닌_해시를_키로_저장하고_값에_목적과_이메일이_들어간다() {
+        // given
+        String ticket = "ticket-" + UUID.randomUUID();
+
+        // when
+        repository.saveTicket(ticket, PURPOSE, email, Duration.ofMinutes(30));
+
+        // then
+        String key = "EMAIL_TICKET:" + hashUtil.hash(ticket);
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("SIGNUP:" + email);
+        assertThat(redisTemplate.getExpire(key)).isBetween(1795L, 1800L);
+        assertThat(key).doesNotContain(ticket);
+        redisTemplate.delete(key);
     }
 
     private long sendCountTtl() {

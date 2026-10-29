@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.service;
 
+import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.chat.entity.ChatRoom;
@@ -9,10 +10,8 @@ import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
-import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
-import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
-import com.server.zelo.domain.order.dto.response.CreateOrderResponse;
-import com.server.zelo.domain.order.dto.response.GetOrderDetailResponse;
+import com.server.zelo.domain.order.dto.request.SearchOrderCondition;
+import com.server.zelo.domain.order.dto.response.*;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
@@ -38,6 +37,7 @@ import com.server.zelo.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -341,6 +341,17 @@ public class OrderCommandService {
         if (order.isFullyCanceled()) {
             order.cancel();
         }
+    }
+
+
+    @Transactional(readOnly = true)
+    public PageResponse<GetOrderSummaryResponse> getMyOrders(Long userId, SearchOrderCondition condition) {
+        Page<Order> orders = orderService.getMyOrders(userId, condition);
+        // 주문마다 환불을 조회하지 않도록 페이지에 있는 주문들의 환불 금액을 한 번에 가져온다
+        Map<Long, Long> refundedAmounts = refundService.findRefundedAmounts(
+                orders.getContent().stream().map(Order::getId).toList());
+        return PageResponse.of(orders,
+                order -> GetOrderSummaryResponse.from(order, refundedAmounts.getOrDefault(order.getId(), 0L)));
     }
 
     /**

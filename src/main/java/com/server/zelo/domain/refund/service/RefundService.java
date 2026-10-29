@@ -2,6 +2,7 @@ package com.server.zelo.domain.refund.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.refund.dto.response.OrderRefundAmount;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.repository.RefundRepository;
@@ -10,7 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,17 @@ public class RefundService {
     @Transactional
     public Optional<Refund> findLatestRefund(Long paymentId) {
         return refundRepository.findTopByPaymentIdOrderByIdDesc(paymentId);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long,Long> findRefundedAmounts(Collection<Long> orderIds){
+        if(orderIds.isEmpty()) {
+            return Map.of();
+        }
+        return refundRepository.findRefundedAmountsByOrderIds(orderIds,RefundStatus.COMPLETED)
+                .stream()
+                .collect(Collectors.toMap(OrderRefundAmount::orderId,
+                        OrderRefundAmount::refundedAmount));
     }
 
     public void validateNotInProgress(Long paymentId) {

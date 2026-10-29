@@ -2,6 +2,7 @@ package com.server.zelo.domain.refund.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.refund.dto.response.OrderRefundAmount;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
@@ -15,12 +16,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class RefundServiceTest {
@@ -137,5 +140,28 @@ class RefundServiceTest {
 
         // when // then
         assertThat(refundService.calculateRefundedAmount(PAYMENT_ID)).isEqualTo(5_000L);
+    }
+
+    @Test
+    void 조회할_주문이_없으면_쿼리_없이_빈_결과를_반환한다() {
+        // when
+        Map<Long, Long> result = refundService.findRefundedAmounts(List.of());
+
+        // then
+        assertThat(result).isEmpty();
+        then(refundRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 주문별_완료된_환불_금액을_주문_ID로_묶어_반환한다() {
+        // given
+        given(refundRepository.findRefundedAmountsByOrderIds(List.of(1L, 2L), RefundStatus.COMPLETED))
+                .willReturn(List.of(new OrderRefundAmount(1L, 3_000L)));
+
+        // when
+        Map<Long, Long> result = refundService.findRefundedAmounts(List.of(1L, 2L));
+
+        // then
+        assertThat(result).containsExactly(Map.entry(1L, 3_000L));
     }
 }

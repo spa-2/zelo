@@ -53,7 +53,7 @@ public class OrderService {
         return getOrderWithItems(orderId);
     }
 
-    public PageResponse<GetOrderSummaryResponse> getMyOrders(
+    public Page<Order> getMyOrders(
             Long userId,
             SearchOrderCondition condition
     ) {
@@ -71,12 +71,9 @@ public class OrderService {
         );
 
         // 사용자 ID 기준 조회. 주문 상태 요청값 여부에 따른 조회방식 분기
-        Page<Order> orders = condition.status() == null
+        return condition.status() == null
                 ? orderRepository.findByUser_Id(sortedPageable, userId)
                 : orderRepository.findByUser_IdAndStatus(sortedPageable, userId, condition.status());
-
-        // PageResponse 변환
-        return PageResponse.of(orders, GetOrderSummaryResponse::from);
     }
 
     // OrderConfirmationRepository랑 OrderCommandService 연결

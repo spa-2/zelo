@@ -1,5 +1,4 @@
 package com.server.zelo.domain.order.controller;
-
 import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
@@ -10,7 +9,6 @@ import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderFacade;
-import com.server.zelo.domain.order.service.OrderService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,9 +25,7 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
 import java.util.stream.Stream;
-
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -47,7 +43,6 @@ class OrderCancellationControllerTest {
     private static final String JSON = "{\"reason\":\"고객 요청\"}";
 
     @Mock private OrderFacade facade;
-    @Mock private OrderService service;
     @Mock private OrderCommandService command;
 
     private MockMvc mockMvc;
@@ -55,7 +50,7 @@ class OrderCancellationControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade, service, command))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade, command))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -84,7 +79,7 @@ class OrderCancellationControllerTest {
                 .andExpect(jsonPath("$.data.refundId").doesNotExist())
                 .andExpect(jsonPath("$.data.refundStatus").doesNotExist());
         then(facade).should().cancelBeforePayment(USER_ID, ORDER_ID);
-        verifyNoInteractions(service, command);
+        verifyNoInteractions(command);
     }
 
     @ParameterizedTest
@@ -114,7 +109,7 @@ class OrderCancellationControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(facade, service, command);
+        verifyNoInteractions(facade,command);
     }
 
     static Stream<String> invalidRequests() {
@@ -132,7 +127,7 @@ class OrderCancellationControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
-        verifyNoInteractions(facade, service, command);
+        verifyNoInteractions(facade,command);
     }
 
     @Test
@@ -146,7 +141,7 @@ class OrderCancellationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
-        verifyNoInteractions(facade, service, command);
+        verifyNoInteractions(facade, command);
     }
 
     @ParameterizedTest
@@ -165,7 +160,7 @@ class OrderCancellationControllerTest {
                 .andExpect(jsonPath("$.code").value(code.getCode()))
                 .andExpect(jsonPath("$.message").value(code.getMessage()))
                 .andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(service, command);
+        verifyNoInteractions(command);
     }
 
     private void authenticate() {

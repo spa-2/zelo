@@ -6,6 +6,7 @@ import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.ProductSort;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.dto.request.UpdateProductRequest;
+import static org.mockito.ArgumentMatchers.eq;
 import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.repository.IngredientRepository;
 import com.server.zelo.domain.product.repository.ProductKeywordRepository;
@@ -281,6 +282,15 @@ class ProductServiceTest {
         assertThatThrownBy(() -> productService.stopSale("P-404"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    @Test
+    void 검색어의_퍼센트와_밑줄은_이스케이프해서_찾는다() {
+        // when
+        productService.findProductNames("50%_\\", 10);
+
+        // then
+        then(productRepository).should().findNames(eq("50\\%\\_\\\\"), eq(ProductStatus.ON_SALE), any());
     }
 
     private CreateProductRequest createRequest() {

@@ -47,13 +47,13 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<Product> searchProducts(SearchProductCondition condition) {
-        return productRepository.search(condition.keyword(), condition.categoryId(), condition.inStock(),
+        return productRepository.search(escapeLike(condition.keyword()), condition.categoryId(), condition.inStock(),
                 ProductStatus.ON_SALE, PageRequest.of(condition.page(), condition.size(), condition.sort().toSort()));
     }
 
     @Transactional(readOnly = true)
     public List<String> findProductNames(String keyword, int limit) {
-        return productRepository.findNames(keyword, ProductStatus.ON_SALE, Limit.of(limit));
+        return productRepository.findNames(escapeLike(keyword), ProductStatus.ON_SALE, Limit.of(limit));
     }
 
     @Transactional(readOnly = true)
@@ -144,6 +144,11 @@ public class ProductService {
     @Transactional
     public void decreaseSalesCount(Long productId, Integer quantity) {
         productRepository.decreaseSalesCount(productId, quantity);
+    }
+
+    // 검색어에 %, _가 있으면 LIKE에서 아무 글자로 걸려서 글자 그대로 찾게 바꿈
+    private String escapeLike(String keyword) {
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     // PostgreSQL 유니크 위반 코드로 판별

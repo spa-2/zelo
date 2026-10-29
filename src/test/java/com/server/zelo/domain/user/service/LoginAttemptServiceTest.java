@@ -1,7 +1,7 @@
 package com.server.zelo.domain.user.service;
 
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.common.exception.LoginLockedException;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.login.AttemptResult;
 import com.server.zelo.domain.user.repository.LoginAttemptRepository;
 import org.junit.jupiter.api.Test;
@@ -50,9 +50,9 @@ class LoginAttemptServiceTest {
 
         // when & then
         assertThatThrownBy(() -> loginAttemptService.attempt(EMAIL, IP))
-                .isInstanceOf(LoginLockedException.class)
+                .isInstanceOf(RateLimitExceededException.class)
                 .satisfies(e -> {
-                    LoginLockedException locked = (LoginLockedException) e;
+                    RateLimitExceededException locked = (RateLimitExceededException) e;
                     assertThat(locked.getErrorCode()).isEqualTo(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS);
                     assertThat(locked.getRetryAfterSeconds()).isEqualTo(540L);
                 });
@@ -64,7 +64,7 @@ class LoginAttemptServiceTest {
         givenAttemptCount(30);
 
         // when & then
-        assertThatThrownBy(() -> loginAttemptService.attempt(EMAIL, IP)).isInstanceOf(LoginLockedException.class);
+        assertThatThrownBy(() -> loginAttemptService.attempt(EMAIL, IP)).isInstanceOf(RateLimitExceededException.class);
     }
 
     // 합의한 정책(5회까지 허용, 초과하면 10분 잠금, 횟수는 5분 동안 유지)이 바뀌면 의도한 변경인지 알 수 있게 값을 고정함

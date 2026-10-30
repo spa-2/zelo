@@ -21,9 +21,9 @@ terraform apply      # RDS 때문에 10분 안팎 걸린다
 
 1. **시크릿 입력**: `CHANGE_ME`로 만들어진 파라미터에 실제 값을 넣는다. (값은 채팅이나 커밋에 남기지 말 것)
    ```bash
-   aws ssm put-parameter --name /zelo/dev/jwt_secret --type SecureString --overwrite --value '<값>'
+   aws ssm put-parameter --name /zelo/dev/JWT_SECRET --type SecureString --overwrite --value '<값>'
    ```
-   대상: `jwt_secret`(소문자, Base64 32바이트 이상), `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `KAKAO_CLIENT_ID/SECRET`, `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_WEBHOOK_SECRET`. 포트원을 쓰지 않으면 `PORTONE_MODE`는 `fake` 그대로 둔다.
+   대상: `JWT_SECRET`(Base64 32바이트 이상), `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `KAKAO_CLIENT_ID/SECRET`, `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_WEBHOOK_SECRET`. 포트원을 쓰지 않으면 `PORTONE_MODE`는 `fake` 그대로 둔다. `LLM_MODE`는 `real`로 만들어지고, 소셜 로그인(`SOCIAL_MODE`)은 파라미터가 없으면 기본값 `fake`로 동작한다(실제로 켤 때 `real`로 새로 만든다).
    파라미터 이름은 `application.yaml`의 `${...}` 이름과 **대소문자까지 같아야** 한다.
 2. **이미지 푸시**: `docker buildx build --platform linux/arm64`로 빌드해서 `ecr_repository_url` 출력값으로 푸시 (EC2가 ARM(Graviton)이라 arm64 이미지가 필요하다. Apple Silicon 맥은 기본이 arm64)
 3. **배포할 태그 지정**: `aws ssm put-parameter --name /zelo/dev/deploy/image_tag --type String --overwrite --value <태그>`

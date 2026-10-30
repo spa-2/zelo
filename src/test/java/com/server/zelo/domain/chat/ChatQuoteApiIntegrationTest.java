@@ -20,6 +20,8 @@ import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.ai.plan.QuoteEditPlan;
 import com.jayway.jsonpath.JsonPath;
 import com.server.zelo.common.auth.JwtUtil;
+import com.server.zelo.common.lock.LockDistributeService;
+import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.repository.ChatRoomRepository;
 import com.server.zelo.domain.product.entity.BaseUnit;
@@ -31,11 +33,17 @@ import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteCommandService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,6 +94,9 @@ class ChatQuoteApiIntegrationTest {
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private LockDistributeService lockDistributeService;
 
     // Redis는 테스트 트랜잭션으로 되돌려지지 않아 넣은 견적·멱등 키를 모아 두었다가 지운다
     private final List<String> quoteKeys = new ArrayList<>();
@@ -248,6 +259,37 @@ class ChatQuoteApiIntegrationTest {
     }
 
     @Test
+    void 같은_방의_다른_요청이_견적_락을_잡고_있으면_카드_버튼은_3초_뒤_409로_거절되고_아무것도_저장하지_않는다() throws Exception {
+        // given: 다른 스레드가 실제 Redis에 이 방의 견적 락을 잡고 놓지 않는다
+        Long roomId = createRoom();
+        saveCurrentQuote(quote(roomId, "quote-1", List.of(KIMCHI_ITEM, EGG_ITEM), List.of()));
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        ExecutorService otherRequest = Executors.newSingleThreadExecutor();
+        Future<?> holder = otherRequest.submit(() -> lockDistributeService.execute(LockKey.quote(roomId), () -> {
+            locked.countDown();
+            await(release);
+        }));
+        assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+
+        try {
+            // when & then
+            long start = System.nanoTime();
+            pressItemButton(roomId, "quote-1", 1L, 0)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("COMMON_003"))
+                    .andExpect(jsonPath("$.data").doesNotExist());
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofSeconds(3));
+            then(quoteCommandService).shouldHaveNoInteractions();
+            getMessages(roomId).andExpect(jsonPath("$.data.messages.length()").value(0));
+        } finally {
+            release.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            otherRequest.shutdown();
+        }
+    }
+
+    @Test
     void 후보의_좋아요를_누르면_LLM_없이_새_견적_카드를_201로_돌려준다() throws Exception {
         // given
         Long roomId = createRoom();
@@ -402,6 +444,14 @@ class ChatQuoteApiIntegrationTest {
     private static String retryKey(Integer messageId) {
         String key = UUID.nameUUIDFromBytes(("retry:" + messageId).getBytes(StandardCharsets.UTF_8)).toString();
         return "chat:idempotency:" + OWNER_ID + ":" + key;
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void saveCurrentQuote(Quote quote) {

@@ -50,6 +50,11 @@ public record QuoteCardPayload(
                 quote.totalAmount(), quote.expiresAt());
     }
 
+    // 담은 상품도 고를 후보도 없으면 카드로 보여 줄 것도, 고칠 것도 주문할 것도 없다
+    public static boolean isShowable(Quote quote) {
+        return !quote.items().isEmpty() || !quote.substitutes().isEmpty();
+    }
+
     private static Item toItem(QuoteItem item) {
         return new Item(item.productId(), item.productName(), item.productUnit(),
                 item.unitPrice(), item.quantity(), item.lineAmount(), Reason.from(item.reason()));

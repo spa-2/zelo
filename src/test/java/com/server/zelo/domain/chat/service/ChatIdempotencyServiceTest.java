@@ -55,6 +55,78 @@ class ChatIdempotencyServiceTest {
     private ChatIdempotencyService chatIdempotencyService;
 
     @Test
+    void 처음_온_키는_처리하고_응답한_AI_메시지를_결과로_저장한다() {
+        // given
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+
+        // when
+        ChatMessageResponse response = runOnce(REQUEST, onCommitted -> ANSWER);
+
+        // then
+        assertThat(response).isSameAs(ANSWER);
+        then(chatIdempotencyRepository).should()
+                .save(1L, KEY, ChatIdempotencyRecord.done(hashUtil.hash(REQUEST), 10L, ANSWER, null));
+        assertThat(counter("zelo.chat.idempotency", "result", "FIRST")).isEqualTo(1);
+    }
+
+    @Test
+    void 처리가_끝난_키가_다시_오면_저장한_결과로_첫_응답을_다시_만들고_다시_처리하지_않는다() {
+        // given
+        String hash = hashUtil.hash(REQUEST);
+        ChatIdempotencyRecord done = new ChatIdempotencyRecord(true, hash, 10L, 42L, null, null);
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, KEY)).willReturn(Optional.of(done));
+        AtomicBoolean worked = new AtomicBoolean();
+
+        // when
+        ChatMessageResponse response = chatIdempotencyService.runOnce(1L, KEY, REQUEST, onCommitted -> {
+            worked.set(true);
+            return ANSWER;
+        }, answer -> 10L, Function.identity(), record -> {
+            assertThat(record).isSameAs(done);
+            return ANSWER;
+        });
+
+        // then
+        assertThat(response).isSameAs(ANSWER);
+        assertThat(worked).isFalse();
+        assertThat(counter("zelo.chat.idempotency", "result", "REPLAY")).isEqualTo(1);
+    }
+
+    @Test
+    void LLM이_실패해_고정_문구를_저장했으면_그_메시지와_실패를_결과로_저장한다() {
+        // given: 답변 쪽은 고정 문구 메시지를 성공 응답과 같은 모양으로 예외의 data에 담는다
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        BusinessException fallback = new BusinessException(ErrorCode.AI_TIMEOUT, ErrorCode.AI_TIMEOUT.getMessage(), ANSWER);
+
+        // when & then
+        assertThatThrownBy(() -> runOnce(REQUEST, onCommitted -> {
+            onCommitted.run();
+            throw fallback;
+        })).isSameAs(fallback);
+        then(chatIdempotencyRepository).should()
+                .save(1L, KEY, ChatIdempotencyRecord.done(hashUtil.hash(REQUEST), 10L, ANSWER, ErrorCode.AI_TIMEOUT));
+        then(chatIdempotencyRepository).should(never()).delete(any(), any());
+    }
+
+    @Test
+    void 고정_문구로_끝난_키가_다시_오면_그때의_고정_문구를_data에_담아_같은_실패를_던진다() {
+        // given
+        String hash = hashUtil.hash(REQUEST);
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, KEY)).willReturn(Optional.of(
+                new ChatIdempotencyRecord(true, hash, 10L, 42L, null, ErrorCode.AI_TIMEOUT)));
+
+        // when & then
+        assertThatThrownBy(() -> runOnce(REQUEST, onCommitted -> ANSWER))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT);
+                    assertThat(exception.getMessage()).isEqualTo(ErrorCode.AI_TIMEOUT.getMessage());
+                    assertThat(exception.getData()).isSameAs(ANSWER);
+                });
+    }
+
+    @Test
     void 횟수_제한으로_거절되면_키를_지워_시간이_지난_뒤_같은_키로_다시_보낼_수_있게_한다() {
         // given
         given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);

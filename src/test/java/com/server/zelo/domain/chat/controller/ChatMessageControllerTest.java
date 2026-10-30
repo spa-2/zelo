@@ -28,7 +28,7 @@ import com.server.zelo.domain.chat.dto.response.QuoteCardStatus;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.service.ChatMessageCommandService;
-import com.server.zelo.domain.chat.service.ChatQuoteCommandService;
+import com.server.zelo.domain.chat.service.ChatQuoteFacade;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -55,7 +55,7 @@ class ChatMessageControllerTest {
     private ChatMessageCommandService chatMessageCommandService;
 
     @Mock
-    private ChatQuoteCommandService chatQuoteCommandService;
+    private ChatQuoteFacade chatQuoteFacade;
 
     @InjectMocks
     private ChatMessageController chatMessageController;
@@ -159,7 +159,7 @@ class ChatMessageControllerTest {
     void 카드_버튼_수정은_201과_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatQuoteCommandService.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 2L, 0)))
+        given(chatQuoteFacade.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 2L, 0)))
                 .willReturn(new ChatMessageResponse(105L, ChatSender.ASSISTANT, "계란 (10구) 상품을 뺐어요.",
                         "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
@@ -190,14 +190,14 @@ class ChatMessageControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatQuoteCommandService).should(never()).updateQuoteItem(anyLong(), anyLong(), any());
+        then(chatQuoteFacade).should(never()).updateQuoteItem(anyLong(), anyLong(), any());
     }
 
     @Test
     void 후보_버튼은_201과_AI_메시지를_반환한다() throws Exception {
         // given
         authenticate(1L);
-        given(chatQuoteCommandService.chooseSubstitute(10L, 1L, new ChooseSubstituteRequest("quote-1", "대파", true)))
+        given(chatQuoteFacade.chooseSubstitute(10L, 1L, new ChooseSubstituteRequest("quote-1", "대파", true)))
                 .willReturn(new ChatMessageResponse(106L, ChatSender.ASSISTANT, "수입 대파 (1단) 상품을 담았어요.",
                         "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
@@ -225,7 +225,23 @@ class ChatMessageControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatQuoteCommandService).should(never()).chooseSubstitute(anyLong(), anyLong(), any());
+        then(chatQuoteFacade).should(never()).chooseSubstitute(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void 카드_버튼이_견적_락을_얻지_못하면_409와_COMMON_003을_반환한다() throws Exception {
+        // given: 같은 방의 다른 요청이 견적을 고치는 중이라 3초 안에 락을 얻지 못했다
+        authenticate(1L);
+        given(chatQuoteFacade.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 2L, 0)))
+                .willThrow(new BusinessException(ErrorCode.TIMEOUT_EXCEPTION));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/quote-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quoteId\":\"quote-1\",\"productId\":2,\"quantity\":0}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COMMON_003"))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -233,7 +249,7 @@ class ChatMessageControllerTest {
         // given
         authenticate(1L);
         String reply = "백김치 (1kg) 대신 순한 백김치 (500g) 상품을 담았어요. 합계 12,300원으로 예산 안에 들어왔어요.";
-        given(chatQuoteCommandService.chooseBudgetOption(10L, 1L, new ChooseBudgetOptionRequest("quote-1", 1L)))
+        given(chatQuoteFacade.chooseBudgetOption(10L, 1L, new ChooseBudgetOptionRequest("quote-1", 1L)))
                 .willReturn(new ChatMessageResponse(107L, ChatSender.ASSISTANT, reply,
                         "{\"type\":\"QUOTE_CARD\",\"quoteId\":\"quote-2\"}", QuoteCardStatus.ACTIVE, false, LocalDateTime.now()));
 
@@ -261,7 +277,7 @@ class ChatMessageControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
-        then(chatQuoteCommandService).should(never()).chooseBudgetOption(anyLong(), anyLong(), any());
+        then(chatQuoteFacade).should(never()).chooseBudgetOption(anyLong(), anyLong(), any());
     }
 
     @Test

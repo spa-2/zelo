@@ -37,7 +37,11 @@ public enum BusinessMetric {
     CHAT_RATE_LIMITED("zelo.chat.rate.limited", "사용자별 메시지 횟수 제한으로 거절한 수"),
     CHAT_QUOTE_BUSY("zelo.chat.quote.busy", "견적 락을 기다리다 포기한 수"),
     CHAT_QUOTE_EDIT("zelo.chat.quote.edit", "채팅의 견적 수정 결과 수 (source, result)"),
-    CHAT_EXPLAIN_DEGRADED("zelo.chat.explain.degraded", "안내 문장을 받지 못해 고정 문구로 저장한 견적 카드 수");
+    CHAT_EXPLAIN_DEGRADED("zelo.chat.explain.degraded", "안내 문장을 받지 못해 고정 문구로 저장한 견적 카드 수"),
+
+    // 정합성 대사
+    RECONCILE_RESULT("zelo.reconcile.result", "정합성 대사로 정리한 건수 (target, result)"),
+    RECONCILE_RUN("zelo.reconcile.run", "정합성 대사 1회 실행 시간 (target)");
 
     private final String key;
     private final String description;

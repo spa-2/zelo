@@ -3,15 +3,18 @@ package com.server.zelo.domain.refund.service;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.refund.dto.response.OrderRefundAmount;
+import com.server.zelo.domain.refund.dto.response.RefundFindTarget;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.repository.RefundRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -19,7 +22,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class RefundService {
-
+    //스케줄러 스레드를 같이 공유해 20건씩 처리 하는 상수
+    private static final int STALE_REQUESTED_BATCH_SIZE = 20;
     private final RefundRepository refundRepository;
 
     public Refund createRefund(Refund refund) {
@@ -40,6 +44,12 @@ public class RefundService {
                 .stream()
                 .collect(Collectors.toMap(OrderRefundAmount::orderId,
                         OrderRefundAmount::refundedAmount));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RefundFindTarget> findRequestedRefunds(LocalDateTime cutoff) {
+        return refundRepository.findTargets(RefundStatus.REQUESTED, cutoff,
+                PageRequest.of(0, STALE_REQUESTED_BATCH_SIZE));
     }
 
     public void validateNotInProgress(Long paymentId) {

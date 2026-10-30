@@ -14,6 +14,7 @@ import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
+import com.server.zelo.domain.refund.entity.RefundItem;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
 import org.junit.jupiter.api.BeforeEach;
@@ -242,7 +243,7 @@ class RefundCommandServiceTest {
     void 포트원에서_취소도_완료도_아닌_결제면_아무것도_바꾸지_않는다() {
         // given
         given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.READY, 10_000L, null));
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
@@ -331,7 +332,6 @@ class RefundCommandServiceTest {
         // given
         OrderItem orderItem = mock(OrderItem.class);
         given(orderItem.getId()).willReturn(1L);
-        given(orderItem.getCancelableQuantity()).willReturn(2);
         Order order = mock(Order.class);
         given(order.getOrderItems()).willReturn(List.of(orderItem));
         given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paidPayment());
@@ -343,6 +343,55 @@ class RefundCommandServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT);
         then(portOneClient).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 포트원_취소_총액에_이번_환불이_들어_있으면_부분_환불을_완료한다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
+                PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null, "TEST_CARD", null, 5_000L));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        Refund refund = givenRequestedPartialRefund(5_000L);
+        given(refundService.calculateRefundedAmount(1L)).willReturn(0L);
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should().complete(eq(refund.getId()), any());
+        then(orderCommandService).should().cancelItems(eq(ORDER_ID), any());
+        then(deliveryService).should().releaseHold(ORDER_ID);
+    }
+
+    @Test
+    void 포트원_취소_총액에_이번_환불이_없으면_부분_환불을_실패로_끝낸다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
+                PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null, "TEST_CARD", null, 3_000L));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        Refund refund = givenRequestedPartialRefund(5_000L);
+        given(refundService.calculateRefundedAmount(1L)).willReturn(3_000L);
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should().fail(refund.getId());
+        then(orderCommandService).should(never()).cancelItems(any(), any());
+        then(deliveryService).should().releaseHold(ORDER_ID);
+    }
+
+    // 상품 하나(5,000원 × 1개)를 부분 환불 요청한 상태
+    private Refund givenRequestedPartialRefund(Long amount) {
+        OrderItem orderItem = mock(OrderItem.class);
+        lenient().when(orderItem.getId()).thenReturn(1L);
+        given(orderItem.getQuantity()).willReturn(2);
+        given(orderItem.getUnitPrice()).willReturn(amount);
+        Refund refund = Refund.of(1L, RefundType.PARTIAL, "부분 환불");
+        refund.addRefundItem(RefundItem.of(orderItem, 1));
+        ReflectionTestUtils.setField(refund, "id", 30L);
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        return refund;
     }
 
     private OrderItem givenRefundable() {

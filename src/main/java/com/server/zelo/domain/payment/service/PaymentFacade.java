@@ -41,6 +41,11 @@ public class PaymentFacade {
         });
     }
 
+    public PaymentStatus closeConfirmPending(String portoneId) {
+        return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
+                () -> paymentCommandService.closeConfirmPending(portoneId));
+    }
+
     // 포트원 조회가 실패하면 결과를 여전히 모르는 상태라 PG 오류 대신 확인 대기로 응답한다. 다른 오류는 그대로 둔다
     private void recheckConfirmPending(String portoneId) {
         try {

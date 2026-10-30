@@ -31,6 +31,8 @@ public class PaymentCommandService {
     private static final String AMOUNT_MISMATCH_REASON = "결제 금액 불일치";
     private static final String CLOSED_ORDER_REASON = "결제 대기 중이 아닌 주문";
     private static final String LATE_PAID_REASON = "실패 처리 후 늦게 승인된 결제";
+    private static final String CONFIRM_REASON = "결제 결과를 확인하지 못했습니다";
+
 
     private final OrderService orderService;
     private final PortOneClient portOneClient;
@@ -123,9 +125,9 @@ public class PaymentCommandService {
         try {
             portOneClient.payWithBillingKey(portoneId, paymentMethod.getBillingKey(), order.getOrderName(), payment.getAmount());
         } catch (BusinessException e) {
-            // 카드 거절은 돈이 빠져나가지 않았으므로 바로 실패 처리한다. 타임아웃 등은 결제됐을 수 있어 확인 대기로 남기고 웹훅이 반영한다
+            // 거절 응답만으로 실패를 기록하지 않고 포트원 결제 상태로 확인한다. 타임아웃 등은 결제됐을 수 있어 확인 대기로 남긴다
             if (e.getErrorCode() == ErrorCode.PG_REQUEST_REJECTED) {
-                return failPayment(portoneId, orderId, (String) e.getData());
+                return confirmRejectedBilling(portoneId, orderId, (String) e.getData());
             }
             throw e;
         }
@@ -218,5 +220,35 @@ public class PaymentCommandService {
         transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId, failureReason));
         createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null, failureReason);
         return PaymentStatus.FAILED;
+    }
+
+    public PaymentStatus closeConfirmPending(String portoneId) {
+        try {
+            PaymentStatus status = confirmPayment(portoneId);
+            if (status != PaymentStatus.CONFIRM_PENDING) {
+                return status;
+            }
+        } catch (BusinessException e) {
+            if (e.getErrorCode() != ErrorCode.PAYMENT_NOT_FOUND) {
+                throw e;
+            }
+        }
+        log.warn("확인 대기가 오래된 결제를 실패 처리 portoneId={}", portoneId);
+        return failPayment(portoneId, paymentService.getPayment(portoneId).getOrderId(), CONFIRM_REASON);
+    }
+
+    // 재조회가 끊기면 결과를 모르는 상태라 확인 대기로 두고 정합성 대사가 정리한다
+    private PaymentStatus confirmRejectedBilling(String portoneId, Long orderId, String rejectReason) {
+        try {
+            return confirmPayment(portoneId);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.PAYMENT_NOT_FOUND) {
+                return failPayment(portoneId, orderId, rejectReason);
+            }
+            if (e.getErrorCode() == ErrorCode.PG_TIMEOUT || e.getErrorCode() == ErrorCode.PG_REQUEST_FAILED) {
+                return PaymentStatus.CONFIRM_PENDING;
+            }
+            throw e;
+        }
     }
 }

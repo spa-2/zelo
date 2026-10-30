@@ -2,6 +2,7 @@ package com.server.zelo.domain.refund.repository;
 
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.refund.dto.response.OrderRefundAmount;
+import com.server.zelo.domain.refund.dto.response.RefundFindTarget;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -87,6 +89,24 @@ class RefundRepositoryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void 기준_시각보다_오래된_요청_중_환불만_주문_ID와_포트원_결제_ID로_꺼낸다() {
+        // given
+        Long requestedPaymentId = savePayment(1L);
+        Long completedPaymentId = savePayment(2L);
+        saveRefund(requestedPaymentId, 1_000L, RefundStatus.REQUESTED);
+        saveRefund(completedPaymentId, 1_000L, RefundStatus.COMPLETED);
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<RefundFindTarget> targets = refundRepository.findTargets(
+                RefundStatus.REQUESTED, LocalDateTime.now().plusMinutes(1), PageRequest.of(0, 20));
+
+        // then
+        assertThat(targets).extracting(RefundFindTarget::orderId).containsExactly(1L);
+    }
+
     private Long savePayment(Long orderId) {
         Payment payment = Payment.of(orderId, "payment-" + UUID.randomUUID().toString().substring(0, 8), 5_000L);
         entityManager.persist(payment);
@@ -104,4 +124,6 @@ class RefundRepositoryTest {
         }
         entityManager.persist(refund);
     }
+
+
 }

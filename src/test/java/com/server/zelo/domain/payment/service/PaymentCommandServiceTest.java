@@ -657,7 +657,7 @@ class PaymentCommandServiceTest {
                 .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
         given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
         given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
-                PortOnePaymentStatus.FAILED, AMOUNT, null, PortOnePaymentResponse.ETC, "한도를 초과했습니다", null));
+                PortOnePaymentStatus.FAILED, AMOUNT, null, PortOnePaymentResponse.ETC, "한도를 초과했습니다"));
 
         // when
         PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);

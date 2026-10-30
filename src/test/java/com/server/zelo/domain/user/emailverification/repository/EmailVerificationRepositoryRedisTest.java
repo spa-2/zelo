@@ -336,13 +336,79 @@ class EmailVerificationRepositoryRedisTest {
         repository.acquireCooldown(other, PURPOSE, Duration.ofSeconds(60));
 
         // when
-        repository.deleteCodeAndCooldown(email, PURPOSE);
+        repository.rollbackSend(email, PURPOSE);
 
         // then
         assertThat(redisTemplate.keys("EMAIL_CODE:*" + hashUtil.hash(email))).isEmpty();
         assertThat(repository.acquireCooldown(email, PURPOSE, Duration.ofSeconds(60))).isTrue();
         assertThat(repository.acquireCooldown(other, PURPOSE, Duration.ofSeconds(60))).isFalse();
         redisTemplate.delete(redisTemplate.keys("EMAIL_COOLDOWN:*" + hashUtil.hash(other)));
+    }
+
+    @Test
+    void 발송에_실패해_되돌리면_이메일_발송_횟수가_1_줄고_TTL은_유지된다() {
+        // given
+        repository.increaseSendCount(email, MAX, WINDOW, BLOCK);
+        repository.increaseSendCount(email, MAX, WINDOW, BLOCK);
+
+        // when
+        repository.rollbackSend(email, PURPOSE);
+
+        // then
+        assertThat(redisTemplate.opsForValue().get("EMAIL_SEND_COUNT:" + hashUtil.hash(email))).isEqualTo("1");
+        assertThat(sendCountTtl()).isBetween(WINDOW.toSeconds() - 5, WINDOW.toSeconds());
+    }
+
+    @Test
+    void 횟수가_1일_때_되돌리면_키가_삭제되고_다음_요청은_새_윈도우로_시작한다() {
+        // given
+        repository.increaseSendCount(email, MAX, WINDOW, BLOCK);
+
+        // when
+        repository.rollbackSend(email, PURPOSE);
+
+        // then
+        assertThat(redisTemplate.hasKey("EMAIL_SEND_COUNT:" + hashUtil.hash(email))).isFalse();
+        assertThat(repository.increaseSendCount(email, MAX, WINDOW, BLOCK)).isEqualTo(1);
+        assertThat(sendCountTtl()).isBetween(WINDOW.toSeconds() - 5, WINDOW.toSeconds());
+    }
+
+    @Test
+    void 횟수_키가_이미_만료됐으면_되돌려도_키가_새로_생기지_않는다() {
+        // when 윈도우가 지나 키가 없는 상태에서 실패 처리
+        repository.rollbackSend(email, PURPOSE);
+
+        // then DECR이 TTL 없는 -1 키를 만들면 안 된다
+        assertThat(redisTemplate.hasKey("EMAIL_SEND_COUNT:" + hashUtil.hash(email))).isFalse();
+    }
+
+    @Test
+    void 발송이_계속_실패해도_횟수가_쌓이지_않아_차단되지_않는다() {
+        // when 발송 실패를 한도보다 많이 반복
+        for (int i = 0; i < MAX + 3; i++) {
+            repository.increaseSendCount(email, MAX, WINDOW, BLOCK);
+            repository.rollbackSend(email, PURPOSE);
+        }
+
+        // then 다음 요청은 한도 안이어서 차단되지 않는다
+        assertThat(repository.increaseSendCount(email, MAX, WINDOW, BLOCK)).isEqualTo(1);
+    }
+
+    @Test
+    void 되돌려도_IP_횟수와_다른_이메일의_횟수는_그대로다() {
+        // given
+        String other = "other-" + email;
+        repository.increaseIpCount(ip, MAX, WINDOW, BLOCK);
+        repository.increaseSendCount(other, MAX, WINDOW, BLOCK);
+        repository.increaseSendCount(email, MAX, WINDOW, BLOCK);
+
+        // when
+        repository.rollbackSend(email, PURPOSE);
+
+        // then
+        assertThat(redisTemplate.opsForValue().get(ipKey())).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get("EMAIL_SEND_COUNT:" + hashUtil.hash(other))).isEqualTo("1");
+        redisTemplate.delete("EMAIL_SEND_COUNT:" + hashUtil.hash(other));
     }
 
     @Test

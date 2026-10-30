@@ -71,8 +71,8 @@ public class EmailVerificationCommandService {
             emailSender.send(email, TITLE, BODY_FORMAT.formatted(code, CODE_TTL.toMinutes()));
         } catch ( BusinessException e) {
             // 코드 및 쿨다운 제거
-            log.warn("이메일 전송 실패로 코드와 쿨다운을 제거, purpose={}", purpose);
-            emailVerificationRepository.deleteCodeAndCooldown(email, purpose);
+            log.warn("이메일 전송 실패로 코드와 쿨다운 제거, 윈도우 감소, purpose={}", purpose);
+            emailVerificationRepository.rollbackSend(email, purpose);
             throw e;
         }
     }

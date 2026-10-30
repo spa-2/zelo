@@ -77,9 +77,22 @@ public class EmailVerificationRepository {
             return 2
             """, Long.class);
 
-    private static final RedisScript<Long> DELETE_SCRIPT = new DefaultRedisScript<>("""
+    private static final RedisScript<Long> ROLLBACK_SEND_SCRIPT = new DefaultRedisScript<>("""
                 redis.call('DEL', KEYS[1])
                 redis.call('DEL', KEYS[2])
+
+                -- 키가 없으면(윈도우 만료) 감소하지 않는다. DECR이 TTL 없는 -1 키를 만들기 때문
+                -- Lua에서 GET은 문자열 또는 false라서 숫자로 바꿔서 비교한다
+                local count = tonumber(redis.call('GET', KEYS[3]))
+                if count then
+                    if count <= 1 then
+                        -- 0이 되면 지워서 다음 요청이 새 윈도우로 시작하게 한다
+                        redis.call('DEL', KEYS[3])
+                    else
+                        redis.call('DECR', KEYS[3])
+                    end
+                end
+
                 return 1
             """, Long.class);
 
@@ -88,12 +101,12 @@ public class EmailVerificationRepository {
 
     // 동일 ip에서 메일 요청이 많으면 플러딩 공격으로 의심(학교, 공공 wifi 등을 고려하여 한도는 넉넉히 잡음)
     public long increaseIpCount(String remoteAddr, int maxCount, Duration window, Duration block) {
-        return increaseCount(EMAIL_IP_COUNT + hash(remoteAddr), maxCount, window, block);
+        return increaseCount(ipKey(remoteAddr), maxCount, window, block);
     }
 
     // 한 이메일 주소로 보내는 횟수(ip와 무관하게 세어서 ip를 바꿔가며 한 사람의 메일함을 공격하는 것을 방지)
     public long increaseSendCount(String email, int maxCount, Duration window, Duration block) {
-        return increaseCount(EMAIL_SEND_COUNT + hash(email), maxCount, window, block);
+        return increaseCount(sendKey(email), maxCount, window, block);
     }
 
     // 동일한 이메일에는 cooldown 동안 1번만 보냄(목적별로 분리), 선점에 성공하면 true
@@ -136,11 +149,14 @@ public class EmailVerificationRepository {
         stringRedisTemplate.opsForValue().set(EMAIL_TICKET + hash(ticket), purpose + ":" + email, ttl);
     }
 
-    // 장애시 다시 시도할 수 있게 발급한 코드와 쿨다운을 모두 제거한다.
-    public void deleteCodeAndCooldown(String email, EmailVerificationPurpose purpose) {
+    // 장애시 다시 시도할 수 있게 발급한 코드와 쿨다운을 모두 제거하고 이메일별 발송 횟수를 1 감소 또는 삭제한다.
+    public void rollbackSend(String email, EmailVerificationPurpose purpose) {
         stringRedisTemplate.execute(
-                DELETE_SCRIPT,
-                List.of(cooldownKey(purpose, email), codeKey(purpose, email))
+                ROLLBACK_SEND_SCRIPT,
+                List.of(cooldownKey(purpose, email),
+                        codeKey(purpose, email),
+                        sendKey(email)
+                )
         );
     }
 
@@ -154,19 +170,32 @@ public class EmailVerificationRepository {
         );
     }
 
-    private String hash(String value) {
-        return hashUtil.hash(value);
-    }
-
+    // 이메일 인증 코드
     private String codeKey(EmailVerificationPurpose purpose, String email) {
         return EMAIL_CODE + purpose + ":" + hash(email);
     }
 
+    // 인증 코드 실패
     private String failedKey(EmailVerificationPurpose purpose, String email) {
         return EMAIL_CODE_FAILED + purpose + ":" + hash(email);
     }
 
+    // 메일 전송 쿨다운
     private String cooldownKey(EmailVerificationPurpose purpose, String email) {
         return EMAIL_COOLDOWN + purpose + ":" + hash(email);
+    }
+
+    // 메일 전송 횟수
+    private String sendKey(String email){
+        return EMAIL_SEND_COUNT + hash(email);
+    }
+
+    // ip당 메일 전송 횟수
+    private String ipKey(String remoteAddr){
+        return EMAIL_IP_COUNT + hash(remoteAddr);
+    }
+
+    private String hash(String value) {
+        return hashUtil.hash(value);
     }
 }

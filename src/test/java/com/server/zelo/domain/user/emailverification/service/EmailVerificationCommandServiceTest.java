@@ -86,7 +86,7 @@ class EmailVerificationCommandServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.EMAIL_SEND_FAILED);
-        then(emailVerificationRepository).should().deleteCodeAndCooldown(EMAIL, PURPOSE);
+        then(emailVerificationRepository).should().rollbackSend(EMAIL, PURPOSE);
     }
 
     @Test
@@ -101,7 +101,7 @@ class EmailVerificationCommandServiceTest {
         emailVerificationCommandService.sendEmail(EMAIL, PURPOSE, IP);
 
         // then
-        then(emailVerificationRepository).should(never()).deleteCodeAndCooldown(anyString(), any());
+        then(emailVerificationRepository).should(never()).rollbackSend(anyString(), any());
     }
 
     @Test

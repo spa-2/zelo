@@ -412,6 +412,59 @@ class EmailVerificationRepositoryRedisTest {
     }
 
     @Test
+    void 저장한_티켓을_같은_이메일과_목적으로_소비하면_성공하고_티켓은_삭제된다() {
+        // given
+        String ticket = "ticket-" + UUID.randomUUID();
+        repository.saveTicket(ticket, PURPOSE, email, Duration.ofMinutes(30));
+
+        // when & then
+        assertThat(repository.consumeTicket(ticket, PURPOSE, email)).isTrue();
+        assertThat(redisTemplate.hasKey("EMAIL_TICKET:" + hashUtil.hash(ticket))).isFalse();
+    }
+
+    @Test
+    void 같은_티켓은_두_번_소비할_수_없다() {
+        // given
+        String ticket = "ticket-" + UUID.randomUUID();
+        repository.saveTicket(ticket, PURPOSE, email, Duration.ofMinutes(30));
+        repository.consumeTicket(ticket, PURPOSE, email);
+
+        // when & then
+        assertThat(repository.consumeTicket(ticket, PURPOSE, email)).isFalse();
+    }
+
+    @Test
+    void 다른_이메일로_소비하면_실패하고_티켓도_사라져_올바른_이메일로도_쓸_수_없다() {
+        // given
+        String ticket = "ticket-" + UUID.randomUUID();
+        repository.saveTicket(ticket, PURPOSE, email, Duration.ofMinutes(30));
+
+        // when & then A 이메일로 받은 티켓으로 B 이메일 가입을 시도하는 경우
+        assertThat(repository.consumeTicket(ticket, PURPOSE, "other-" + email)).isFalse();
+        assertThat(repository.consumeTicket(ticket, PURPOSE, email)).isFalse();
+    }
+
+    @Test
+    void 발급하지_않은_티켓은_소비할_수_없다() {
+        // when & then
+        assertThat(repository.consumeTicket("ticket-" + UUID.randomUUID(), PURPOSE, email)).isFalse();
+    }
+
+    @Test
+    void 티켓_값에는_이메일_원문이_저장되지_않는다() {
+        // given
+        String ticket = "ticket-" + UUID.randomUUID();
+
+        // when
+        repository.saveTicket(ticket, PURPOSE, email, Duration.ofMinutes(30));
+
+        // then
+        String key = "EMAIL_TICKET:" + hashUtil.hash(ticket);
+        assertThat(redisTemplate.opsForValue().get(key)).doesNotContain(email);
+        redisTemplate.delete(key);
+    }
+
+    @Test
     void 다른_이메일의_코드로는_통과할_수_없다() {
         // given
         repository.saveCode(email, PURPOSE, "123456", Duration.ofMinutes(5));
@@ -431,7 +484,7 @@ class EmailVerificationRepositoryRedisTest {
 
         // then
         String key = "EMAIL_TICKET:" + hashUtil.hash(ticket);
-        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("SIGNUP:" + email);
+        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("SIGNUP:" + hashUtil.hash(email));
         assertThat(redisTemplate.getExpire(key)).isBetween(1795L, 1800L);
         assertThat(key).doesNotContain(ticket);
         redisTemplate.delete(key);

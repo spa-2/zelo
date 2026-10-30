@@ -146,7 +146,7 @@ public class EmailVerificationRepository {
 
     // 가입 요청에서 이메일 인증을 증명하는 티켓, 값에 목적과 이메일을 저장해서 사용할 때 요청과 같은지 비교할 수 있게 한다
     public void saveTicket(String ticket, EmailVerificationPurpose purpose, String email, Duration ttl) {
-        stringRedisTemplate.opsForValue().set(EMAIL_TICKET + hash(ticket), purpose + ":" + email, ttl);
+        stringRedisTemplate.opsForValue().set(ticketKey(ticket), purpose + ":" + hash(email), ttl);
     }
 
     // 장애시 다시 시도할 수 있게 발급한 코드와 쿨다운을 모두 제거하고 이메일별 발송 횟수를 1 감소 또는 삭제한다.
@@ -158,6 +158,13 @@ public class EmailVerificationRepository {
                         sendKey(email)
                 )
         );
+    }
+
+    public boolean consumeTicket(String ticket, EmailVerificationPurpose purpose, String email) {
+        String ticketKey = ticketKey(ticket);
+        String ticketValue = purpose + ":" + hash(email);
+        String storedValue = stringRedisTemplate.opsForValue().getAndDelete(ticketKey);
+        return ticketValue.equals(storedValue);
     }
 
     private long increaseCount(String key, int maxCount, Duration window, Duration block) {
@@ -193,6 +200,11 @@ public class EmailVerificationRepository {
     // ip당 메일 전송 횟수
     private String ipKey(String remoteAddr){
         return EMAIL_IP_COUNT + hash(remoteAddr);
+    }
+
+    // 티켓 저장
+    private String ticketKey(String ticket){
+        return EMAIL_TICKET + hash(ticket);
     }
 
     private String hash(String value) {

@@ -12,6 +12,7 @@ import com.server.zelo.domain.chat.dto.response.ChatMessageResponse;
 import com.server.zelo.domain.chat.dto.response.GetChatMessagesResponse;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.service.ChatMessageCommandService;
+import com.server.zelo.domain.chat.service.ChatQuoteCommandService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,7 @@ public class ChatMessageController {
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     private final ChatMessageCommandService chatMessageCommandService;
+    private final ChatQuoteCommandService chatQuoteCommandService;
 
     // 채팅방 없이 메인 화면에서 첫 메시지를 보내면 방 생성 + 메세지 생성
     @PostMapping("/messages")
@@ -80,7 +82,7 @@ public class ChatMessageController {
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
             @Valid @RequestBody UpdateQuoteItemRequest request) {
-        ChatMessageResponse response = chatMessageCommandService.updateQuoteItem(roomId, authUser.id(), request);
+        ChatMessageResponse response = chatQuoteCommandService.updateQuoteItem(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 
@@ -90,7 +92,7 @@ public class ChatMessageController {
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
             @Valid @RequestBody ChooseSubstituteRequest request) {
-        ChatMessageResponse response = chatMessageCommandService.chooseSubstitute(roomId, authUser.id(), request);
+        ChatMessageResponse response = chatQuoteCommandService.chooseSubstitute(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 
@@ -100,7 +102,7 @@ public class ChatMessageController {
             @Auth AuthUser authUser,
             @PathVariable Long roomId,
             @Valid @RequestBody ChooseBudgetOptionRequest request) {
-        ChatMessageResponse response = chatMessageCommandService.chooseBudgetOption(roomId, authUser.id(), request);
+        ChatMessageResponse response = chatQuoteCommandService.chooseBudgetOption(roomId, authUser.id(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 }

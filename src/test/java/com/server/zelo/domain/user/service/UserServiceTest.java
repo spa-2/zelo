@@ -186,6 +186,7 @@ class UserServiceTest {
         then(passwordEncoder).shouldHaveNoInteractions();
     }
 
+    @Test
     void 회원이_없으면_MEMBER_NOT_FOUND가_발생한다() {
         // given
         given(userRepository.findById(1L)).willReturn(Optional.empty());
@@ -195,5 +196,55 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.getUser(1L))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    @Test
+    void 이메일로_회원을_조회한다() {
+        // given
+        User user = User.of("test@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+        given(userRepository.findByEmail("test@example.com")).willReturn(Optional.of(user));
+
+        // when
+        User result = userService.getUserByEmail("test@example.com");
+
+        // then
+        assertThat(result).isSameAs(user);
+    }
+
+    @Test
+    void 대문자가_섞인_이메일도_소문자로_조회한다() {
+        // given
+        User user = User.of("test@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+        given(userRepository.findByEmail("test@example.com")).willReturn(Optional.of(user));
+
+        // when
+        User result = userService.getUserByEmail("Test@Example.COM");
+
+        // then
+        assertThat(result).isSameAs(user);
+    }
+
+    @Test
+    void 가입되지_않은_이메일로_조회하면_MEMBER_NOT_FOUND가_발생한다() {
+        // given
+        given(userRepository.findByEmail("none@example.com")).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> userService.getUserByEmail("none@example.com"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    @Test
+    void 비밀번호를_재설정하면_암호화한_값으로_바꾼다() {
+        // given
+        User user = User.of("test@example.com", "oldEncoded", "홍길동", "010-1234-5678");
+        given(passwordEncoder.encode("NewPass1!")).willReturn("newEncoded");
+
+        // when
+        userService.resetPassword(user, "NewPass1!");
+
+        // then 평문이 저장되면 안 됨
+        assertThat(user.getPassword()).isEqualTo("newEncoded");
     }
 }

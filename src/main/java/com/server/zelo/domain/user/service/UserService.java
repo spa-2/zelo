@@ -63,4 +63,13 @@ public class UserService {
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(User.normalizeEmail(email));
     }
+
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(User.normalizeEmail(email)).
+                orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    public void resetPassword(User user,String password) {
+        user.changePassword(passwordEncoder.encode(password));
+    }
 }

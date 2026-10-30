@@ -8,6 +8,7 @@ import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
+import com.server.zelo.domain.user.dto.request.ResetPasswordRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
@@ -362,6 +363,94 @@ class UserCommandServiceTest {
         then(userAddressService).should(never()).releaseDefaultAddress(anyLong());
     }
 
+    @Test
+    void 티켓이_유효하면_비밀번호를_바꾸고_리프레시_토큰을_폐기한다() {
+        // given
+        User user = userWithId(1L, User.of("jieun@example.com", "oldEncoded", "홍길동", "010-1234-5678"));
+        given(userService.getUserByEmail("jieun@example.com")).willReturn(user);
+
+        // when
+        userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!"));
+
+        // then 변경이 실패하면 토큰을 지우면 안 되고, 티켓은 비밀번호 찾기 목적으로 소비해야 함
+        InOrder inOrder = inOrder(emailVerificationService, userService, refreshTokenService);
+        inOrder.verify(emailVerificationService)
+                .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.PASSWORD_RESET);
+        inOrder.verify(userService).resetPassword(user, "NewPass1!");
+        inOrder.verify(refreshTokenService).deleteRefreshToken(1L);
+    }
+
+    @Test
+    void 재설정_비밀번호_확인이_다르면_티켓을_소비하지_않는다() {
+        // given
+        ResetPasswordRequest request = resetPasswordRequest("NewPass1!", "NewPass2!");
+
+        // when & then 고쳐서 다시 시도할 수 있는 실패로 인증이 날아가면 안 됨
+        assertThatThrownBy(() -> userCommandService.validateResetPassword(request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH));
+        then(emailVerificationService).shouldHaveNoInteractions();
+        then(userService).shouldHaveNoInteractions();
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 재설정_티켓이_유효하지_않으면_비밀번호를_바꾸지_않는다() {
+        // given
+        willThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED))
+                .given(emailVerificationService)
+                .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.PASSWORD_RESET);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED));
+        then(userService).should(never()).resetPassword(any(User.class), anyString());
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 재설정_대상_회원이_없으면_예외가_발생하고_토큰을_폐기하지_않는다() {
+        // given
+        given(userService.getUserByEmail("jieun@example.com"))
+                .willThrow(new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MEMBER_NOT_FOUND));
+        then(userService).should(never()).resetPassword(any(User.class), anyString());
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 소셜_가입_회원은_비밀번호를_재설정할_수_없다() {
+        // given
+        User socialUser = userWithId(1L, User.ofSocial("jieun@example.com", "지은", "010-1234-5678"));
+        given(userService.getUserByEmail("jieun@example.com")).willReturn(socialUser);
+
+        // when & then 티켓 발급 이후에 상태가 바뀌었을 수 있어서 변경 시점에도 막음
+        assertThatThrownBy(() -> userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.SOCIAL_ACCOUNT_USER));
+        then(userService).should(never()).resetPassword(any(User.class), anyString());
+        then(refreshTokenService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 리프레시_토큰_폐기에_실패하면_예외가_전달된다() {
+        // given
+        User user = userWithId(1L, User.of("jieun@example.com", "oldEncoded", "홍길동", "010-1234-5678"));
+        given(userService.getUserByEmail("jieun@example.com")).willReturn(user);
+        willThrow(new BusinessException(ErrorCode.TOKEN_REVOKE_FAILED))
+                .given(refreshTokenService).deleteRefreshToken(1L);
+
+        // when & then 예외가 전달되어야 트랜잭션이 롤백되어 비밀번호만 바뀌는 일이 없음
+        assertThatThrownBy(() -> userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TOKEN_REVOKE_FAILED));
+    }
+
     private CreateUserRequest createUserRequest(String password, String passwordConfirm) {
         return new CreateUserRequest("Jieun@Example.com", TICKET, password, passwordConfirm, "홍길동",
                 "010-1234-5678", "집", "서울 특별시 그곳", "12345");
@@ -369,5 +458,14 @@ class UserCommandServiceTest {
 
     private CreateUserAddressRequest addressRequest(boolean isDefault) {
         return new CreateUserAddressRequest("회사", "홍길동", "010-1234-5678", "12345", "서울시 강남구", isDefault);
+    }
+
+    private ResetPasswordRequest resetPasswordRequest(String password, String passwordConfirm) {
+        return new ResetPasswordRequest("Jieun@Example.com", TICKET, password, passwordConfirm);
+    }
+
+    private User userWithId(Long id, User user) {
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
     }
 }

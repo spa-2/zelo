@@ -9,6 +9,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
+import com.server.zelo.domain.user.dto.request.ResetPasswordRequest;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.RefreshTokenService;
 import com.server.zelo.domain.user.service.UserCommandService;
@@ -18,6 +19,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -130,6 +134,74 @@ class UserControllerTest {
     @Test
     void 리프레시_토큰_쿠키는_리프레시_토큰_만료_시간만큼_유지된다() throws Exception {
         assertThat(refreshTokenCookieAttributes(performLogin())).contains("Max-Age=1209600");
+    }
+
+    private static final String RESET_TICKET = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw";
+
+    @Test
+    void 비밀번호를_재설정하면_200을_반환하고_이메일을_소문자로_바꿔_서비스를_호출한다() throws Exception {
+        // when & then
+        performResetPassword("Jieun@Example.com", RESET_TICKET, "NewPass1!", "NewPass1!")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        then(userCommandService).should().validateResetPassword(
+                new ResetPasswordRequest("jieun@example.com", RESET_TICKET, "NewPass1!", "NewPass1!"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PASSWORD_CONFIRMATION_MISMATCH, 400, MEMBER_004",
+            "EMAIL_VERIFICATION_REQUIRED, 400, MAIL_006",
+            "MEMBER_NOT_FOUND, 404, MEMBER_001",
+            "SOCIAL_ACCOUNT_USER, 400, MEMBER_010"
+    })
+    void 비밀번호_재설정에_실패하면_오류_코드에_맞는_상태와_응답이_내려간다(ErrorCode errorCode, int status, String code) throws Exception {
+        // given
+        willThrow(new BusinessException(errorCode)).given(userCommandService).validateResetPassword(any());
+
+        // when & then
+        performResetPassword("jieun@example.com", RESET_TICKET, "NewPass1!", "NewPass1!")
+                .andExpect(status().is(status))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(code));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            """
+            {"emailVerificationTicket": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw", "password": "NewPass1!", "passwordConfirm": "NewPass1!"}
+            """,
+            """
+            {"email": "jieun@example.com", "password": "NewPass1!", "passwordConfirm": "NewPass1!"}
+            """,
+            """
+            {"email": "jieun@example.com", "emailVerificationTicket": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw", "passwordConfirm": "NewPass1!"}
+            """,
+            """
+            {"email": "jieun@example.com", "emailVerificationTicket": "short", "password": "NewPass1!", "passwordConfirm": "NewPass1!"}
+            """,
+            """
+            {"email": "jieun@example.com", "emailVerificationTicket": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw", "password": "weak", "passwordConfirm": "weak"}
+            """
+    })
+    void 비밀번호_재설정_요청이_올바르지_않으면_400이고_서비스를_호출하지_않는다(String body) throws Exception {
+        // when & then
+        mockMvc.perform(post("/api/users/password-reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+
+        then(userCommandService).should(never()).validateResetPassword(any());
+    }
+
+    private ResultActions performResetPassword(String email, String ticket, String password, String passwordConfirm)
+            throws Exception {
+        return mockMvc.perform(post("/api/users/password-reset")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email": "%s", "emailVerificationTicket": "%s", "password": "%s", "passwordConfirm": "%s"}
+                        """.formatted(email, ticket, password, passwordConfirm)));
     }
 
     private ResultActions performLogin() throws Exception {

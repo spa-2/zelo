@@ -25,7 +25,6 @@ public record PortOnePayment(
 
     public static PortOnePayment from(PortOnePaymentResponse response, ZoneId zoneId) {
         Long amount = response.amount() == null ? null : response.amount().total();
-        Long cancelledAmount = response.amount() == null ? null : response.amount().cancelled();
         LocalDateTime paidAt = response.paidAt() == null
                 ? null
                 : response.paidAt().atZoneSameInstant(zoneId).toLocalDateTime();

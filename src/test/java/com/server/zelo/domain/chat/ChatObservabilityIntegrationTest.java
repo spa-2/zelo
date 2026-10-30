@@ -26,6 +26,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import com.server.zelo.domain.chat.service.ChatRateLimitService;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,10 @@ class ChatObservabilityIntegrationTest {
 
     // 로컬 DB에 쌓인 데이터와 섞이지 않도록 실제로 쓰이지 않을 사용자 ID를 쓴다
     private static final Long OWNER_ID = 9_000_702L;
+
+    // 횟수 제한은 ChatRateLimitService 테스트에서 따로 확인한다. 여기서는 같은 사용자로 1분에 10번 넘게 보내므로 끈다
+    @MockitoBean
+    private ChatRateLimitService chatRateLimitService;
 
     @Autowired
     private Tracer tracer;

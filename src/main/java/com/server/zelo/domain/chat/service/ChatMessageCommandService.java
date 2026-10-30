@@ -12,6 +12,7 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.common.monitoring.BusinessMetric;
@@ -113,6 +114,7 @@ public class ChatMessageCommandService {
     private final ChatMessageService chatMessageService;
     private final QuoteExplainPrompt quoteExplainPrompt;
     private final QuoteCommandService quoteCommandService;
+    private final ChatRateLimitService chatRateLimitService;
     private final LockDistributeService lockDistributeService;
     private final ChatIdempotencyRepository chatIdempotencyRepository;
 
@@ -122,6 +124,8 @@ public class ChatMessageCommandService {
 
     // onCommitted: 사용자 메시지를 커밋한 직후 부른다. 멱등 처리가 그 뒤의 실패를 "이미 저장된 요청"으로 구분하는 데 쓴다
     private ChatMessageResponse processMessage(Long roomId, Long userId, String text, Runnable onCommitted) {
+        // 거절된 메시지가 답 없이 방에 남지 않게 저장 전에 센다
+        chatRateLimitService.validateLimit(userId);
         // LLM이 실패해도 사용자가 보낸 말은 남아 있어야 하므로 먼저 저장(커밋)
         ChatMessage userMessage = chatMessageService.createUserMessage(roomId, userId, text);
         onCommitted.run();
@@ -154,6 +158,7 @@ public class ChatMessageCommandService {
     }
 
     private StartChatResponse processStart(Long userId, String text, Runnable onCommitted) {
+        chatRateLimitService.validateLimit(userId);
         // 방과 첫 메시지를 먼저 커밋해 두어, LLM이 실패해도 사용자는 이 방에서 다시 보낼 수 있다
         ChatMessage userMessage = chatMessageService.createRoomWithFirstMessage(userId, text);
         onCommitted.run();
@@ -181,6 +186,7 @@ public class ChatMessageCommandService {
     // 다시 시도가 실제로 답을 살렸는지(SUCCESS), 또 실패했는지(AI_xxx), 거절됐는지(CHAT_004)를 센다
     private ChatMessageResponse processRetry(Long roomId, Long userId, Long messageId) {
         try {
+            chatRateLimitService.validateLimit(userId);
             ChatMessage userMessage = chatMessageService.getRetryTarget(roomId, userId, messageId);
             List<ChatMessage> history = chatMessageService.findHistory(roomId, userMessage.getId());
             ChatMessageResponse response = replyTo(roomId, userId, history, userMessage.getContent(), Function.identity());
@@ -234,6 +240,11 @@ public class ChatMessageCommandService {
         T result;
         try {
             result = work.apply(() -> committed.set(true));
+        } catch (RateLimitExceededException e) {
+            // data에 FALLBACK 응답이 아니라 Retry-After 초가 들어 있어 아래 FALLBACK 처리로 보내지 않는다.
+            // 저장 전에 거절됐으니 키를 지워, 시간이 지나면 같은 키로 다시 보낼 수 있게 한다
+            endWithoutResponse(userId, idempotencyKey, requestHash, committed.get(), e.getErrorCode());
+            throw e;
         } catch (BusinessException e) {
             if (e.getData() == null) {
                 endWithoutResponse(userId, idempotencyKey, requestHash, committed.get(), e.getErrorCode());

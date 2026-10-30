@@ -30,6 +30,7 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.common.monitoring.BusinessMetrics;
@@ -130,6 +131,9 @@ class ChatMessageCommandServiceTest {
 
     @Mock
     private ChatIdempotencyRepository chatIdempotencyRepository;
+
+    @Mock
+    private ChatRateLimitService chatRateLimitService;
 
     // 같은 문장은 같은 해시가 나와야 해서 진짜 객체를 쓴다
     @Spy
@@ -1292,6 +1296,91 @@ class ChatMessageCommandServiceTest {
     }
 
     @Test
+    void 횟수_제한에_걸리면_사용자_메시지를_저장하지_않고_LLM을_부르지_않는다() {
+        // given
+        willThrow(rateLimited()).given(chatRateLimitService).validateLimit(1L);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", null))
+                .isInstanceOfSatisfying(RateLimitExceededException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.CHAT_RATE_LIMITED));
+        then(chatMessageService).shouldHaveNoInteractions();
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 멱등_키로_보낸_메시지가_횟수_제한에_걸리면_키를_지워_시간이_지난_뒤_같은_키로_다시_보낼_수_있게_한다() {
+        // given
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(true);
+        willThrow(rateLimited()).given(chatRateLimitService).validateLimit(1L);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY))
+                .isInstanceOf(RateLimitExceededException.class);
+        then(chatIdempotencyRepository).should().delete(1L, KEY);
+        then(chatIdempotencyRepository).should(never()).save(any(), any(), any());
+        then(chatMessageService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 같은_키로_다시_온_요청은_횟수를_세지_않고_첫_응답을_돌려준다() {
+        // given: 응답을 잃은 화면이 같은 키로 다시 보냈다
+        String hash = hashUtil.hash("room:10:안녕");
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(KEY), any())).willReturn(false);
+        given(chatIdempotencyRepository.find(1L, KEY)).willReturn(Optional.of(
+                new ChatIdempotencyRecord(true, hash, 10L, 42L, null, null)));
+        given(chatMessageService.getMessage(42L)).willReturn(assistantMessage(42L, "답변", null));
+
+        // when
+        ChatMessageResponse response = chatMessageCommandService.sendMessage(10L, 1L, "안녕", KEY);
+
+        // then
+        assertThat(response.messageId()).isEqualTo(42L);
+        then(chatRateLimitService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 새_대화가_횟수_제한에_걸리면_방을_만들지_않는다() {
+        // given
+        willThrow(rateLimited()).given(chatRateLimitService).validateLimit(1L);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.startChat(1L, "불고기 재료", null))
+                .isInstanceOf(RateLimitExceededException.class);
+        then(chatMessageService).shouldHaveNoInteractions();
+        then(llmGateway).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 다시_시도도_횟수에_포함되고_제한에_걸리면_LLM을_부르지_않고_키를_지운다() {
+        // given
+        given(chatIdempotencyRepository.saveIfAbsent(eq(1L), eq(RETRY_KEY), any())).willReturn(true);
+        willThrow(rateLimited()).given(chatRateLimitService).validateLimit(1L);
+
+        // when & then
+        assertThatThrownBy(() -> chatMessageCommandService.retryMessage(10L, 1L, 42L))
+                .isInstanceOf(RateLimitExceededException.class);
+        then(chatIdempotencyRepository).should().delete(1L, RETRY_KEY);
+        then(chatMessageService).shouldHaveNoInteractions();
+        then(llmGateway).shouldHaveNoInteractions();
+        assertThat(counter("zelo.chat.retry", "result", "CHAT_005")).isEqualTo(1);
+    }
+
+    @Test
+    void 카드_버튼_수정은_LLM을_부르지_않아_횟수를_세지_않는다() {
+        // given
+        given(quoteService.findQuote(10L)).willReturn(Optional.empty());
+        given(chatMessageService.createAssistantMessage(10L, 1L, NO_QUOTE_TO_EDIT))
+                .willReturn(assistantMessage(43L, NO_QUOTE_TO_EDIT, null));
+
+        // when
+        chatMessageCommandService.updateQuoteItem(10L, 1L, new UpdateQuoteItemRequest("quote-1", 1L, 0));
+
+        // then
+        then(chatRateLimitService).shouldHaveNoInteractions();
+    }
+
+    @Test
     void 멱등_키가_없으면_키를_저장하지_않고_지금처럼_처리한다() {
         // given
         given(chatMessageService.createUserMessage(10L, 1L, "안녕")).willReturn(userMessage(10L, 5L, "안녕"));
@@ -1873,6 +1962,10 @@ class ChatMessageCommandServiceTest {
     private ChatMessageResponse messageResponse(Long messageId, String payload) {
         return new ChatMessageResponse(messageId, ChatSender.ASSISTANT, "메시지 " + messageId, payload, null, false,
                 LocalDateTime.of(2026, 10, 27, 12, 0));
+    }
+
+    private static RateLimitExceededException rateLimited() {
+        return new RateLimitExceededException(ErrorCode.CHAT_RATE_LIMITED, 15L);
     }
 
     private double counter(String name, String... tags) {

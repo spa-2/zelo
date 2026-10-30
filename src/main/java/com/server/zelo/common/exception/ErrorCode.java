@@ -86,6 +86,7 @@ public enum ErrorCode {
     CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_002", "해당 채팅방에 접근할 권한이 없습니다."),
     IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "CHAT_003", "같은 요청 키로 다른 메시지를 보낼 수 없습니다."),
     CHAT_RETRY_NOT_ALLOWED(HttpStatus.CONFLICT, "CHAT_004", "다시 시도할 수 없는 메시지입니다."),
+    CHAT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "CHAT_005", "메시지 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
 
     // Review
     REVIEW_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "REVIEW_001", "상품의 리뷰 요약을 찾을 수 없습니다."),

@@ -6,9 +6,13 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
+import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
+import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
+import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
+import com.server.zelo.domain.user.emailverification.service.EmailVerificationService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import org.junit.jupiter.api.Test;
@@ -21,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
@@ -51,7 +56,73 @@ class UserCommandServiceTest {
     @Mock
     private LoginAttemptService loginAttemptService;
 
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
     private static final String CLIENT_IP = "203.0.113.7";
+    private static final String TICKET = "A".repeat(43);
+
+    @Test
+    void 이메일_인증_티켓이_유효하면_회원과_기본_배송지를_저장한다() {
+        // given
+        CreateUserRequest request = createUserRequest("Password1!", "Password1!");
+        User user = User.of("jieun@example.com", "encodedPassword", "홍길동", "010-1234-5678");
+        given(userService.createUser("jieun@example.com", "Password1!", "홍길동", "010-1234-5678")).willReturn(user);
+        given(userAddressService.createUserAddress(user, "집", "홍길동", "010-1234-5678", "12345", "서울 특별시 그곳", true))
+                .willReturn(UserAddress.of(user, "집", "홍길동", "010-1234-5678", "12345", "서울 특별시 그곳", true));
+
+        // when
+        CreateUserResponse response = userCommandService.createUserWithAddress(request);
+
+        // then 티켓은 가입 목적으로, 요청한 이메일과 함께 소비해야 함
+        assertThat(response.email()).isEqualTo("jieun@example.com");
+        then(emailVerificationService).should()
+                .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.SIGNUP);
+    }
+
+    @Test
+    void 이메일_인증_티켓이_유효하지_않으면_회원을_만들지_않는다() {
+        // given
+        CreateUserRequest request = createUserRequest("Password1!", "Password1!");
+        willThrow(new BusinessException(ErrorCode.EMAIL_VERIFICATION_REQUIRED))
+                .given(emailVerificationService)
+                .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.SIGNUP);
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.createUserWithAddress(request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.EMAIL_VERIFICATION_REQUIRED));
+        then(userService).should(never()).createUser(anyString(), anyString(), anyString(), anyString());
+        then(userAddressService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 비밀번호_확인이_다르면_이메일_인증_티켓을_소비하지_않는다() {
+        // given
+        CreateUserRequest request = createUserRequest("Password1!", "Password2!");
+
+        // when & then 고쳐서 다시 시도할 수 있는 실패로 인증이 날아가면 안 됨
+        assertThatThrownBy(() -> userCommandService.createUserWithAddress(request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH));
+        then(emailVerificationService).shouldHaveNoInteractions();
+        then(userService).should(never()).createUser(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 이미_가입된_이메일이면_중복_예외가_발생하고_배송지를_저장하지_않는다() {
+        // given
+        CreateUserRequest request = createUserRequest("Password1!", "Password1!");
+        given(userService.createUser("jieun@example.com", "Password1!", "홍길동", "010-1234-5678"))
+                .willThrow(new BusinessException(ErrorCode.DUPLICATE_EMAIL));
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.createUserWithAddress(request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL));
+        then(userAddressService).should(never()).createUserAddress(any(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
 
     @Test
     void 로그인하면_토큰을_발급하고_리프레시_토큰을_저장한다() {
@@ -289,6 +360,11 @@ class UserCommandServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_ADDRESS_PLACE));
         then(userAddressService).should(never()).releaseDefaultAddress(anyLong());
+    }
+
+    private CreateUserRequest createUserRequest(String password, String passwordConfirm) {
+        return new CreateUserRequest("Jieun@Example.com", TICKET, password, passwordConfirm, "홍길동",
+                "010-1234-5678", "집", "서울 특별시 그곳", "12345");
     }
 
     private CreateUserAddressRequest addressRequest(boolean isDefault) {

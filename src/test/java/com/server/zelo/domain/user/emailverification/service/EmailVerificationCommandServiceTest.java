@@ -211,9 +211,9 @@ class EmailVerificationCommandServiceTest {
         ValidateEmailResponse response = emailVerificationCommandService.validateEmail(EMAIL, PURPOSE, "123456");
 
         // then SecureRandom이 mock이라 난수는 전부 0이고, 32바이트의 URL-safe Base64는 'A' 43자
-        assertThat(response.verificationToken()).isEqualTo("A".repeat(43));
+        assertThat(response.emailVerificationTicket()).isEqualTo("A".repeat(43));
         then(emailVerificationRepository).should()
-                .saveTicket(response.verificationToken(), PURPOSE, EMAIL, Duration.ofMinutes(30));
+                .saveTicket(response.emailVerificationTicket(), PURPOSE, EMAIL, Duration.ofMinutes(30));
     }
 
     @ParameterizedTest

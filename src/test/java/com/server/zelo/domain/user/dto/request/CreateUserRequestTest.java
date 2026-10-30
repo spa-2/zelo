@@ -3,6 +3,8 @@ package com.server.zelo.domain.user.dto.request;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,7 +16,7 @@ class CreateUserRequestTest {
     void 이메일은_소문자로_변환된다() {
         // when
         CreateUserRequest request = new CreateUserRequest(
-                "TEST@Example.com", "Password1!", "Password1!", "홍길동",
+                "TEST@Example.com", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw","Password1!", "Password1!", "홍길동",
                 "010-1234-5678", "집", "서울 특별시 그곳", "12345");
 
         // then
@@ -25,7 +27,7 @@ class CreateUserRequestTest {
     void 이메일이_null이어도_예외없이_생성된다() {
         // when
         CreateUserRequest request = new CreateUserRequest(
-                null, "Password1!", "Password1!", "홍길동",
+                null, "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw","Password1!", "Password1!", "홍길동",
                 "010-1234-5678", "집", "서울 특별시 그곳", "12345");
 
         // then
@@ -92,9 +94,34 @@ class CreateUserRequestTest {
         assertThat(validator.validateProperty(request, "password")).isEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "short", "A", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
+    void 이메일_인증_티켓이_비어있거나_43자가_아니면_검증에_실패한다(String ticket) {
+        // given
+        CreateUserRequest request = requestWithTicket(ticket);
+
+        // when & then 32바이트를 Base64url로 인코딩한 길이(43자)만 허용
+        assertThat(validator.validateProperty(request, "emailVerificationTicket")).isNotEmpty();
+    }
+
+    @Test
+    void 이메일_인증_티켓이_43자이면_검증을_통과한다() {
+        // given
+        CreateUserRequest request = requestWithTicket("A".repeat(43));
+
+        // when & then
+        assertThat(validator.validateProperty(request, "emailVerificationTicket")).isEmpty();
+    }
+
+    private CreateUserRequest requestWithTicket(String ticket) {
+        return new CreateUserRequest(
+                "test@example.com", ticket, "DemoPass!2026", "DemoPass!2026", "홍길동",
+                "010-1234-5678", "집", "서울 특별시 그곳", "12345");
+    }
+
     private CreateUserRequest requestWithPassword(String password) {
         return new CreateUserRequest(
-                "test@example.com", password, password, "홍길동",
+                "test@example.com","dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw", password, password, "홍길동",
                 "010-1234-5678", "집", "서울 특별시 그곳", "12345");
     }
 }

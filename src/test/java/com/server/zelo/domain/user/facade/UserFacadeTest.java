@@ -45,7 +45,7 @@ class UserFacadeTest {
     void 이메일_단위_락_안에서_회원가입을_실행한다() {
         // given
         CreateUserRequest request = new CreateUserRequest(
-                "test@example.com", "Password1!", "Password1!", "홍길동",
+                "test@example.com", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXw","Password1!", "Password1!", "홍길동",
                 "010-1234-5678", "집", "서울 특별시 그곳", "12345");
         CreateUserResponse response = CreateUserResponse.of(
                 1L, "test@example.com", "홍길동", "집", "서울 특별시 그곳", "12345", LocalDateTime.now());

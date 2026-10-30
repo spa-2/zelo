@@ -9,6 +9,8 @@ import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserAddressResponse;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
 import com.server.zelo.domain.user.dto.response.LoginResult;
+import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
+import com.server.zelo.domain.user.emailverification.service.EmailVerificationService;
 import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.entity.UserRole;
@@ -25,6 +27,7 @@ public class UserCommandService {
     private final UserAddressService userAddressService;
     private final RefreshTokenService refreshTokenService;
     private final LoginAttemptService loginAttemptService;
+    private final EmailVerificationService emailVerificationService;
 
     // 유저와 배송지가 같이 저장되거나 같이 롤백되어야 해서 여기서 트랜잭션을 묶음
     @Transactional
@@ -33,6 +36,9 @@ public class UserCommandService {
         if (!request.password().equals(request.passwordConfirm())) {
             throw new BusinessException(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH);
         }
+
+        // 이메일 인증 티켓을 소비하는데 티켓이 없거나 만료됐거나 이메일이 다르면 예외를 던짐
+        emailVerificationService.consumeTicket(request.email(),request.emailVerificationTicket(), EmailVerificationPurpose.SIGNUP);
 
         User user = userService.createUser(request.email(), request.password(), request.name(), request.phoneNumber());
 

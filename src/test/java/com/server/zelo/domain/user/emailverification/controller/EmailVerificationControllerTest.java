@@ -98,7 +98,7 @@ class EmailVerificationControllerTest {
     }
 
     @Test
-    void 코드가_맞으면_200과_인증_토큰을_반환한다() throws Exception {
+    void 코드가_맞으면_200과_이메일_인증_티켓을_반환한다() throws Exception {
         // given
         given(emailVerificationCommandService.validateEmail("jieun@example.com", EmailVerificationPurpose.SIGNUP, "123456"))
                 .willReturn(new ValidateEmailResponse("ticket"));
@@ -109,7 +109,7 @@ class EmailVerificationControllerTest {
                 """)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.verificationToken").value("ticket"));
+                .andExpect(jsonPath("$.data.emailVerificationTicket").value("ticket"));
     }
 
     @Test

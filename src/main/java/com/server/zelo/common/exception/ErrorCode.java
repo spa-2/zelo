@@ -23,9 +23,10 @@ public enum ErrorCode {
     INVALID_ADMIN_ROLE_EXCEPTION(HttpStatus.BAD_REQUEST, "MEMBER_005", "어드민 회원가입에서는 NORMAL 역할을 사용할 수 없습니다." ),
     INACTIVE_ACCOUNT(HttpStatus.FORBIDDEN, "MEMBER_006", "비활성화 계정입니다"),
     USER_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_007", "배송지를 찾을 수 없습니다."),
-    DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
-    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
     DEFAULT_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "MEMBER_008", "기본 배송지는 다른 배송지를 기본으로 지정한 뒤 변경하거나 삭제할 수 있습니다."),
+    DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
+    SOCIAL_ACCOUNT_USER(HttpStatus.BAD_REQUEST, "MEMBER_010", "소셜 회원가입 계정입니다. 소셜 로그인을 진행해 주세요."),
+    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
 
     // Product
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_001", "상품을 찾을 수 없습니다."),
@@ -122,6 +123,7 @@ public enum ErrorCode {
     UNSUPPORTED_SOCIAL_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_012", "지원하지 않는 소셜 로그인입니다."),
     SOCIAL_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_013", "소셜 로그인 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요."),
     TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_014", "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요"),
+    TOO_MANY_PASSWORD_RESET_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_015", "비밀번호 재설정 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
 
     // mail
     TOO_MANY_MAIL_SEND(HttpStatus.TOO_MANY_REQUESTS, "MAIL_001", "인증 메일 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
@@ -138,7 +140,7 @@ public enum ErrorCode {
     INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다."),
     DELIVERY_NOT_REFUNDABLE(HttpStatus.CONFLICT, "DELIVERY_002", "출고됐거나 이미 취소된 주문은 환불할 수 없습니다."),
     DELIVERY_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_003", "배송 정보를 찾을 수 없습니다."),
-    DEFAULT_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_010", "기본 배송지를 찾을 수 없습니다.");
+    DEFAULT_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_004", "기본 배송지를 찾을 수 없습니다.");
 
 
     private final HttpStatus status;

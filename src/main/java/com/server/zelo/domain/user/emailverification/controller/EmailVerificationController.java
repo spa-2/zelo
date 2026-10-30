@@ -5,6 +5,7 @@ import com.server.zelo.domain.user.emailverification.dto.SendEmailRequest;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailRequest;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.service.EmailVerificationCommandService;
+import com.server.zelo.domain.user.emailverification.service.EmailVerificationSendCommandService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,11 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmailVerificationController {
 
     private final EmailVerificationCommandService emailVerificationCommandService;
+    private final EmailVerificationSendCommandService emailVerificationSendCommandService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<Void>> sendEmail(
             @Valid @RequestBody SendEmailRequest request, HttpServletRequest httpServletRequest) {
-        emailVerificationCommandService.sendEmail(request.email(),request.purpose() ,httpServletRequest.getRemoteAddr());
+        emailVerificationSendCommandService.sendEmail(request.email(),request.purpose() ,httpServletRequest.getRemoteAddr());
         return ResponseEntity.ok(ApiResponse.ok());
     }
 

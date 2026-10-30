@@ -70,4 +70,28 @@ class UserTest {
         // then
         assertThat(user.isPasswordNull()).isFalse();
     }
+
+    @Test
+    void 비밀번호를_변경하면_새_값으로_바뀐다() {
+        // given
+        User user = User.of("test@example.com", "oldEncoded", "홍길동", "010-1234-5678");
+
+        // when
+        user.changePassword("newEncoded");
+
+        // then
+        assertThat(user.getPassword()).isEqualTo("newEncoded");
+    }
+
+    @Test
+    void 비밀번호가_없던_소셜_사용자도_변경하면_비밀번호가_생긴다() {
+        // given
+        User user = User.ofSocial("jieun@gmail.com", "지은", "010-1234-5678");
+
+        // when
+        user.changePassword("newEncoded");
+
+        // then
+        assertThat(user.isPasswordNull()).isFalse();
+    }
 }

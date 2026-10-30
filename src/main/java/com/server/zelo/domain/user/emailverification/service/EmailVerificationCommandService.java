@@ -34,6 +34,9 @@ public class EmailVerificationCommandService {
     private static final Duration SEND_BLOCK = Duration.ofMinutes(10); // 횟수 초과 시 차단 시간
     private static final Duration TICKET_TTL = Duration.ofMinutes(30); // 티켓 유효 시간
     private static final int CODE_BOUND = (int) Math.pow(10, CODE_LENGTH);
+    private static final int MAX_PASSWORD_RESET_COUNT = 5; // 한 ip가 윈도우 동안 보낼 수 있는 비밀번호 재설정 요청 횟수
+    private static final Duration PASSWORD_RESET_WINDOW = Duration.ofSeconds(60); // 재설정 요청 횟수를 세는 시간
+    private static final Duration PASSWORD_RESET_BLOCK = Duration.ofMinutes(5); // 횟수 초과 시 차단 시간
 
     private static final String TITLE = "[zelo] 이메일 검증 요청";
     private static final String BODY_FORMAT = "당신의 검증 코드는 %s 입니다. %d분 이내에 입력해 주세요.";
@@ -88,6 +91,15 @@ public class EmailVerificationCommandService {
             case MISMATCH -> throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
             case TOO_MANY_FAILURES -> throw new BusinessException(ErrorCode.TOO_MANY_EMAIL_CODE_FAILURES);
         };
+    }
+
+    // 가입 여부를 조회하기 전에 호출해서, 없는 이메일로 하는 요청도 한도에 포함시킨다
+    public void validatePasswordResetLimit(String remoteAddr) {
+        long count = emailVerificationRepository.increasePasswordResetCount(
+                remoteAddr, MAX_PASSWORD_RESET_COUNT, PASSWORD_RESET_WINDOW, PASSWORD_RESET_BLOCK);
+        if (count > MAX_PASSWORD_RESET_COUNT) {
+            throw new RateLimitExceededException(ErrorCode.TOO_MANY_PASSWORD_RESET_REQUESTS, PASSWORD_RESET_BLOCK.toSeconds());
+        }
     }
 
     private String issueTicket(String email, EmailVerificationPurpose purpose) {

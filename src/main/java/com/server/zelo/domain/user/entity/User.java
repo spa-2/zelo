@@ -67,4 +67,8 @@ public class User extends BaseTimeEntity {
     public static String normalizeEmail(String email) {
         return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
+
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

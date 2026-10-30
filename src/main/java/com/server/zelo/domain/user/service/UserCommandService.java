@@ -3,6 +3,7 @@ package com.server.zelo.domain.user.service;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.user.dto.request.ResetPasswordRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
@@ -33,9 +34,7 @@ public class UserCommandService {
     @Transactional
     public CreateUserResponse createUserWithAddress(CreateUserRequest request) {
 
-        if (!request.password().equals(request.passwordConfirm())) {
-            throw new BusinessException(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH);
-        }
+        validatePassword(request.password(), request.passwordConfirm());
 
         // 이메일 인증 티켓을 소비하는데 티켓이 없거나 만료됐거나 이메일이 다르면 예외를 던짐
         emailVerificationService.consumeTicket(request.email(),request.emailVerificationTicket(), EmailVerificationPurpose.SIGNUP);
@@ -98,6 +97,33 @@ public class UserCommandService {
         return LoginResult.of(newAccessToken, newRefreshToken);
     }
 
+    @Transactional
+    public void validateResetPassword(ResetPasswordRequest request) {
+
+        validatePassword(request.password(), request.passwordConfirm());
+
+        // 패스워드 변경 티켓 소비
+        emailVerificationService.consumeTicket(request.email(), request.emailVerificationTicket(), EmailVerificationPurpose.PASSWORD_RESET);
+
+        // 유저를 찾고, 패스워드가 null인지 검증한다.
+        User user = userService.getUserByEmail(request.email());
+        if (user.isPasswordNull()) {
+            throw new BusinessException(ErrorCode.SOCIAL_ACCOUNT_USER);
+        }
+
+        // 패스워드 변경(초기화)
+        userService.resetPassword(user,request.password());
+
+        // 리프레시 토큰 폐기
+        refreshTokenService.deleteRefreshToken(user.getId());
+    }
+
+    private void validatePassword(String password, String passwordConfirm) {
+        if (!password.equals(passwordConfirm)) {
+            throw new BusinessException(ErrorCode.PASSWORD_CONFIRMATION_MISMATCH);
+        }
+    }
+
     private Long verifyTokenAndGetUserId(String refreshToken) {
         // 토큰이 유효하지 않거나 리프레시 토큰이 아니라면 예외
         if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
@@ -106,6 +132,4 @@ public class UserCommandService {
 
         return jwtUtil.getUserId(refreshToken);
     }
-
-
 }

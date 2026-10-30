@@ -235,6 +235,32 @@ class EmailVerificationCommandServiceTest {
         then(emailVerificationRepository).should(never()).saveTicket(anyString(), any(), anyString(), any());
     }
 
+    @ParameterizedTest
+    @ValueSource(longs = {1, 3, 5})
+    void 비밀번호_재설정_요청이_5회_이하이면_통과한다(long count) {
+        // given
+        given(emailVerificationRepository.increasePasswordResetCount(
+                IP, 5, Duration.ofSeconds(60), Duration.ofMinutes(5))).willReturn(count);
+
+        // when & then
+        assertThatCode(() -> emailVerificationCommandService.validatePasswordResetLimit(IP))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 비밀번호_재설정_요청이_5회를_넘으면_차단_시간과_함께_예외가_발생한다() {
+        // given
+        given(emailVerificationRepository.increasePasswordResetCount(
+                IP, 5, Duration.ofSeconds(60), Duration.ofMinutes(5))).willReturn(6L);
+
+        // when & then
+        assertThatThrownBy(() -> emailVerificationCommandService.validatePasswordResetLimit(IP))
+                .isInstanceOfSatisfying(RateLimitExceededException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TOO_MANY_PASSWORD_RESET_REQUESTS);
+                    assertThat(exception.getRetryAfterSeconds()).isEqualTo(300L); // 차단 시간(5분)
+                });
+    }
+
     private void givenIpCount(long count) {
         given(emailVerificationRepository.increaseIpCount(
                 IP, 20, Duration.ofHours(1), Duration.ofMinutes(30))).willReturn(count);

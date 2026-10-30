@@ -3,9 +3,11 @@ package com.server.zelo.domain.user.emailverification.controller;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import com.server.zelo.domain.user.emailverification.service.EmailVerificationCommandService;
+import com.server.zelo.domain.user.emailverification.service.EmailVerificationSendCommandService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,8 +26,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +39,9 @@ class EmailVerificationControllerTest {
 
     @Mock
     private EmailVerificationCommandService emailVerificationCommandService;
+
+    @Mock
+    private EmailVerificationSendCommandService emailVerificationSendCommandService;
 
     @InjectMocks
     private EmailVerificationController emailVerificationController;
@@ -58,8 +65,54 @@ class EmailVerificationControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         // MockMvc의 기본 요청자 주소는 127.0.0.1
-        then(emailVerificationCommandService).should()
+        then(emailVerificationSendCommandService).should()
                 .sendEmail("jieun@example.com", EmailVerificationPurpose.SIGNUP, "127.0.0.1");
+    }
+
+    @Test
+    void 비밀번호_찾기_목적도_전송_서비스에_그대로_전달한다() throws Exception {
+        // when & then
+        perform("""
+                {"email": "jieun@example.com", "purpose": "PASSWORD_RESET"}
+                """)
+                .andExpect(status().isOk());
+
+        then(emailVerificationSendCommandService).should()
+                .sendEmail("jieun@example.com", EmailVerificationPurpose.PASSWORD_RESET, "127.0.0.1");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "MEMBER_NOT_FOUND, 404, MEMBER_001",
+            "SOCIAL_ACCOUNT_USER, 400, MEMBER_010"
+    })
+    void 비밀번호_찾기_사전_검사에_실패하면_오류_코드에_맞는_상태와_응답이_내려간다(ErrorCode errorCode, int status, String code) throws Exception {
+        // given
+        willThrow(new BusinessException(errorCode))
+                .given(emailVerificationSendCommandService).sendEmail(anyString(), any(), anyString());
+
+        // when & then
+        perform("""
+                {"email": "jieun@example.com", "purpose": "PASSWORD_RESET"}
+                """)
+                .andExpect(status().is(status))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(code));
+    }
+
+    @Test
+    void 비밀번호_재설정_요청이_너무_많으면_429와_재시도_시간을_반환한다() throws Exception {
+        // given
+        willThrow(new RateLimitExceededException(ErrorCode.TOO_MANY_PASSWORD_RESET_REQUESTS, 300L))
+                .given(emailVerificationSendCommandService).sendEmail(anyString(), any(), anyString());
+
+        // when & then
+        perform("""
+                {"email": "jieun@example.com", "purpose": "PASSWORD_RESET"}
+                """)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "300"))
+                .andExpect(jsonPath("$.code").value("AUTH_015"));
     }
 
     @ParameterizedTest
@@ -84,7 +137,7 @@ class EmailVerificationControllerTest {
         // when & then
         perform(body).andExpect(status().isBadRequest());
 
-        then(emailVerificationCommandService).should(never()).sendEmail(anyString(), any(), anyString());
+        then(emailVerificationSendCommandService).should(never()).sendEmail(anyString(), any(), anyString());
     }
 
     @Test

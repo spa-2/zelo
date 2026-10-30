@@ -22,6 +22,7 @@ public class EmailVerificationRepository {
     private static final String EMAIL_IP_COUNT = "EMAIL_IP_COUNT:";
     private static final String EMAIL_SEND_COUNT = "EMAIL_SEND_COUNT:";
     private static final String EMAIL_CODE_FAILED = "EMAIL_CODE_FAILED:";
+    private static final String EMAIL_PASSWORD_RESET_COUNT = "EMAIL_PASSWORD_RESET_COUNT:";
 
     // 이메일별, ip별 카운터가 같은 방식(윈도우 동안 세다가 초과하면 차단 시간으로 전환)이라 스크립트를 같이 쓰고 키만 다르게 한다
     private static final RedisScript<Long> COUNT_SCRIPT = new DefaultRedisScript<>("""
@@ -167,6 +168,12 @@ public class EmailVerificationRepository {
         return ticketValue.equals(storedValue);
     }
 
+    // 비밀번호 재설정은 가입 여부를 응답으로 알려 주므로, 메일을 보내지 않는 요청(없는 이메일)도 세어서 이메일을 하나씩 대입하는 조회를 막는다
+    // 메일 발송용 ip 카운터와는 한도가 달라서 키를 분리한다
+    public long increasePasswordResetCount(String remoteAddr, int maxCount, Duration window, Duration block) {
+        return increaseCount(passwordResetKey(remoteAddr), maxCount, window, block);
+    }
+
     private long increaseCount(String key, int maxCount, Duration window, Duration block) {
         return stringRedisTemplate.execute(
                 COUNT_SCRIPT,
@@ -195,6 +202,11 @@ public class EmailVerificationRepository {
     // 메일 전송 횟수
     private String sendKey(String email){
         return EMAIL_SEND_COUNT + hash(email);
+    }
+
+    // ip당 비밀번호 재설정 요청 횟수
+    private String passwordResetKey(String remoteAddr) {
+        return EMAIL_PASSWORD_RESET_COUNT + hash(remoteAddr);
     }
 
     // ip당 메일 전송 횟수

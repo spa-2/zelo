@@ -5,6 +5,7 @@ import com.server.zelo.common.auth.Auth;
 import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.auth.RefreshTokenCookieFactory;
 import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.domain.user.dto.request.ResetPasswordRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
 import com.server.zelo.domain.user.dto.request.LoginRequest;
 import com.server.zelo.domain.user.dto.response.CreateUserResponse;
@@ -25,8 +26,6 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.time.Duration;
 
 import static com.server.zelo.common.auth.RefreshTokenCookieFactory.REFRESH_TOKEN_COOKIE;
 
@@ -94,4 +93,9 @@ public class UserController {
                 .body(ApiResponse.ok(LoginResponse.from(result)));
     }
 
+    @PostMapping("/api/users/password-reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request){
+        userCommandService.validateResetPassword(request);
+        return ResponseEntity.ok().body(ApiResponse.ok());
+     }
 }

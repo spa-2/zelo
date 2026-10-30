@@ -13,8 +13,8 @@ locals {
 
   # 값은 콘솔이나 CLI로 직접 넣는다. 초기값 그대로면 앱이 기동하지 못하는 것이 의도다 (잘못된 값으로 조용히 뜨는 것보다 낫다)
   manual_parameters = {
-    # application.yaml의 ${jwt_secret}와 이름이 정확히 같아야 한다 (소문자). 프로퍼티 소스에서는 대소문자를 구분한다
-    jwt_secret             = "CHANGE_ME"
+    # 파라미터 이름은 application.yaml의 ${...} 이름과 대소문자까지 정확히 같아야 한다. 프로퍼티 소스에서는 대소문자를 구분한다
+    JWT_SECRET             = "CHANGE_ME"
     OPENAI_API_KEY         = "CHANGE_ME"
     GOOGLE_CLIENT_ID       = "CHANGE_ME"
     GOOGLE_CLIENT_SECRET   = "CHANGE_ME"
@@ -23,10 +23,14 @@ locals {
     PORTONE_API_SECRET     = "CHANGE_ME"
     PORTONE_STORE_ID       = "CHANGE_ME"
     PORTONE_WEBHOOK_SECRET = "CHANGE_ME"
+    # real은 OpenAI를 호출하고 fake는 호출 없이 고정된 응답을 돌려주는 모드. application.yaml의 기본값은 fake라서 서버에서는 real로 명시한다
+    LLM_MODE = "real"
     # fake는 포트원 키 없이 동작하는 모드. 실제 결제를 붙일 때 real로 바꾼다
     PORTONE_MODE = "fake"
     # fake는 메일을 보내지 않고 로그에만 남기는 모드. SES 프로덕션 액세스 승인 후 real로 바꾼다
     MAIL_MODE = "fake"
+    # fake는 구글, 카카오 호출 없이 "fake-*" code를 로그인으로 받아 주는 모드라 운영에서는 절대 쓰면 안 된다. 소셜 로그인을 실제로 켤 때 real로 바꾼다
+    SOCIAL_MODE = "fake"
   }
 }
 

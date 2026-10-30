@@ -7,11 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 docker compose up -d --wait           # start local Postgres 16 (db: zelotest, port 5432) and Redis 7 (port 6379), waits until both are healthy
 export OPENAI_API_KEY=...             # required: application.yaml reads ${OPENAI_API_KEY}, startup fails without it
-export JWT_SECRET=...                 # required: application.yaml reads ${jwt_secret} (Base64-encoded; decodes to at least 32 bytes), startup fails without it
-export GOOGLE_CLIENT_ID=...           # required: application.yaml reads ${GOOGLE_CLIENT_ID} (Google OAuth client ID), startup fails without it
-export GOOGLE_CLIENT_SECRET=...       # required: application.yaml reads ${GOOGLE_CLIENT_SECRET}, startup fails without it
-export KAKAO_CLIENT_ID=...            # required: application.yaml reads ${KAKAO_CLIENT_ID} (Kakao REST API key), startup fails without it
-export KAKAO_CLIENT_SECRET=...        # required: application.yaml reads ${KAKAO_CLIENT_SECRET}, startup fails without it
+export JWT_SECRET=...                 # required: application.yaml reads ${JWT_SECRET} (Base64-encoded; decodes to at least 32 bytes), startup fails without it (tests use a dummy key from application-test.yaml)
+export SOCIAL_MODE=fake               # optional: application.yaml reads ${SOCIAL_MODE:fake}. fake accepts any "fake-*" code as a login, real calls Google/Kakao (never use fake in production)
+export GOOGLE_CLIENT_ID=...           # only for SOCIAL_MODE=real: application.yaml reads ${GOOGLE_CLIENT_ID} (Google OAuth client ID)
+export GOOGLE_CLIENT_SECRET=...       # only for SOCIAL_MODE=real: application.yaml reads ${GOOGLE_CLIENT_SECRET}
+export KAKAO_CLIENT_ID=...            # only for SOCIAL_MODE=real: application.yaml reads ${KAKAO_CLIENT_ID} (Kakao REST API key)
+export KAKAO_CLIENT_SECRET=...        # only for SOCIAL_MODE=real: application.yaml reads ${KAKAO_CLIENT_SECRET}
+export LLM_MODE=fake                  # optional: application.yaml reads ${LLM_MODE:fake}. fake returns canned LLM responses, real calls OpenAI (OPENAI_API_KEY is still read either way)
 export MAIL_MODE=fake                 # optional: application.yaml reads ${MAIL_MODE:fake}. fake logs the mail instead of sending it, real sends through AWS SES
 export MAIL_FROM=...                  # only for MAIL_MODE=real: SES verified sender address (zelo.mail.from), must match the IAM ses:FromAddress condition
 ./gradlew bootRun                     # run the app
@@ -21,7 +23,7 @@ export MAIL_FROM=...                  # only for MAIL_MODE=real: SES verified se
 ./gradlew test --tests 'com.server.zelo.SomeTest.someMethod'                 # single method
 ```
 
-No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, Redis (Redisson connects at startup), `OPENAI_API_KEY` and `JWT_SECRET`. The other unit tests need none of them. The social login keys above are not needed for tests that use the `test` profile (`zelo.social.mode: fake`); they are only read when the app runs in the default `real` mode.
+No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the full Spring context, so it needs a reachable Postgres, Redis (Redisson connects at startup) and `OPENAI_API_KEY`. `JWT_SECRET` is not needed for tests that use the `test` profile (it sets a dummy key), and neither are the social login keys (`zelo.social.mode: fake`); they are only read when the app runs with `SOCIAL_MODE=real`. The other unit tests need none of them.
 
 ## Configuration notes
 

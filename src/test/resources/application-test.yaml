@@ -1,3 +1,7 @@
+jwt:
+  # 테스트 전용 더미 키(운영 값 아님). 환경변수 JWT_SECRET이 없어도 컨텍스트가 뜨게 한다
+  secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LW5ldmVyLXVzZS1pbi1wcm9kdWN0aW9uIQ==
+
 spring:
   ai:
     model:

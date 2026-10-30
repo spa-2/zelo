@@ -91,11 +91,7 @@ class SeedDataLoaderTest {
                 .singleElement().satisfies(inventory -> assertThat(inventory.getAvailableQuantity()).isZero());
         assertThat(keywords.getValue()).filteredOn(keyword -> keyword.getProduct().getName().equals("백김치 1kg"))
                 .extracting(ProductKeyword::getKeyword).containsExactly(Keyword.NOT_SPICY);
-        // 같은 이름이어도 브랜드로 구분되는 상품
-        assertThat(inventories.getValue()).extracting(Inventory::getProduct)
-                .filteredOn(product -> product.getName().equals("포기김치 1kg"))
-                .extracting(product -> product.getBrand()).containsExactlyInAnyOrder("브랜드 G", "브랜드 H");
-    }
+            }
 
     @Test
     void CSV_이름이_서로_겹치지_않는다() {
@@ -108,8 +104,8 @@ class SeedDataLoaderTest {
         assertThat(categories).extracting(row -> row[1]).doesNotHaveDuplicates();
         assertThat(ingredients).extracting(row -> row[1]).doesNotHaveDuplicates();
         assertThat(products).extracting(row -> row[0]).doesNotHaveDuplicates();
-        // 같은 재료·이름·브랜드 상품이 두 번 들어가면 안 됨
-        assertThat(products).extracting(row -> row[1] + "/" + row[2] + "/" + row[3]).doesNotHaveDuplicates();
+        // 견적 카드에서 "계란 10구 → 계란 10구"처럼 안 보이게 상품 이름도 안 겹치게 함 (싼 쪽은 "알뜰"을 붙임)
+        assertThat(products).extracting(row -> row[3]).doesNotHaveDuplicates();
     }
 
     @Test

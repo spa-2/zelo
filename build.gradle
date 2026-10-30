@@ -35,6 +35,12 @@ repositories {
     mavenCentral()
 }
 
+dependencyManagement {
+    imports {
+        mavenBom "io.awspring.cloud:spring-cloud-aws-dependencies:4.0.2"
+    }
+}
+
 dependencies {
     implementation platform('org.springframework.ai:spring-ai-bom:2.0.1')
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
@@ -88,7 +94,9 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
 
     // aws SSM
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store:4.0.2'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store'
+    // ses
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-ses'
 }
 
 tasks.named('test') {

@@ -12,6 +12,8 @@ export GOOGLE_CLIENT_ID=...           # required: application.yaml reads ${GOOGL
 export GOOGLE_CLIENT_SECRET=...       # required: application.yaml reads ${GOOGLE_CLIENT_SECRET}, startup fails without it
 export KAKAO_CLIENT_ID=...            # required: application.yaml reads ${KAKAO_CLIENT_ID} (Kakao REST API key), startup fails without it
 export KAKAO_CLIENT_SECRET=...        # required: application.yaml reads ${KAKAO_CLIENT_SECRET}, startup fails without it
+export MAIL_MODE=fake                 # optional: application.yaml reads ${MAIL_MODE:fake}. fake logs the mail instead of sending it, real sends through AWS SES
+export MAIL_FROM=...                  # only for MAIL_MODE=real: SES verified sender address (zelo.mail.from), must match the IAM ses:FromAddress condition
 ./gradlew bootRun                     # run the app
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)

@@ -6,6 +6,8 @@ spring:
     aws:
       region:
         static: ap-northeast-2 # ssm 리전
+      ses:
+        region: ap-northeast-2 # ses 리전
 
   datasource:
     url: jdbc:postgresql://localhost:5432/zelotest
@@ -105,6 +107,7 @@ zelo:
 
   mail:
     mode: ${MAIL_MODE:fake}
+    from: ${MAIL_FROM:} # ses 발신 주소
 
 logging:
   pattern:

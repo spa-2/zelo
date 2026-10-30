@@ -17,7 +17,7 @@ class SocialLoginResponseTest {
         // then
         assertThat(response.signupRequired()).isFalse();
         assertThat(response.accessToken()).isEqualTo("accessToken");
-        assertThat(response.signupToken()).isNull();
+        assertThat(response.signupTicket()).isNull();
         assertThat(response.email()).isNull();
         assertThat(response.name()).isNull();
     }
@@ -29,7 +29,7 @@ class SocialLoginResponseTest {
 
         // then
         assertThat(response.signupRequired()).isTrue();
-        assertThat(response.signupToken()).isEqualTo("ticket");
+        assertThat(response.signupTicket()).isEqualTo("ticket");
         assertThat(response.email()).isEqualTo("jieun@gmail.com");
         assertThat(response.name()).isEqualTo("지은");
         assertThat(response.accessToken()).isNull();
@@ -43,7 +43,7 @@ class SocialLoginResponseTest {
 
         // then
         assertThat(json).contains("signupRequired", "accessToken")
-                .doesNotContain("signupToken", "email", "name", "refreshToken");
+                .doesNotContain("signupTicket", "email", "name", "refreshToken");
     }
 
     @Test
@@ -53,6 +53,6 @@ class SocialLoginResponseTest {
                 SocialLoginResponse.from(new NewMemberResult("ticket", "jieun@gmail.com", "지은")));
 
         // then
-        assertThat(json).contains("signupRequired", "signupToken", "email", "name").doesNotContain("accessToken");
+        assertThat(json).contains("signupRequired", "signupTicket", "email", "name").doesNotContain("accessToken");
     }
 }

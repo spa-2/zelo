@@ -113,7 +113,7 @@ public enum ErrorCode {
     // 같은 토큰의 재발급 요청이 동시에 오거나 응답이 유실되어 재시도된 경우로, 이 토큰으로 다시 시도하라는 뜻이 아님
     TOKEN_ALREADY_ROTATED(HttpStatus.CONFLICT, "AUTH_007", "이미 재발급된 토큰입니다. 잠시 후 다시 시도하거나 다시 로그인하세요."),
     // 만료되거나 없는 소셜 로그인 티켓
-    INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_008", "인증이 만료 되었습니다. 다시 소셜 로그인을 진행 해주세요"),
+    INVALID_SIGNUP_TICKET(HttpStatus.UNAUTHORIZED, "AUTH_008", "인증이 만료 되었습니다. 다시 소셜 로그인을 진행 해주세요"),
     // 소셜 제공자(구글 등)가 code를 거절한 경우 (만료, 이미 사용, redirectUri 불일치)
     SOCIAL_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_009", "소셜 로그인에 실패했습니다. 다시 시도해 주세요."),
     // 신규 가입자에게만 적용함. 이미 가입한 사용자는 이메일이 없어도 로그인됨

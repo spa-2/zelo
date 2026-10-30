@@ -9,7 +9,7 @@ public record SocialLoginResponse(
         // 최초 로그인이 아니면 토큰 전달
         String accessToken,
         // 최초 로그인이면 회원가입 티켓 전달
-        String signupToken,
+        String signupTicket,
         String email,
         String name
 ) {
@@ -18,6 +18,6 @@ public record SocialLoginResponse(
     }
 
     public static SocialLoginResponse from(NewMemberResult result) {
-        return new SocialLoginResponse(true, null, result.signupToken(), result.email(), result.name());
+        return new SocialLoginResponse(true, null, result.signupTicket(), result.email(), result.name());
     }
 }

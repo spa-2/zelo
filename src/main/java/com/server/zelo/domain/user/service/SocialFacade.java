@@ -17,7 +17,7 @@ public class SocialFacade {
     private final LockDistributeService lockDistributeService;
 
     public LoginResult createSocialUserWithAddress(CreateSocialUserRequest request) {
-        SocialProfile profile = socialCommandService.consumeSignupTicket(request.signupToken());
+        SocialProfile profile = socialCommandService.consumeSignupTicket(request.signupTicket());
         return lockDistributeService.execute(LockKey.createUser(User.normalizeEmail(profile.email())),
                 () -> socialCommandService.signup(request, profile)
         );

@@ -35,8 +35,8 @@ public class SocialCommandService {
     private final List<SocialLoginClient> socialLoginClients;
     private final SocialSignupTicketService socialSignupTicketService;
 
-    public SocialProfile consumeSignupTicket(String signupToken) {
-        return socialSignupTicketService.consume(signupToken);
+    public SocialProfile consumeSignupTicket(String signupTicket) {
+        return socialSignupTicketService.consume(signupTicket);
     }
 
     @Transactional
@@ -82,9 +82,9 @@ public class SocialCommandService {
         }
 
         // 회원가입 시 사용할 정보를 30분 저장
-        String signupToken = socialSignupTicketService.issue(profile);
+        String signupTicket = socialSignupTicketService.issue(profile);
         // 가입 화면에 미리 채워 주는 이름과 실제로 저장되는 이름이 같도록 같은 값을 씀
-        return new NewMemberResult(signupToken, profile.email(), profile.displayName());
+        return new NewMemberResult(signupTicket, profile.email(), profile.displayName());
     }
 
     private LoginResult loginWithSocial(Long userId, UserRole role) {

@@ -229,7 +229,7 @@ class SocialSignupApiIntegrationTest {
         return mockMvc.perform(post("/api/auth/social/signup")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"signupToken": "%s", "phoneNumber": "010-1234-5678",
+                        {"signupTicket": "%s", "phoneNumber": "010-1234-5678",
                          "place": "집", "addresses": "서울 강남구", "zipCode": "12345"}
                         """.formatted(ticket)));
     }

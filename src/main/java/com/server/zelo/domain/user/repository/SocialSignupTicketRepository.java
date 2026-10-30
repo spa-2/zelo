@@ -28,9 +28,9 @@ public class SocialSignupTicketRepository {
     public Optional<String> consume(String socialSignupTicket) {
         String hashedTicket = hash(socialSignupTicket);
         // 값을 지우면서 꺼내어서 같은 번호표로 2번 이상 소비할 수 없음
-        String token = stringRedisTemplate.opsForValue().getAndDelete(SOCIAL_SIGNUP_TICKETS_PREFIX + hashedTicket);
+        String profileJson = stringRedisTemplate.opsForValue().getAndDelete(SOCIAL_SIGNUP_TICKETS_PREFIX + hashedTicket);
 
-        return Optional.ofNullable(token);
+        return Optional.ofNullable(profileJson);
     }
 
     private String hash(String socialSignupTicket) {

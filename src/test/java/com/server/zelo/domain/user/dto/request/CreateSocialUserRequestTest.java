@@ -39,7 +39,7 @@ CreateSocialUserRequestTest {
     @Test
     void 번호표가_비어있으면_검증에_실패한다() {
         assertThat(validator.validateProperty(
-                request(" ", "010-1234-5678", "집", "서울 강남구", "12345"), "signupToken")).isNotEmpty();
+                request(" ", "010-1234-5678", "집", "서울 강남구", "12345"), "signupTicket")).isNotEmpty();
     }
 
     @Test
@@ -74,8 +74,8 @@ CreateSocialUserRequestTest {
                 request("ticket", "010-1234-5678", "집", "서울 강남구", "1".repeat(11)), "zipCode")).isNotEmpty();
     }
 
-    private CreateSocialUserRequest request(String signupToken, String phoneNumber,
+    private CreateSocialUserRequest request(String signupTicket, String phoneNumber,
                                             String place, String addresses, String zipCode) {
-        return new CreateSocialUserRequest(signupToken, phoneNumber, place, addresses, zipCode);
+        return new CreateSocialUserRequest(signupTicket, phoneNumber, place, addresses, zipCode);
     }
 }

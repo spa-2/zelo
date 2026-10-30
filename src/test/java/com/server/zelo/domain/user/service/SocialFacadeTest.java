@@ -81,13 +81,13 @@ class SocialFacadeTest {
     void 번호표가_유효하지_않으면_락을_잡지_않고_가입하지_않는다() {
         // given
         given(socialCommandService.consumeSignupTicket("ticket"))
-                .willThrow(new BusinessException(ErrorCode.INVALID_SIGNUP_TOKEN));
+                .willThrow(new BusinessException(ErrorCode.INVALID_SIGNUP_TICKET));
 
         // when & then
         assertThatThrownBy(() -> socialFacade.createSocialUserWithAddress(REQUEST))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.INVALID_SIGNUP_TOKEN);
+                .isEqualTo(ErrorCode.INVALID_SIGNUP_TICKET);
         then(lockDistributeService).shouldHaveNoInteractions();
         then(socialCommandService).should(never()).signup(any(), any());
     }

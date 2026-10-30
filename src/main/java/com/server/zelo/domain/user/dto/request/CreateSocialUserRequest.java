@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 public record CreateSocialUserRequest(
         @NotBlank
         @Size(min = 1, max = 255)
-        String signupToken,
+        String signupTicket,
 
         @NotBlank
         @Size(min = 11,max = 255)
@@ -26,8 +26,8 @@ public record CreateSocialUserRequest(
         @Size(max = 10)
         String zipCode
 ) {
-    public CreateSocialUserRequest(String signupToken, String phoneNumber, String place, String addresses, String zipCode) {
-        this.signupToken = signupToken;
+    public CreateSocialUserRequest(String signupTicket, String phoneNumber, String place, String addresses, String zipCode) {
+        this.signupTicket = signupTicket;
         this.place = place;
         this.addresses = addresses;
         this.zipCode = zipCode;

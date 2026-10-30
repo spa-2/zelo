@@ -23,7 +23,7 @@ public class SocialSignupTicketService {
     // 처음 소셜 로그인으로 왔다면 티켓을 발급해줌
     public String issue(SocialProfile profile){
 
-        // 값을 추측할 수 없는 예측 불가능한 원본 토큰 생성
+        // 값을 추측할 수 없는 예측 불가능한 원본 티켓 생성
         byte[] randomBytes = new byte[32];
         secureRandom.nextBytes(randomBytes);
         // URL로 전달 가능한 문자열 변환
@@ -47,7 +47,7 @@ public class SocialSignupTicketService {
 
         // 이미 만료가 되었거나 존재하지 않는 티켓
         if (profileJson.isEmpty()){
-            throw new BusinessException(ErrorCode.INVALID_SIGNUP_TOKEN);
+            throw new BusinessException(ErrorCode.INVALID_SIGNUP_TICKET);
         }
 
         return objectMapper.readValue(profileJson.get(), SocialProfile.class);

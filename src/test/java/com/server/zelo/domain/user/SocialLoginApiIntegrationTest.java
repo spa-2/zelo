@@ -73,7 +73,7 @@ class SocialLoginApiIntegrationTest {
         ResultActions result = login("google", code)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.signupRequired").value(true))
-                .andExpect(jsonPath("$.data.signupToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.signupTicket").isNotEmpty())
                 .andExpect(jsonPath("$.data.email").value(code + "@fake.example.com"))
                 .andExpect(jsonPath("$.data.name").value(code))
                 .andExpect(jsonPath("$.data.accessToken").doesNotExist());
@@ -100,7 +100,7 @@ class SocialLoginApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("가".repeat(50)))
                 .andReturn().getResponse().getContentAsString();
-        String ticket = JsonPath.read(body, "$.data.signupToken");
+        String ticket = JsonPath.read(body, "$.data.signupTicket");
 
         // when
         signup(ticket).andExpect(status().isCreated());
@@ -124,7 +124,7 @@ class SocialLoginApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.signupRequired").value(false))
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.signupToken").doesNotExist())
+                .andExpect(jsonPath("$.data.signupTicket").doesNotExist())
                 .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
 
         // then
@@ -184,7 +184,7 @@ class SocialLoginApiIntegrationTest {
         login("google", "no-email")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("AUTH_010"))
-                .andExpect(jsonPath("$.data.signupToken").doesNotExist());
+                .andExpect(jsonPath("$.data.signupTicket").doesNotExist());
     }
 
     @Test
@@ -204,7 +204,7 @@ class SocialLoginApiIntegrationTest {
         login("google", code)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("AUTH_011"))
-                .andExpect(jsonPath("$.data.signupToken").doesNotExist());
+                .andExpect(jsonPath("$.data.signupTicket").doesNotExist());
     }
 
     @Test
@@ -260,8 +260,8 @@ class SocialLoginApiIntegrationTest {
 
         // 가입까지 진행하지 않는 테스트가 발급받은 번호표는 Redis에 남아서 함께 지움
         String body = result.andReturn().getResponse().getContentAsString();
-        if (body.contains("\"signupToken\"")) {
-            String ticket = JsonPath.read(body, "$.data.signupToken");
+        if (body.contains("\"signupTicket\"")) {
+            String ticket = JsonPath.read(body, "$.data.signupTicket");
             redisKeysToClean.add("social:signup:" + hashUtil.hash(ticket));
         }
         return result;
@@ -271,7 +271,7 @@ class SocialLoginApiIntegrationTest {
         return mockMvc.perform(post("/api/auth/social/signup")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"signupToken": "%s", "phoneNumber": "010-1234-5678",
+                        {"signupTicket": "%s", "phoneNumber": "010-1234-5678",
                          "place": "집", "addresses": "서울 강남구", "zipCode": "12345"}
                         """.formatted(ticket)));
     }
@@ -279,7 +279,7 @@ class SocialLoginApiIntegrationTest {
     // 로그인 → 번호표 → 가입까지 진행하고, 가입 직후 받은 리프레시 토큰을 돌려줌
     private String signUpWith(String code) throws Exception {
         String body = login("google", code).andReturn().getResponse().getContentAsString();
-        String ticket = JsonPath.read(body, "$.data.signupToken");
+        String ticket = JsonPath.read(body, "$.data.signupTicket");
         ResultActions signup = signup(ticket).andExpect(status().isCreated());
 
         User user = userRepository.findByEmail(code + "@fake.example.com").orElseThrow();

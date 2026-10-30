@@ -95,7 +95,7 @@ class SocialSignupTicketServiceTest {
     }
 
     @Test
-    void 만료되었거나_없는_번호표를_소비하면_INVALID_SIGNUP_TOKEN_예외가_발생한다() {
+    void 만료되었거나_없는_번호표를_소비하면_INVALID_SIGNUP_TICKET_예외가_발생한다() {
         // given
         given(socialSignupTicketRepository.consume("expired")).willReturn(Optional.empty());
 
@@ -103,7 +103,7 @@ class SocialSignupTicketServiceTest {
         assertThatThrownBy(() -> socialSignupTicketService.consume("expired"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.INVALID_SIGNUP_TOKEN);
+                .isEqualTo(ErrorCode.INVALID_SIGNUP_TICKET);
     }
 
     @Test

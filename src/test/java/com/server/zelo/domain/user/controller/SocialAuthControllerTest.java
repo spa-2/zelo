@@ -44,7 +44,7 @@ class SocialAuthControllerTest {
 
     private static final long REFRESH_EXPIRATION = 1209600000L;
     private static final String VALID_BODY = """
-            {"signupToken": "ticket", "phoneNumber": "010-1234-5678",
+            {"signupTicket": "ticket", "phoneNumber": "010-1234-5678",
              "place": "집", "addresses": "서울 강남구", "zipCode": "12345"}
             """;
 
@@ -107,7 +107,7 @@ class SocialAuthControllerTest {
         // then
         ArgumentCaptor<CreateSocialUserRequest> captor = ArgumentCaptor.forClass(CreateSocialUserRequest.class);
         then(socialFacade).should().createSocialUserWithAddress(captor.capture());
-        assertThat(captor.getValue().signupToken()).isEqualTo("ticket");
+        assertThat(captor.getValue().signupTicket()).isEqualTo("ticket");
         assertThat(captor.getValue().phoneNumber()).isEqualTo("010-1234-5678");
     }
 
@@ -138,15 +138,15 @@ class SocialAuthControllerTest {
     }
 
     @Test
-    void 번호표가_만료되었으면_401과_INVALID_SIGNUP_TOKEN을_반환하고_쿠키를_내리지_않는다() throws Exception {
+    void 번호표가_만료되었으면_401과_INVALID_SIGNUP_TICKET을_반환하고_쿠키를_내리지_않는다() throws Exception {
         // given
         given(socialFacade.createSocialUserWithAddress(any(CreateSocialUserRequest.class)))
-                .willThrow(new BusinessException(ErrorCode.INVALID_SIGNUP_TOKEN));
+                .willThrow(new BusinessException(ErrorCode.INVALID_SIGNUP_TICKET));
 
         // when
         ResultActions result = performSignup(VALID_BODY)
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_SIGNUP_TOKEN.getCode()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_SIGNUP_TICKET.getCode()));
 
         // then
         assertThat(result.andReturn().getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
@@ -212,7 +212,7 @@ class SocialAuthControllerTest {
                 .andExpect(jsonPath("$.data.signupRequired").value(false))
                 .andExpect(jsonPath("$.data.accessToken").value("accessToken"))
                 // 값이 없는 필드는 응답에서 빠짐
-                .andExpect(jsonPath("$.data.signupToken").doesNotExist())
+                .andExpect(jsonPath("$.data.signupTicket").doesNotExist())
                 .andExpect(jsonPath("$.data.email").doesNotExist())
                 // 리프레시 토큰은 본문이 아닌 쿠키로만 내려감
                 .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
@@ -242,7 +242,7 @@ class SocialAuthControllerTest {
         ResultActions result = performLogin("google", LOGIN_BODY)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.signupRequired").value(true))
-                .andExpect(jsonPath("$.data.signupToken").value("ticket"))
+                .andExpect(jsonPath("$.data.signupTicket").value("ticket"))
                 .andExpect(jsonPath("$.data.email").value("jieun@gmail.com"))
                 .andExpect(jsonPath("$.data.name").value("지은"))
                 .andExpect(jsonPath("$.data.accessToken").doesNotExist());

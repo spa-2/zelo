@@ -139,7 +139,7 @@ public enum ErrorCode {
     INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "DELIVERY_001", "유효하지 않은 배송 상태 변경입니다."),
     DELIVERY_NOT_REFUNDABLE(HttpStatus.CONFLICT, "DELIVERY_002", "출고됐거나 이미 취소된 주문은 환불할 수 없습니다."),
     DELIVERY_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_003", "배송 정보를 찾을 수 없습니다."),
-    DEFAULT_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_010", "기본 배송지를 찾을 수 없습니다.");
+    DEFAULT_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_004", "기본 배송지를 찾을 수 없습니다.");
 
 
     private final HttpStatus status;

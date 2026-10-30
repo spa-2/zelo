@@ -27,6 +27,8 @@ public class ProductCommandService {
 
     private static final int AUTOCOMPLETE_LIMIT = 10;
     private static final int POPULAR_LIMIT = 10;
+    // 판매중지 상품을 빼고도 10개가 차게 후보를 넉넉히 가져옴
+    private static final int POPULAR_CANDIDATES = 30;
     private final ProductService productService;
     private final InventoryService inventoryService;
     private final PopularKeywordService popularKeywordService;
@@ -43,13 +45,13 @@ public class ProductCommandService {
     // 최근 7일 많이 팔린 순으로 10개. 그사이 판매중지된 상품은 빼고 순위를 다시 매김
     @Transactional(readOnly = true)
     public List<GetPopularProductResponse> getPopularProducts() {
-        Map<Long, Long> top = popularProductService.findTop(POPULAR_LIMIT);
+        Map<Long, Long> top = popularProductService.findTop(POPULAR_CANDIDATES);
         if (top.isEmpty()) {
             return List.of();
         }
         Map<Long, Product> products = productService.findOnSaleProductsById(top.keySet()).stream()
                 .collect(Collectors.toMap(Product::getId, product -> product));
-        List<Long> productIds = top.keySet().stream().filter(products::containsKey).toList();
+        List<Long> productIds = top.keySet().stream().filter(products::containsKey).limit(POPULAR_LIMIT).toList();
         Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);
         return IntStream.range(0, productIds.size())
                 .mapToObj(i -> {

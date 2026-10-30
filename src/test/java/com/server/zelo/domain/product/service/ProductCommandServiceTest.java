@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -125,7 +126,7 @@ class ProductCommandServiceTest {
         top.put(3L, 9L);
         top.put(1L, 5L);
         top.put(2L, 4L);
-        given(popularProductService.findTop(10)).willReturn(top);
+        given(popularProductService.findTop(30)).willReturn(top);
         given(productService.findOnSaleProductsById(top.keySet()))
                 .willReturn(List.of(product(1L, "백김치 1kg"), product(2L, "포기김치 500g")));
         given(inventoryService.findAvailableQuantities(List.of(1L, 2L))).willReturn(Map.of(1L, 7));
@@ -141,9 +142,29 @@ class ProductCommandServiceTest {
     }
 
     @Test
+    void 인기_상품은_10개까지만_준다() {
+        // given
+        Map<Long, Long> top = new LinkedHashMap<>();
+        List<Product> products = new ArrayList<>();
+        for (long id = 1; id <= 12; id++) {
+            top.put(id, 20 - id);
+            products.add(product(id, "상품 " + id));
+        }
+        given(popularProductService.findTop(30)).willReturn(top);
+        given(productService.findOnSaleProductsById(top.keySet())).willReturn(products);
+
+        // when
+        List<GetPopularProductResponse> result = productCommandService.getPopularProducts();
+
+        // then
+        assertThat(result).hasSize(10);
+        assertThat(result.get(9).rank()).isEqualTo(10);
+    }
+
+    @Test
     void 팔린_상품이_없으면_상품을_안_찾는다() {
         // given
-        given(popularProductService.findTop(10)).willReturn(Map.of());
+        given(popularProductService.findTop(30)).willReturn(Map.of());
 
         // when
         List<GetPopularProductResponse> result = productCommandService.getPopularProducts();

@@ -45,6 +45,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import com.server.zelo.domain.chat.service.ChatRateLimitService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -91,6 +92,10 @@ class ChatQuoteApiIntegrationTest {
 
     @MockitoBean
     private QuoteCommandService quoteCommandService;
+
+    // 횟수 제한은 ChatRateLimitService 테스트에서 따로 확인한다. 여기서는 같은 사용자로 1분에 10번 넘게 보내므로 끈다
+    @MockitoBean
+    private ChatRateLimitService chatRateLimitService;
 
     @BeforeEach
     void setUp() {

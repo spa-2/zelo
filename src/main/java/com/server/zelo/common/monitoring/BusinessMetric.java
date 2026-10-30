@@ -34,6 +34,7 @@ public enum BusinessMetric {
     CHAT_RETRY("zelo.chat.retry", "FALLBACK 다시 시도 결과 수 (result)"),
     CHAT_IDEMPOTENCY("zelo.chat.idempotency", "멱등 키 처리 결과 수 (result)"),
     CHAT_IDEMPOTENCY_STORE_FAILURE("zelo.chat.idempotency.store.failure", "멱등 기록 저장·삭제 실패 수 (operation)"),
+    CHAT_RATE_LIMITED("zelo.chat.rate.limited", "사용자별 메시지 횟수 제한으로 거절한 수"),
     CHAT_QUOTE_BUSY("zelo.chat.quote.busy", "견적 락을 기다리다 포기한 수"),
     CHAT_QUOTE_EDIT("zelo.chat.quote.edit", "채팅의 견적 수정 결과 수 (source, result)"),
     CHAT_EXPLAIN_DEGRADED("zelo.chat.explain.degraded", "안내 문장을 받지 못해 고정 문구로 저장한 견적 카드 수");

@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,6 +17,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.chat.dto.request.ChooseBudgetOptionRequest;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
@@ -487,6 +489,22 @@ class ChatMessageControllerTest {
         mockMvc.perform(post("/api/chat/rooms/{roomId}/messages/{messageId}/retry", 10L, 42L))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CHAT_004"));
+    }
+
+    @Test
+    void 메시지를_너무_자주_보내면_429와_CHAT_005와_다시_보낼_수_있는_초를_준다() throws Exception {
+        // given
+        authenticate(1L);
+        given(chatMessageCommandService.sendMessage(10L, 1L, "안녕", null))
+                .willThrow(new RateLimitExceededException(ErrorCode.CHAT_RATE_LIMITED, 15L));
+
+        // when & then
+        mockMvc.perform(post("/api/chat/rooms/10/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"안녕\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "15"))
+                .andExpect(jsonPath("$.code").value("CHAT_005"));
     }
 
     @Test

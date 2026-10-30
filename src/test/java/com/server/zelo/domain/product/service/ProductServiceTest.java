@@ -177,12 +177,26 @@ class ProductServiceTest {
 
     @Test
     void 판매량을_내린다() {
+        // given
+        given(productRepository.decreaseSalesCount(1L, 3)).willReturn(1);
+
         // when
         productService.decreaseSalesCount(1L, 3);
 
         // then
-        then(productRepository).should().decreaseSalesCount(1L, 3);
         then(popularProductService).should().record(1L, -3);
+    }
+
+    @Test
+    void 판매량이_모자라서_DB가_안_바뀌면_인기_순위도_안_내린다() {
+        // given
+        given(productRepository.decreaseSalesCount(1L, 3)).willReturn(0);
+
+        // when
+        productService.decreaseSalesCount(1L, 3);
+
+        // then
+        then(popularProductService).shouldHaveNoInteractions();
     }
 
     @Test

@@ -150,8 +150,10 @@ public class ProductService {
     // 취소·환불 때 주문 쪽에서 부름
     @Transactional
     public void decreaseSalesCount(Long productId, Integer quantity) {
-        productRepository.decreaseSalesCount(productId, quantity);
-        popularProductService.record(productId, -quantity);
+        // 판매량이 모자라서 DB가 안 바뀌면 Redis도 안 뺌 (판매량 반영 전에 결제된 주문을 취소한 경우)
+        if (productRepository.decreaseSalesCount(productId, quantity) > 0) {
+            popularProductService.record(productId, -quantity);
+        }
     }
 
     // 검색어에 %, _가 있으면 LIKE에서 아무 글자로 걸려서 글자 그대로 찾게 바꿈

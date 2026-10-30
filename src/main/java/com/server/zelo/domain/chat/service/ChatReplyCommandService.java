@@ -2,6 +2,7 @@ package com.server.zelo.domain.chat.service;
 
 import com.server.zelo.ai.gateway.LlmGateway;
 import com.server.zelo.ai.gateway.LlmReply;
+import com.server.zelo.ai.gateway.LlmTimeBudget;
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.QuoteEditPlan;
 import com.server.zelo.ai.prompt.ChatPrompt;
@@ -54,6 +55,7 @@ public class ChatReplyCommandService {
     private final ChatPrompt chatPrompt;
     private final LlmGateway llmGateway;
     private final QuoteService quoteService;
+    private final LlmTimeBudget llmTimeBudget;
     private final MenuPlanPrompt menuPlanPrompt;
     private final ProductService productService;
     private final ChatQuoteFacade chatQuoteFacade;
@@ -67,7 +69,14 @@ public class ChatReplyCommandService {
     // 메시지 하나를 답하는 데 걸린 전체 시간(LLM 여러 번 + 견적 발급·수정 + 저장)을 의도·결과별로 남긴다.
     // 의도를 정하기 전에 실패하면 intent=UNKNOWN이다.
     // toResponse: AI 메시지를 응답 모양(T)으로 바꾼다. LLM 실패 응답의 data도 같은 모양으로 만든다
+    // 이 메시지 안의 LLM 호출(메뉴 계획·수정 계획·안내)은 한 마감 시각(LlmTimeBudget)을 나눠 써서, 몇 번을 부르든 정해진 시간 안에 응답한다.
+    // 시간이 모자라 받지 못한 답은 다른 LLM 실패와 같은 길(고정 문구, 안내 문장만 실패하면 카드 + 고정 문장)로 간다
     public <T> T replyTo(Long roomId, Long userId, List<ChatMessage> history, String text,
+                         Function<ChatMessageResponse, T> toResponse) {
+        return llmTimeBudget.run(() -> answer(roomId, userId, history, text, toResponse));
+    }
+
+    private <T> T answer(Long roomId, Long userId, List<ChatMessage> history, String text,
                          Function<ChatMessageResponse, T> toResponse) {
         long start = System.nanoTime();
         String intent = "UNKNOWN";

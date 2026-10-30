@@ -27,6 +27,7 @@ public enum BusinessMetric {
     LLM_CALL("zelo.llm.call", "LLM 호출 1건 시간, 재시도 포함 (operation, outcome)"),
     LLM_ATTEMPT("zelo.llm.attempt", "LLM 시도 1번 시간 (operation, outcome)"),
     LLM_TOKENS("zelo.llm.tokens", "LLM 토큰 수 (operation, model, type)"),
+    LLM_TIME_BUDGET_EXCEEDED("zelo.llm.time.budget.exceeded", "메시지 시간 예산이 부족해 건너뛰거나 짧게 끊은 LLM 시도 수 (operation, stage)"),
 
     // 채팅
     CHAT_REPLY("zelo.chat.reply", "채팅 답변 1건 처리 시간 (intent, outcome)"),

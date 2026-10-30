@@ -12,13 +12,11 @@ import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
-import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.common.monitoring.BusinessMetric;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.common.monitoring.LogContextInterceptor;
-import com.server.zelo.common.util.HashUtil;
 import com.server.zelo.domain.chat.dto.request.ChooseBudgetOptionRequest;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
 import com.server.zelo.domain.chat.dto.request.SearchChatMessageCondition;
@@ -30,7 +28,6 @@ import com.server.zelo.domain.chat.dto.response.QuoteCardStatus;
 import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.model.ChatIdempotencyRecord;
-import com.server.zelo.domain.chat.repository.ChatIdempotencyRepository;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.service.ProductService;
@@ -48,19 +45,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 // @Transactional을 걸지 않는다: 전체를 한 트랜잭션으로 묶으면 LLM 응답을 기다리는 동안(재시도 포함 약 10초) DB 커넥션을 붙잡아
 // 커넥션 풀(10개)이 채팅 요청에 묶이고 주문·결제까지 멈출 수 있다. 저장은 ChatMessageService의 짧은 트랜잭션으로 나눈다
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatMessageCommandService {
@@ -101,7 +95,6 @@ public class ChatMessageCommandService {
     private static final String PARTIAL = "PARTIAL";
     private static final String BUSY = "BUSY";
 
-    private final HashUtil hashUtil;
     private final ChatPrompt chatPrompt;
     private final LlmGateway llmGateway;
     private final QuoteService quoteService;
@@ -116,7 +109,7 @@ public class ChatMessageCommandService {
     private final QuoteCommandService quoteCommandService;
     private final ChatRateLimitService chatRateLimitService;
     private final LockDistributeService lockDistributeService;
-    private final ChatIdempotencyRepository chatIdempotencyRepository;
+    private final ChatIdempotencyService chatIdempotencyService;
 
     public ChatMessageResponse sendMessage(Long roomId, Long userId, String text) {
         return processMessage(roomId, userId, text, () -> { });
@@ -139,18 +132,18 @@ public class ChatMessageCommandService {
         if (idempotencyKey == null) {
             return sendMessage(roomId, userId, text);
         }
-        return runOnce(userId, idempotencyKey, "room:" + roomId + ":" + text,
+        return chatIdempotencyService.runOnce(userId, idempotencyKey, "room:" + roomId + ":" + text,
                 onCommitted -> processMessage(roomId, userId, text, onCommitted),
-                response -> roomId, Function.identity(), (savedRoomId, message) -> message);
+                response -> roomId, Function.identity(), firstResponse((savedRoomId, message) -> message));
     }
 
     public StartChatResponse startChat(Long userId, String text, String idempotencyKey) {
         if (idempotencyKey == null) {
             return startChat(userId, text);
         }
-        return runOnce(userId, idempotencyKey, "start:" + text,
+        return chatIdempotencyService.runOnce(userId, idempotencyKey, "start:" + text,
                 onCommitted -> processStart(userId, text, onCommitted),
-                StartChatResponse::roomId, StartChatResponse::message, StartChatResponse::of);
+                StartChatResponse::roomId, StartChatResponse::message, firstResponse(StartChatResponse::of));
     }
 
     public StartChatResponse startChat(Long userId, String text) {
@@ -177,9 +170,9 @@ public class ChatMessageCommandService {
     public ChatMessageResponse retryMessage(Long roomId, Long userId, Long messageId) {
         String retryKey = "retry:" + messageId;
         String idempotencyKey = UUID.nameUUIDFromBytes(retryKey.getBytes(StandardCharsets.UTF_8)).toString();
-        return runOnce(userId, idempotencyKey, "room:" + roomId + ":" + retryKey,
+        return chatIdempotencyService.runOnce(userId, idempotencyKey, "room:" + roomId + ":" + retryKey,
                 onCommitted -> processRetry(roomId, userId, messageId),
-                response -> roomId, Function.identity(), (savedRoomId, message) -> message);
+                response -> roomId, Function.identity(), firstResponse((savedRoomId, message) -> message));
     }
 
     // 저장한 것 없이 답변만 다시 만들므로 onCommitted를 부르지 않는다. 그래서 응답 없이 실패하면 키가 지워져 다시 누를 수 있다
@@ -223,122 +216,15 @@ public class ChatMessageCommandService {
         return GetChatMessagesResponse.of(messages, response.nextCursor(), response.hasNext());
     }
 
-    // 같은 사용자의 같은 키는 한 번만 처리한다. 처리 중에 다시 오면 409, 끝난 뒤 다시 오면 저장해 둔 결과로 첫 응답을 다시 만든다.
-    // 사용자 메시지를 커밋한 뒤의 실패(FALLBACK 포함)는 결과로 남겨, 같은 키로 다시 보내도 메시지·방이 또 저장되지 않게 한다.
-    // 커밋 전 실패(방 권한 오류 등)는 저장된 것이 없으므로 키를 지워 같은 키로 다시 처리할 수 있게 한다
-    private <T> T runOnce(Long userId, String idempotencyKey, String request, Function<Runnable, T> work,
-                          Function<T, Long> roomIdOf, Function<T, ChatMessageResponse> messageOf,
-                          BiFunction<Long, ChatMessageResponse, T> rebuild) {
-        validateIdempotencyKey(idempotencyKey);
-        String requestHash = hashUtil.hash(request);
-        if (!chatIdempotencyRepository.saveIfAbsent(userId, idempotencyKey, ChatIdempotencyRecord.processing(requestHash))) {
-            return replay(userId, idempotencyKey, requestHash, rebuild);
-        }
-        countIdempotency("FIRST");
-
-        AtomicBoolean committed = new AtomicBoolean();
-        T result;
-        try {
-            result = work.apply(() -> committed.set(true));
-        } catch (RateLimitExceededException e) {
-            // data에 FALLBACK 응답이 아니라 Retry-After 초가 들어 있어 아래 FALLBACK 처리로 보내지 않는다.
-            // 저장 전에 거절됐으니 키를 지워, 시간이 지나면 같은 키로 다시 보낼 수 있게 한다
-            endWithoutResponse(userId, idempotencyKey, requestHash, committed.get(), e.getErrorCode());
-            throw e;
-        } catch (BusinessException e) {
-            if (e.getData() == null) {
-                endWithoutResponse(userId, idempotencyKey, requestHash, committed.get(), e.getErrorCode());
-                throw e;
-            }
-            // FALLBACK 예외의 data는 성공 응답과 같은 모양(T)으로 만든다(fallback의 toResponse)
-            @SuppressWarnings("unchecked")
-            T data = (T) e.getData();
-            saveDone(userId, idempotencyKey,
-                    ChatIdempotencyRecord.done(requestHash, roomIdOf.apply(data), messageOf.apply(data), e.getErrorCode()));
-            throw e;
-        } catch (RuntimeException e) {
-            // 처리되지 않은 예외는 GlobalExceptionHandler가 500 INTERNAL_ERROR로 응답하므로 다시 올 때도 같은 코드로 준다
-            endWithoutResponse(userId, idempotencyKey, requestHash, committed.get(), ErrorCode.INTERNAL_ERROR);
-            throw e;
-        }
-        saveDone(userId, idempotencyKey,
-                ChatIdempotencyRecord.done(requestHash, roomIdOf.apply(result), messageOf.apply(result), null));
-        return result;
-    }
-
-    private <T> T replay(Long userId, String idempotencyKey, String requestHash,
-                         BiFunction<Long, ChatMessageResponse, T> rebuild) {
-        // 선점에 실패한 사이 TTL로 사라졌으면 처리 중이었던 것과 같게 보고 다시 보내게 한다
-        Optional<ChatIdempotencyRecord> found = chatIdempotencyRepository.find(userId, idempotencyKey);
-        if (found.isEmpty()) {
-            countIdempotency("EXPIRED");
-            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
-        }
-        ChatIdempotencyRecord record = found.get();
-        if (!record.requestHash().equals(requestHash)) {
-            countIdempotency("KEY_REUSED");
-            throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
-        }
-        if (!record.done()) {
-            countIdempotency("IN_PROGRESS");
-            throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);
-        }
-        countIdempotency("REPLAY");
-        if (record.messageId() == null) {
-            throw new BusinessException(record.failure());
-        }
-        ChatMessage message = chatMessageService.getMessage(record.messageId());
-        // 첫 응답을 그대로 다시 주므로 retryable도 그때처럼 계산한다. 그 뒤 새 메시지가 왔으면 재시도 API가 거절한다
-        ChatMessageResponse first = ChatMessageResponse.from(message, record.quoteCardStatus())
-                .withRetryable(chatMessageService.isRetryable(message.getPayload()));
-        T response = rebuild.apply(record.roomId(), first);
-        if (record.failure() != null) {
-            throw new BusinessException(record.failure(), record.failure().getMessage(), response);
-        }
-        return response;
-    }
-
-    // 응답 메시지 없이 실패했을 때. 사용자 메시지를 이미 저장했으면 같은 오류로 끝난 것으로 남기고, 아니면 키를 지운다
-    private void endWithoutResponse(Long userId, String idempotencyKey, String requestHash, boolean committed,
-                                    ErrorCode failure) {
-        if (committed) {
-            saveDone(userId, idempotencyKey, ChatIdempotencyRecord.failed(requestHash, failure));
-            return;
-        }
-        deleteQuietly(userId, idempotencyKey);
-    }
-
-    // 실패 처리 중이라 원래 예외를 그대로 던져야 한다. 삭제가 실패해도 처리 중 표시는 PROCESSING_TTL 뒤에 풀린다
-    private void deleteQuietly(Long userId, String idempotencyKey) {
-        try {
-            chatIdempotencyRepository.delete(userId, idempotencyKey);
-        } catch (RuntimeException e) {
-            log.warn("메시지 전송 멱등 키 삭제 실패 userId={}", userId, e);
-            businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY_STORE_FAILURE, "operation", "DELETE");
-        }
-    }
-
-    // 처리는 이미 끝났으니 결과 저장이 실패해도 응답은 그대로 보낸다. 처리 중 표시는 PROCESSING_TTL 뒤에 풀린다
-    private void saveDone(Long userId, String idempotencyKey, ChatIdempotencyRecord record) {
-        try {
-            chatIdempotencyRepository.save(userId, idempotencyKey, record);
-        } catch (RuntimeException e) {
-            log.warn("메시지 전송 멱등 결과 저장 실패 userId={}", userId, e);
-            businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY_STORE_FAILURE, "operation", "SAVE");
-        }
-    }
-
-    // 화면은 [보내기]마다 UUID를 만든다. 다른 모양은 잘못 만든 키라 거절한다
-    private static void validateIdempotencyKey(String idempotencyKey) {
-        try {
-            UUID.fromString(idempotencyKey);
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
-    }
-
-    private void countIdempotency(String result) {
-        businessMetrics.count(BusinessMetric.CHAT_IDEMPOTENCY, "result", result);
+    // 멱등 키로 다시 온 요청에 줄 첫 응답을, 그때 저장한 AI 메시지로 다시 만든다
+    private <T> Function<ChatIdempotencyRecord, T> firstResponse(BiFunction<Long, ChatMessageResponse, T> rebuild) {
+        return record -> {
+            ChatMessage message = chatMessageService.getMessage(record.messageId());
+            // 첫 응답을 그대로 다시 주므로 retryable도 그때처럼 계산한다. 그 뒤 새 메시지가 왔으면 재시도 API가 거절한다
+            ChatMessageResponse first = ChatMessageResponse.from(message, record.quoteCardStatus())
+                    .withRetryable(chatMessageService.isRetryable(message.getPayload()));
+            return rebuild.apply(record.roomId(), first);
+        };
     }
 
     // 견적 카드의 ✕, −/+ 버튼. LLM 없이 견적을 바로 고치고, 새 카드와 정해진 문장을 AI 메시지로 저장해 돌려준다.

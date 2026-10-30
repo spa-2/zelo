@@ -24,6 +24,7 @@ public class EmailVerificationSendCommandService {
                yield true;
             }
             case PASSWORD_RESET -> {
+                emailVerificationCommandService.validatePasswordResetLimit(remoteAddr);
                 // 가입이 되지 않는 사용자면 예외를 전달, 이미 회원가입 시 가입 여부를 알 수 있어 안내를 한다.
                 User user = userService.getUserByEmail(email);
 

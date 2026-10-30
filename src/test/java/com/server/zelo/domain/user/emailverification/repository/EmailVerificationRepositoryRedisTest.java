@@ -75,6 +75,7 @@ class EmailVerificationRepositoryRedisTest {
             redisTemplate.delete(keys);
         }
         redisTemplate.delete(ipKey());
+        redisTemplate.delete(passwordResetKey());
     }
 
     @Test
@@ -194,6 +195,54 @@ class EmailVerificationRepositoryRedisTest {
         // when & then
         assertThat(repository.increaseIpCount("198.51.100.1", MAX, WINDOW, BLOCK)).isEqualTo(1);
         redisTemplate.delete("EMAIL_IP_COUNT:" + hashUtil.hash("198.51.100.1"));
+    }
+
+    @Test
+    void 비밀번호_재설정_횟수는_처음_1이고_TTL은_윈도우_시간이다() {
+        // when
+        long first = repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK);
+
+        // then
+        assertThat(first).isEqualTo(1);
+        assertThat(redisTemplate.getExpire(passwordResetKey())).isBetween(WINDOW.toSeconds() - 5, WINDOW.toSeconds());
+    }
+
+    @Test
+    void 비밀번호_재설정_횟수가_한도를_넘는_순간_TTL이_차단_시간으로_바뀐다() {
+        // given
+        for (int i = 0; i < MAX; i++) {
+            repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK);
+        }
+
+        // when
+        long exceeded = repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK);
+
+        // then
+        assertThat(exceeded).isEqualTo(MAX + 1);
+        assertThat(redisTemplate.getExpire(passwordResetKey())).isBetween(BLOCK.toSeconds() - 5, BLOCK.toSeconds());
+    }
+
+    @Test
+    void 비밀번호_재설정_횟수는_원문_IP_없이_저장되고_메일_발송_IP_횟수와_분리된다() {
+        // given
+        repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK);
+
+        // when & then 한도가 다른 카운터라서 서로의 횟수를 올리면 안 됨
+        assertThat(passwordResetKey()).doesNotContain(ip);
+        assertThat(redisTemplate.opsForValue().get(passwordResetKey())).isEqualTo("1");
+        assertThat(redisTemplate.hasKey(ipKey())).isFalse();
+        assertThat(repository.increaseIpCount(ip, MAX, WINDOW, BLOCK)).isEqualTo(1);
+        assertThat(repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK)).isEqualTo(2);
+    }
+
+    @Test
+    void 비밀번호_재설정_횟수는_IP가_다르면_따로_센다() {
+        // given
+        repository.increasePasswordResetCount(ip, MAX, WINDOW, BLOCK);
+
+        // when & then
+        assertThat(repository.increasePasswordResetCount("198.51.100.1", MAX, WINDOW, BLOCK)).isEqualTo(1);
+        redisTemplate.delete("EMAIL_PASSWORD_RESET_COUNT:" + hashUtil.hash("198.51.100.1"));
     }
 
     @Test
@@ -496,5 +545,9 @@ class EmailVerificationRepositoryRedisTest {
 
     private String ipKey() {
         return "EMAIL_IP_COUNT:" + hashUtil.hash(ip);
+    }
+
+    private String passwordResetKey() {
+        return "EMAIL_PASSWORD_RESET_COUNT:" + hashUtil.hash(ip);
     }
 }

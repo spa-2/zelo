@@ -123,6 +123,7 @@ public enum ErrorCode {
     UNSUPPORTED_SOCIAL_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_012", "지원하지 않는 소셜 로그인입니다."),
     SOCIAL_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_013", "소셜 로그인 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요."),
     TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_014", "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요"),
+    TOO_MANY_PASSWORD_RESET_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "AUTH_015", "비밀번호 재설정 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
 
     // mail
     TOO_MANY_MAIL_SEND(HttpStatus.TOO_MANY_REQUESTS, "MAIL_001", "인증 메일 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),

@@ -3,6 +3,7 @@ package com.server.zelo.domain.user.emailverification.controller;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
 import com.server.zelo.domain.user.emailverification.service.EmailVerificationCommandService;
@@ -28,6 +29,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -96,6 +98,21 @@ class EmailVerificationControllerTest {
                 .andExpect(status().is(status))
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(code));
+    }
+
+    @Test
+    void 비밀번호_재설정_요청이_너무_많으면_429와_재시도_시간을_반환한다() throws Exception {
+        // given
+        willThrow(new RateLimitExceededException(ErrorCode.TOO_MANY_PASSWORD_RESET_REQUESTS, 300L))
+                .given(emailVerificationSendCommandService).sendEmail(anyString(), any(), anyString());
+
+        // when & then
+        perform("""
+                {"email": "jieun@example.com", "purpose": "PASSWORD_RESET"}
+                """)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "300"))
+                .andExpect(jsonPath("$.code").value("AUTH_015"));
     }
 
     @ParameterizedTest

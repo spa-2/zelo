@@ -77,6 +77,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -252,7 +253,10 @@ class ChatMessageCommandServiceTest {
         given(chatMessageService.createRoomWithFirstMessage(1L, "불고기 재료"))
                 .willReturn(ChatMessage.of(77L, ChatSender.USER, "불고기 재료"));
         given(llmGateway.explain(anyString(), anyList(), eq("불고기 재료")))
-                .willReturn(LlmReply.of("소고기와 간장이 필요해요.", "gpt-test", 10, 5));
+                .willAnswer(invocation -> {
+                    assertThat(MDC.get("roomId")).isEqualTo("77");
+                    return LlmReply.of("소고기와 간장이 필요해요.", "gpt-test", 10, 5);
+                });
         given(chatMessageService.createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요."))
                 .willReturn(ChatMessage.of(77L, ChatSender.ASSISTANT, "소고기와 간장이 필요해요."));
 
@@ -265,6 +269,7 @@ class ChatMessageCommandServiceTest {
         order.verify(llmGateway).explain(anyString(), anyList(), eq("불고기 재료"));
         order.verify(chatMessageService).createAssistantMessage(77L, 1L, "소고기와 간장이 필요해요.");
         assertThat(response.roomId()).isEqualTo(77L);
+        assertThat(MDC.get("roomId")).isNull();
         assertThat(response.message().sender()).isEqualTo(ChatSender.ASSISTANT);
         assertThat(response.message().content()).isEqualTo("소고기와 간장이 필요해요.");
     }
@@ -275,7 +280,10 @@ class ChatMessageCommandServiceTest {
         given(chatMessageService.createRoomWithFirstMessage(1L, "안녕"))
                 .willReturn(ChatMessage.of(77L, ChatSender.USER, "안녕"));
         given(llmGateway.explain(anyString(), anyList(), anyString()))
-                .willThrow(new BusinessException(ErrorCode.AI_CIRCUIT_OPEN));
+                .willAnswer(invocation -> {
+                    assertThat(MDC.get("roomId")).isEqualTo("77");
+                    throw new BusinessException(ErrorCode.AI_CIRCUIT_OPEN);
+                });
         given(chatMessageService.createFallbackMessage(77L, 1L, ErrorCode.AI_CIRCUIT_OPEN))
                 .willReturn(fallbackMessage(77L, "AI_008"));
 
@@ -289,6 +297,7 @@ class ChatMessageCommandServiceTest {
                     });
                 });
         then(chatMessageService).should(never()).createAssistantMessage(anyLong(), anyLong(), anyString());
+        assertThat(MDC.get("roomId")).isNull();
     }
 
     @Test

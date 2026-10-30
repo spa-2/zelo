@@ -16,6 +16,7 @@ import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.common.monitoring.BusinessMetric;
 import com.server.zelo.common.monitoring.BusinessMetrics;
+import com.server.zelo.common.monitoring.LogContextInterceptor;
 import com.server.zelo.common.util.HashUtil;
 import com.server.zelo.domain.chat.dto.request.ChooseBudgetOptionRequest;
 import com.server.zelo.domain.chat.dto.request.ChooseSubstituteRequest;
@@ -52,6 +53,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -158,7 +160,10 @@ public class ChatMessageCommandService {
         Long roomId = userMessage.getRoomId();
         // 실패 응답에도 roomId를 담아야 프론트가 새로 생긴 방으로 이어 갈 수 있어, 성공·실패 모두 같은 모양으로 만든다.
         // 방금 만든 방이라 앞 대화가 없다
-        return replyTo(roomId, userId, List.of(), text, message -> StartChatResponse.of(roomId, message));
+        // 첫 요청의 URL에는 roomId가 없어, 방 생성 후 답변을 만드는 동안 로그에 붙인다.
+        try (MDC.MDCCloseable ignored = MDC.putCloseable(LogContextInterceptor.ROOM_ID, String.valueOf(roomId))) {
+            return replyTo(roomId, userId, List.of(), text, message -> StartChatResponse.of(roomId, message));
+        }
     }
 
     // FALLBACK의 [다시 시도]. 바로 앞 사용자 메시지로 답변만 다시 만들고, 사용자 메시지는 새로 저장하지 않는다.

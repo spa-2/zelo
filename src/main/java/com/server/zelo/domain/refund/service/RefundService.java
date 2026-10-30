@@ -47,8 +47,8 @@ public class RefundService {
     }
 
     @Transactional(readOnly = true)
-    public List<RefundFindTarget> findRequestedRefunds(LocalDateTime cutoff) {
-        return refundRepository.findTargets(RefundStatus.REQUESTED, cutoff,
+    public List<RefundFindTarget> findRequestedRefunds(LocalDateTime cutoff, Long afterId) {
+        return refundRepository.findTargets(RefundStatus.REQUESTED, cutoff, afterId,
                 PageRequest.of(0, STALE_REQUESTED_BATCH_SIZE));
     }
 

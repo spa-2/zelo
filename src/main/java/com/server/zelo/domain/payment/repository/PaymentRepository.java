@@ -15,6 +15,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findTopByOrderIdOrderByIdDesc(Long orderId);
 
-    List<Payment> findByStatusAndUpdatedAtBeforeOrderByIdAsc(PaymentStatus status, LocalDateTime cutoff, Pageable pageable);
+    List<Payment> findByStatusAndUpdatedAtBeforeAndIdGreaterThanOrderByIdAsc(
+            PaymentStatus status, LocalDateTime cutoff, Long afterId, Pageable pageable);
 }
 

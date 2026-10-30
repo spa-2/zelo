@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetric;
 import com.server.zelo.common.monitoring.BusinessMetrics;
+import com.server.zelo.domain.payment.dto.response.PaymentFindTarget;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.payment.service.PaymentService;
@@ -32,6 +33,8 @@ import java.util.List;
 public class ReconcileScheduler {
     // 늦게 오는 웹훅을 기다리되, 주문 만료(30분) 전에 정리돼 재결제·취소·만료가 가능하도록 짧게 둔다
     private static final int STALE_MINUTES = 10;
+    private long paymentCursor;
+    private long refundCursor;
 
     private final RefundFacade refundFacade;
     private final PaymentFacade paymentFacade;
@@ -51,31 +54,41 @@ public class ReconcileScheduler {
     // 포트원 타임아웃으로 중간에 멈추면 false를 돌려준다
     private boolean reconcilePayments(LocalDateTime cutoff) {
         long start = System.nanoTime();
-        List<String> portoneIds = paymentService.findConfirmPendingPortoneIds(cutoff);
+        List<PaymentFindTarget> targets = paymentService.findConfirmPendingPayments(cutoff, paymentCursor);
+        // 끝까지 봤으면 처음부터 다시 본다
+        if (targets.isEmpty() && paymentCursor > 0) {
+            paymentCursor = 0;
+            targets = paymentService.findConfirmPendingPayments(cutoff, paymentCursor);
+        }
         boolean completed = true;
-        for (String portoneId : portoneIds) {
+        for (PaymentFindTarget target : targets) {
             try {
-                PaymentStatus status = paymentFacade.closeConfirmPending(portoneId);
+                PaymentStatus status = paymentFacade.closeConfirmPending(target.portoneId());
                 businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", status.name());
             } catch (BusinessException e) {
                 if (e.getErrorCode() == ErrorCode.PG_TIMEOUT) {
-                    log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", portoneId);
+                    log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", target.portoneId());
                     completed = false;
                     break;
                 }
-                log.error("결제 정합성 대사 실패 portoneId={}", portoneId, e);
+                log.error("결제 정합성 대사 실패 portoneId={}", target.portoneId(), e);
             } catch (RuntimeException e) {
                 // 한 건의 실패가 나머지 정리를 막지 않도록 함
-                log.error("결제 정합성 대사 실패 portoneId={}", portoneId, e);
+                log.error("결제 정합성 대사 실패 portoneId={}", target.portoneId(), e);
             }
+            paymentCursor = target.paymentId();
         }
-        recordRun("PAYMENT", portoneIds.size(), start);
+        recordRun("PAYMENT", targets.size(), start);
         return completed;
     }
 
     private void reconcileRefunds(LocalDateTime cutoff) {
         long start = System.nanoTime();
-        List<RefundFindTarget> targets = refundService.findRequestedRefunds(cutoff);
+        List<RefundFindTarget> targets = refundService.findRequestedRefunds(cutoff, refundCursor);
+        if (targets.isEmpty() && refundCursor > 0) {
+            refundCursor = 0;
+            targets = refundService.findRequestedRefunds(cutoff, refundCursor);
+        }
         for (RefundFindTarget target : targets) {
             try {
                 refundFacade.syncCancellation(target.orderId(), target.portoneId());
@@ -89,6 +102,7 @@ public class ReconcileScheduler {
             } catch (RuntimeException e) {
                 log.error("환불 정합성 대사 실패 portoneId={}", target.portoneId(), e);
             }
+            refundCursor = target.refundId();
         }
         recordRun("REFUND", targets.size(), start);
     }

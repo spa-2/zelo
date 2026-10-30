@@ -3,6 +3,7 @@ package com.server.zelo.domain.payment.scheduler;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetrics;
+import com.server.zelo.domain.payment.dto.response.PaymentFindTarget;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.service.PaymentFacade;
 import com.server.zelo.domain.payment.service.PaymentService;
@@ -15,7 +16,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
+import java.util.stream.LongStream;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -34,9 +39,11 @@ class ReconcileSchedulerTest {
     @Test
     void 오래된_결제를_정리한_뒤_오래된_환불을_동기화한다() {
         // given
-        given(paymentService.findConfirmPendingPortoneIds(any())).willReturn(List.of("payment-1"));
+        given(paymentService.findConfirmPendingPayments(any(), anyLong()))
+                .willReturn(List.of(new PaymentFindTarget(1L, "payment-1")));
         given(paymentFacade.closeConfirmPending("payment-1")).willReturn(PaymentStatus.FAILED);
-        given(refundService.findRequestedRefunds(any())).willReturn(List.of(new RefundFindTarget(10L, "payment-2")));
+        given(refundService.findRequestedRefunds(any(), anyLong()))
+                .willReturn(List.of(new RefundFindTarget(1L, 10L, "payment-2")));
 
         // when
         scheduler.reconcile();
@@ -49,7 +56,8 @@ class ReconcileSchedulerTest {
     @Test
     void 결제_정리_중_포트원이_응답하지_않으면_남은_결제와_환불을_다음_실행으로_미룬다() {
         // given
-        given(paymentService.findConfirmPendingPortoneIds(any())).willReturn(List.of("payment-1", "payment-2"));
+        given(paymentService.findConfirmPendingPayments(any(), anyLong())).willReturn(List.of(
+                new PaymentFindTarget(1L, "payment-1"), new PaymentFindTarget(2L, "payment-2")));
         willThrow(new BusinessException(ErrorCode.PG_TIMEOUT)).given(paymentFacade).closeConfirmPending("payment-1");
 
         // when
@@ -57,15 +65,15 @@ class ReconcileSchedulerTest {
 
         // then
         then(paymentFacade).should(never()).closeConfirmPending("payment-2");
-        then(refundService).should(never()).findRequestedRefunds(any());
+        then(refundService).should(never()).findRequestedRefunds(any(), anyLong());
     }
 
     @Test
     void 한_환불의_동기화가_실패해도_나머지_환불은_동기화한다() {
         // given
-        given(paymentService.findConfirmPendingPortoneIds(any())).willReturn(List.of());
-        given(refundService.findRequestedRefunds(any())).willReturn(List.of(
-                new RefundFindTarget(10L, "payment-1"), new RefundFindTarget(11L, "payment-2")));
+        given(paymentService.findConfirmPendingPayments(any(), anyLong())).willReturn(List.of());
+        given(refundService.findRequestedRefunds(any(), anyLong())).willReturn(List.of(
+                new RefundFindTarget(1L, 10L, "payment-1"), new RefundFindTarget(2L, 11L, "payment-2")));
         willThrow(new BusinessException(ErrorCode.INVALID_REFUND_STATUS)).given(refundFacade).syncCancellation(10L, "payment-1");
 
         // when
@@ -78,9 +86,9 @@ class ReconcileSchedulerTest {
     @Test
     void 환불_동기화_중_포트원이_응답하지_않으면_남은_환불을_다음_실행으로_미룬다() {
         // given
-        given(paymentService.findConfirmPendingPortoneIds(any())).willReturn(List.of());
-        given(refundService.findRequestedRefunds(any())).willReturn(List.of(
-                new RefundFindTarget(10L, "payment-1"), new RefundFindTarget(11L, "payment-2")));
+        given(paymentService.findConfirmPendingPayments(any(), anyLong())).willReturn(List.of());
+        given(refundService.findRequestedRefunds(any(), anyLong())).willReturn(List.of(
+                new RefundFindTarget(1L, 10L, "payment-1"), new RefundFindTarget(2L, 11L, "payment-2")));
         willThrow(new BusinessException(ErrorCode.PG_TIMEOUT)).given(refundFacade).syncCancellation(10L, "payment-1");
 
         // when
@@ -88,5 +96,25 @@ class ReconcileSchedulerTest {
 
         // then
         then(refundFacade).should(never()).syncCancellation(11L, "payment-2");
+    }
+
+    @Test
+    void 실패한_결제가_한_번에_처리할_양보다_많아도_다음_실행은_그_뒤의_결제를_정리한다() {
+        // given
+        List<PaymentFindTarget> firstPage = LongStream.rangeClosed(1, 20)
+                .mapToObj(id -> new PaymentFindTarget(id, "payment-" + id))
+                .toList();
+        given(paymentService.findConfirmPendingPayments(any(), eq(0L))).willReturn(firstPage);
+        given(paymentService.findConfirmPendingPayments(any(), eq(20L)))
+                .willReturn(List.of(new PaymentFindTarget(21L, "payment-21")));
+        given(paymentFacade.closeConfirmPending(anyString())).willThrow(new BusinessException(ErrorCode.PG_REQUEST_FAILED));
+        given(refundService.findRequestedRefunds(any(), anyLong())).willReturn(List.of());
+
+        // when
+        scheduler.reconcile();
+        scheduler.reconcile();
+
+        // then
+        then(paymentFacade).should().closeConfirmPending("payment-21");
     }
 }

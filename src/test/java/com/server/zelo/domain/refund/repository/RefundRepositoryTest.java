@@ -101,10 +101,28 @@ class RefundRepositoryTest {
 
         // when
         List<RefundFindTarget> targets = refundRepository.findTargets(
-                RefundStatus.REQUESTED, LocalDateTime.now().plusMinutes(1), PageRequest.of(0, 20));
+                RefundStatus.REQUESTED, LocalDateTime.now().plusMinutes(1), 0L, PageRequest.of(0, 20));
 
         // then
         assertThat(targets).extracting(RefundFindTarget::orderId).containsExactly(1L);
+    }
+
+    @Test
+    void 커서보다_큰_ID의_환불만_꺼낸다() {
+        // given
+        saveRefund(savePayment(1L), 1_000L, RefundStatus.REQUESTED);
+        saveRefund(savePayment(2L), 1_000L, RefundStatus.REQUESTED);
+        entityManager.flush();
+        entityManager.clear();
+        List<RefundFindTarget> all = refundRepository.findTargets(
+                RefundStatus.REQUESTED, LocalDateTime.now().plusMinutes(1), 0L, PageRequest.of(0, 20));
+
+        // when
+        List<RefundFindTarget> targets = refundRepository.findTargets(
+                RefundStatus.REQUESTED, LocalDateTime.now().plusMinutes(1), all.getFirst().refundId(), PageRequest.of(0, 20));
+
+        // then
+        assertThat(targets).extracting(RefundFindTarget::orderId).containsExactly(2L);
     }
 
     private Long savePayment(Long orderId) {

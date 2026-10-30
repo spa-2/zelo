@@ -2,6 +2,7 @@ package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.domain.payment.dto.response.PaymentFindTarget;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
@@ -39,11 +40,11 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public List<String> findConfirmPendingPortoneIds(LocalDateTime cutoff) {
-        return paymentRepository.findByStatusAndUpdatedAtBeforeOrderByIdAsc(
-                        PaymentStatus.CONFIRM_PENDING, cutoff, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
+    public List<PaymentFindTarget> findConfirmPendingPayments(LocalDateTime cutoff, Long afterId) {
+        return paymentRepository.findByStatusAndUpdatedAtBeforeAndIdGreaterThanOrderByIdAsc(
+                        PaymentStatus.CONFIRM_PENDING, cutoff, afterId, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
                 .stream()
-                .map(Payment::getPortoneId)
+                .map(PaymentFindTarget::from)
                 .toList();
     }
 

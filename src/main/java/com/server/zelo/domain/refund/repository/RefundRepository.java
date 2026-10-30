@@ -38,12 +38,13 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
 
     // 결과를 모른 채 오래 남은 환불을 결제와 묶어 주문 ID·포트원 결제 ID로 꺼낸다
     @Query("""
-            select new com.server.zelo.domain.refund.dto.response.RefundFindTarget(p.orderId, p.portoneId)
+            select new com.server.zelo.domain.refund.dto.response.RefundFindTarget(r.id, p.orderId, p.portoneId)
             from Refund r join Payment p on p.id = r.paymentId
-            where r.status = :status and r.updatedAt < :cutoff
+            where r.status = :status and r.updatedAt < :cutoff and r.id > :afterId
             order by r.id asc
             """)
     List<RefundFindTarget> findTargets(@Param("status") RefundStatus status,
                                        @Param("cutoff") LocalDateTime cutoff,
+                                       @Param("afterId") Long afterId,
                                        Pageable pageable);
 }

@@ -23,9 +23,10 @@ public enum ErrorCode {
     INVALID_ADMIN_ROLE_EXCEPTION(HttpStatus.BAD_REQUEST, "MEMBER_005", "어드민 회원가입에서는 NORMAL 역할을 사용할 수 없습니다." ),
     INACTIVE_ACCOUNT(HttpStatus.FORBIDDEN, "MEMBER_006", "비활성화 계정입니다"),
     USER_ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_007", "배송지를 찾을 수 없습니다."),
-    DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
-    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
     DEFAULT_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "MEMBER_008", "기본 배송지는 다른 배송지를 기본으로 지정한 뒤 변경하거나 삭제할 수 있습니다."),
+    DUPLICATE_ADDRESS_PLACE(HttpStatus.CONFLICT, "MEMBER_009", "같은 이름으로 등록된 배송지가 있습니다."),
+    SOCIAL_ACCOUNT_USER(HttpStatus.BAD_REQUEST, "MEMBER_010", "소셜 회원가입 계정입니다. 소셜 로그인을 진행해 주세요."),
+    ALREADY_BLOCKED_CATEGORY(HttpStatus.CONFLICT, "MEMBER_011", "이미 막아 둔 카테고리입니다."),
 
     // Product
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT_001", "상품을 찾을 수 없습니다."),

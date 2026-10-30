@@ -11,6 +11,8 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 import com.server.zelo.domain.product.repository.PopularProductRepository;
+import com.server.zelo.domain.product.repository.ProductSalesQueryRepository;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +31,9 @@ class PopularProductServiceTest {
 
     @Mock
     private PopularProductRepository popularProductRepository;
+
+    @Mock
+    private ProductSalesQueryRepository productSalesQueryRepository;
 
     @InjectMocks
     private PopularProductService popularProductService;
@@ -69,14 +74,26 @@ class PopularProductServiceTest {
     }
 
     @Test
-    void Redis가_안_되면_기록은_건너뛰고_조회는_빈_목록을_준다() {
+    void Redis가_안_되면_기록은_건너뛴다() {
         // given
         willThrow(new QueryTimeoutException("timeout")).given(popularProductRepository).increase(any(), anyInt(), any());
-        given(popularProductRepository.findTop(any(), anyInt())).willThrow(new QueryTimeoutException("timeout"));
 
         // when & then
         assertThatCode(() -> popularProductService.record(1L, 3)).doesNotThrowAnyException();
-        assertThat(popularProductService.findTop(10)).isEmpty();
+    }
+
+    @Test
+    void Redis가_안_되면_오늘_포함_7일치를_DB로_계산한다() {
+        // given
+        given(popularProductRepository.findTop(any(), anyInt())).willThrow(new QueryTimeoutException("timeout"));
+        given(productSalesQueryRepository.findTopSince(LocalDate.now().minusDays(6).atStartOfDay(), 10))
+                .willReturn(Map.of(9L, 5L));
+
+        // when
+        Map<Long, Long> top = popularProductService.findTop(10);
+
+        // then
+        assertThat(top).containsExactly(Map.entry(9L, 5L));
     }
 
     @Test

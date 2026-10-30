@@ -1,6 +1,7 @@
 package com.server.zelo.domain.product.service;
 
 import com.server.zelo.domain.product.repository.PopularProductRepository;
+import com.server.zelo.domain.product.repository.ProductSalesQueryRepository;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -11,13 +12,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-// 인기 상품은 없어도 주문·화면이 돌아가야 해서 Redis가 안 되면 로그만 남김
+// 인기 상품은 없어도 주문·화면이 돌아가야 해서 Redis가 안 되면 기록은 건너뛰고 조회는 DB로 계산함
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PopularProductService {
 
+    private static final int WINDOW_DAYS = 7;
+
     private final PopularProductRepository popularProductRepository;
+    private final ProductSalesQueryRepository productSalesQueryRepository;
 
     // 주문이 롤백되면 안 센 걸로 해야 해서 커밋된 뒤에 Redis에 반영
     public void record(Long productId, int quantity) {
@@ -41,8 +45,8 @@ public class PopularProductService {
                     .forEach(tuple -> top.put(Long.valueOf(tuple.getValue()), tuple.getScore().longValue()));
             return top;
         } catch (DataAccessException e) {
-            log.warn("인기 상품 조회 실패 error={}", e.getMessage());
-            return Map.of();
+            log.warn("인기 상품 Redis 조회 실패, DB로 계산함 error={}", e.getMessage());
+            return productSalesQueryRepository.findTopSince(LocalDate.now().minusDays(WINDOW_DAYS - 1L).atStartOfDay(), limit);
         }
     }
 

@@ -14,6 +14,7 @@ import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
+import com.server.zelo.domain.refund.entity.RefundItem;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.entity.RefundType;
 import org.junit.jupiter.api.BeforeEach;
@@ -242,7 +243,7 @@ class RefundCommandServiceTest {
     void 포트원에서_취소도_완료도_아닌_결제면_아무것도_바꾸지_않는다() {
         // given
         given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.READY, 10_000L, null));
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
@@ -331,7 +332,6 @@ class RefundCommandServiceTest {
         // given
         OrderItem orderItem = mock(OrderItem.class);
         given(orderItem.getId()).willReturn(1L);
-        given(orderItem.getCancelableQuantity()).willReturn(2);
         Order order = mock(Order.class);
         given(order.getOrderItems()).willReturn(List.of(orderItem));
         given(paymentService.getLatestPayment(ORDER_ID)).willReturn(paidPayment());

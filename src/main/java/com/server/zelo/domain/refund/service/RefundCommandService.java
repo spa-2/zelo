@@ -141,7 +141,7 @@ public class RefundCommandService {
             }
             refundService.findRequestedRefund(payment.getId()).ifPresentOrElse(
                     refund -> refundService.complete(refund.getId(), LocalDateTime.now()),
-                    () -> recordExternalCancellation(orderId, payment.getId()));
+                    () -> recordCancellation(orderId, payment.getId()));
             paymentService.cancel(portoneId, payment.getPgAmount());
             // 이미 출고된 주문은 상품을 회수하기 전이라 주문 취소와 재고 복원을 하지 않고 운영 회수 절차에 맡긴다
             if (deliveryService.cancelDeliveryIfPossible(orderId)) {
@@ -174,7 +174,7 @@ public class RefundCommandService {
     }
 
     // 주문 내역의 결제 금액이 맞도록 남은 상품 전부를 환불한 기록을 완료 상태로 남긴다
-    private void recordExternalCancellation(Long orderId, Long paymentId) {
+    private void recordCancellation(Long orderId, Long paymentId) {
         log.warn("환불 요청 없이 포트원에서 취소된 결제 orderId={}, paymentId={}", orderId, paymentId);
         Order order = orderService.getOrderWithItems(orderId);
         Refund refund = Refund.of(paymentId, RefundType.FULL, EXTERNAL_CANCEL_REASON);
@@ -187,4 +187,5 @@ public class RefundCommandService {
         refund.complete(LocalDateTime.now());
         refundService.createRefund(refund);
     }
+
 }

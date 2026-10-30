@@ -107,4 +107,17 @@ class PaymentFacadeTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_PAYMENT_STATUS);
     }
+
+    @Test
+    void 오래된_확인_대기_결제는_결제_단위_락_안에서_정리한다() {
+        // given
+        given(paymentCommandService.closeConfirmPending(PORTONE_ID)).willReturn(PaymentStatus.FAILED);
+
+        // when
+        PaymentStatus status = paymentFacade.closeConfirmPending(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(lockDistributeService).should().execute(eq(LockKey.confirmPayment(PORTONE_ID)), any(Supplier.class));
+    }
 }

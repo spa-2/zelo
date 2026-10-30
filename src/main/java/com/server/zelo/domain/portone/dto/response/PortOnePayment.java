@@ -28,9 +28,8 @@ public record PortOnePayment(
         LocalDateTime paidAt = response.paidAt() == null
                 ? null
                 : response.paidAt().atZoneSameInstant(zoneId).toLocalDateTime();
-       return new PortOnePayment(response.id(),
-               PortOnePaymentStatus.from(response.status()), amount, paidAt,
-               response.methodName(), response.failureReason());
+        return new PortOnePayment(response.id(), PortOnePaymentStatus.from(response.status()), amount, paidAt,
+                response.methodName(), response.failureReason());
     }
 
     public boolean isPaid() {
@@ -44,5 +43,6 @@ public record PortOnePayment(
     public boolean isCancelled() {
         return status == PortOnePaymentStatus.CANCELLED;
     }
+
 
 }

@@ -394,22 +394,6 @@ class PaymentCommandServiceTest {
     }
 
     @Test
-    void 카드가_거절되면_결제를_실패_처리한다() {
-        // given
-        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
-        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED))
-                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
-
-        // when
-        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
-
-        // then
-        assertThat(status).isEqualTo(PaymentStatus.FAILED);
-        then(paymentService).should().fail(PORTONE_ID, null);
-        then(orderCommandService).shouldHaveNoInteractions();
-    }
-
-    @Test
     void 빌링키_결제_응답이_없으면_예외를_던지고_실패_처리하지_않는다() {
         // given
         givenBillingPayment(OrderStatus.PAYMENT_PENDING);
@@ -666,28 +650,14 @@ class PaymentCommandServiceTest {
     }
 
     @Test
-    void 포트원_결제가_실패하면_실패_사유를_결제와_결제_카드에_남긴다() {
+    void 등록_카드가_거절되면_포트원_재조회로_실패와_사유를_기록한다() {
         // given
-        given(paymentService.startConfirm(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
-        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(
-                PORTONE_ID, PortOnePaymentStatus.FAILED, AMOUNT, null, PortOnePaymentResponse.ETC, "잔액이 부족합니다"));
-        givenChatRoomOrder(5L);
-
-        // when
-        PaymentStatus status = paymentCommandService.confirmPayment(PORTONE_ID);
-
-        // then
-        assertThat(status).isEqualTo(PaymentStatus.FAILED);
-        then(paymentService).should().fail(PORTONE_ID, "잔액이 부족합니다");
-        assertThat(capturedPaymentCard(5L).failureReason()).isEqualTo("잔액이 부족합니다");
-    }
-
-    @Test
-    void 등록_카드가_거절되면_거절_사유를_결제에_남긴다() {
-        // given
-        givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        Payment payment = givenBillingPayment(OrderStatus.PAYMENT_PENDING);
         willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED, "거절", "한도를 초과했습니다"))
                 .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
+                PortOnePaymentStatus.FAILED, AMOUNT, null, PortOnePaymentResponse.ETC, "한도를 초과했습니다"));
 
         // when
         PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
@@ -695,6 +665,89 @@ class PaymentCommandServiceTest {
         // then
         assertThat(status).isEqualTo(PaymentStatus.FAILED);
         then(paymentService).should().fail(PORTONE_ID, "한도를 초과했습니다");
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 등록_카드가_거절되고_포트원에_기록이_없으면_거절_사유로_실패를_기록한다() {
+        // given
+        Payment payment = givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED, "거절", "한도를 초과했습니다"))
+                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID)).willThrow(new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+
+        // when
+        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID, "한도를 초과했습니다");
+    }
+
+    @Test
+    void 등록_카드_거절_후_재조회가_끊기면_확인_대기로_둔다() {
+        // given
+        Payment payment = givenBillingPayment(OrderStatus.PAYMENT_PENDING);
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED, "거절", "한도를 초과했습니다"))
+                .given(portOneClient).payWithBillingKey(PORTONE_ID, BILLING_KEY, ORDER_NAME, AMOUNT);
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID)).willThrow(new BusinessException(ErrorCode.PG_TIMEOUT));
+
+        // when
+        PaymentStatus status = paymentCommandService.payWithPaymentMethod(USER_ID, PORTONE_ID, PAYMENT_METHOD_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CONFIRM_PENDING);
+        then(paymentService).should(never()).fail(any(), any());
+    }
+
+    @Test
+    void 확인_대기가_오래된_결제가_포트원에서도_결과가_없으면_실패로_끝낸다() {
+        // given
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        payment.startConfirm();
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.READY, AMOUNT, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(payment);
+
+        // when
+        PaymentStatus status = paymentCommandService.closeConfirmPending(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID, "결제 결과를 확인하지 못했습니다");
+    }
+
+    @Test
+    void 확인_대기가_오래된_결제가_포트원에_기록이_없으면_실패로_끝낸다() {
+        // given
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        payment.startConfirm();
+        given(paymentService.startConfirm(PORTONE_ID)).willReturn(payment);
+        given(portOneClient.getPayment(PORTONE_ID)).willThrow(new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(payment);
+
+        // when
+        PaymentStatus status = paymentCommandService.closeConfirmPending(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void 확인_대기가_오래된_결제가_포트원에서_결제됐으면_완료로_반영한다() {
+        // given
+        givenPaid();
+        givenOrderedBy();
+
+        // when
+        PaymentStatus status = paymentCommandService.closeConfirmPending(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(paymentService).should(never()).fail(any(), any());
     }
 
     private Order givenRetryOrder(Long ownerId) {

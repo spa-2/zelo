@@ -22,6 +22,11 @@ public record ChatMessageResponse(
         return from(chatMessage, null);
     }
 
+    // 방금 저장한 견적 카드는 방의 현재 견적이라 ACTIVE다
+    public static ChatMessageResponse fromNewQuoteCard(ChatMessage chatMessage) {
+        return from(chatMessage, QuoteCardStatus.ACTIVE);
+    }
+
     public static ChatMessageResponse from(ChatMessage chatMessage, QuoteCardStatus quoteCardStatus) {
         return new ChatMessageResponse(
                 chatMessage.getId(),

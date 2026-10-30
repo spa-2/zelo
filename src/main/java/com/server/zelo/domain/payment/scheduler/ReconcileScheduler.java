@@ -92,7 +92,7 @@ public class ReconcileScheduler {
         for (RefundFindTarget target : targets) {
             try {
                 refundFacade.syncCancellation(target.orderId(), target.portoneId());
-                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "REFUND", "result", "SYNCED");
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "REFUND", "result", "CHECKED");
             } catch (BusinessException e) {
                 if (e.getErrorCode() == ErrorCode.PG_TIMEOUT) {
                     log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", target.portoneId());

@@ -54,6 +54,11 @@ dependencies {
 
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
+    // 조건이 붙는 집계 조회용. 원래 querydsl(5.x)은 Hibernate 7(Boot 4)과 안 맞아서 OpenFeign이 이어받은 버전을 씀
+    implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.7'
+    annotationProcessor 'io.github.openfeign.querydsl:querydsl-apt:7.7:jpa'
+    annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
     // redis, redission
     implementation 'org.redisson:redisson-spring-boot-starter:4.7.0'
 

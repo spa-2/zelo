@@ -8,6 +8,7 @@ import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.entity.*;
 import com.server.zelo.domain.product.model.ProductDetail;
+import com.server.zelo.domain.product.dto.response.GetPopularProductResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,6 +20,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.LinkedHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -38,6 +40,9 @@ class ProductCommandServiceTest {
 
     @Mock
     private PopularKeywordService popularKeywordService;
+
+    @Mock
+    private PopularProductService popularProductService;
 
     @InjectMocks
     private ProductCommandService productCommandService;
@@ -111,6 +116,41 @@ class ProductCommandServiceTest {
         // then
         assertThat(result).containsExactly("백김치 1kg");
         then(popularKeywordService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 인기_상품은_판매중지된_상품을_빼고_순위를_다시_매긴다() {
+        // given
+        Map<Long, Long> top = new LinkedHashMap<>();
+        top.put(3L, 9L);
+        top.put(1L, 5L);
+        top.put(2L, 4L);
+        given(popularProductService.findTop(10)).willReturn(top);
+        given(productService.findOnSaleProductsById(top.keySet()))
+                .willReturn(List.of(product(1L, "백김치 1kg"), product(2L, "포기김치 500g")));
+        given(inventoryService.findAvailableQuantities(List.of(1L, 2L))).willReturn(Map.of(1L, 7));
+
+        // when
+        List<GetPopularProductResponse> result = productCommandService.getPopularProducts();
+
+        // then
+        assertThat(result)
+                .extracting(GetPopularProductResponse::rank, GetPopularProductResponse::recentSalesCount,
+                        response -> response.product().name(), response -> response.product().availableQuantity())
+                .containsExactly(tuple(1, 5L, "백김치 1kg", 7), tuple(2, 4L, "포기김치 500g", 0));
+    }
+
+    @Test
+    void 팔린_상품이_없으면_상품을_안_찾는다() {
+        // given
+        given(popularProductService.findTop(10)).willReturn(Map.of());
+
+        // when
+        List<GetPopularProductResponse> result = productCommandService.getPopularProducts();
+
+        // then
+        assertThat(result).isEmpty();
+        then(productService).shouldHaveNoInteractions();
     }
 
     private Product product(Long id, String name) {

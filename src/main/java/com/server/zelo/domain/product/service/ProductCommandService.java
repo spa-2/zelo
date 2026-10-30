@@ -8,11 +8,15 @@ import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.model.ProductDetail;
+import com.server.zelo.domain.product.dto.response.GetPopularProductResponse;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.List;
 import java.util.Map;
 
@@ -22,9 +26,11 @@ import java.util.Map;
 public class ProductCommandService {
 
     private static final int AUTOCOMPLETE_LIMIT = 10;
+    private static final int POPULAR_LIMIT = 10;
     private final ProductService productService;
     private final InventoryService inventoryService;
     private final PopularKeywordService popularKeywordService;
+    private final PopularProductService popularProductService;
 
     // 입력할 때마다 불려서 인기 검색어로는 안 셈
     public List<String> autocomplete(AutocompleteCondition condition) {
@@ -32,6 +38,26 @@ public class ProductCommandService {
             return List.of();
         }
         return productService.findProductNames(condition.keyword(), AUTOCOMPLETE_LIMIT);
+    }
+
+    // 최근 7일 많이 팔린 순으로 10개. 그사이 판매중지된 상품은 빼고 순위를 다시 매김
+    @Transactional(readOnly = true)
+    public List<GetPopularProductResponse> getPopularProducts() {
+        Map<Long, Long> top = popularProductService.findTop(POPULAR_LIMIT);
+        if (top.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Product> products = productService.findOnSaleProductsById(top.keySet()).stream()
+                .collect(Collectors.toMap(Product::getId, product -> product));
+        List<Long> productIds = top.keySet().stream().filter(products::containsKey).toList();
+        Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);
+        return IntStream.range(0, productIds.size())
+                .mapToObj(i -> {
+                    Long productId = productIds.get(i);
+                    return GetPopularProductResponse.of(i + 1, top.get(productId), products.get(productId),
+                            stocks.getOrDefault(productId, 0));
+                })
+                .toList();
     }
 
     @Transactional(readOnly = true)

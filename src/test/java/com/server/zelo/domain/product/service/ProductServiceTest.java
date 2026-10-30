@@ -48,6 +48,9 @@ class ProductServiceTest {
     @Mock
     private ProductKeywordRepository productKeywordRepository;
 
+    @Mock
+    private PopularProductService popularProductService;
+
     @InjectMocks
     private ProductService productService;
 
@@ -169,6 +172,7 @@ class ProductServiceTest {
 
         // then
         then(productRepository).should().increaseSalesCount(1L, 3);
+        then(popularProductService).should().record(1L, 3);
     }
 
     @Test
@@ -178,6 +182,7 @@ class ProductServiceTest {
 
         // then
         then(productRepository).should().decreaseSalesCount(1L, 3);
+        then(popularProductService).should().record(1L, -3);
     }
 
     @Test

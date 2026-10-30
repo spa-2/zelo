@@ -17,7 +17,8 @@ public record PaymentCardPayload(
         Long paidAmount,
         PaymentStatus status,
         String reason,
-        LocalDateTime paidAt
+        LocalDateTime paidAt,
+        String failureReason
 ) {
 
     public static final String TYPE = "PAYMENT_CARD";
@@ -32,12 +33,17 @@ public record PaymentCardPayload(
 
     public static PaymentCardPayload from(Order order, PaymentStatus status, String reason,
                                           Long paidAmount, LocalDateTime paidAt) {
+        return from(order, status, reason, paidAmount, paidAt, null);
+    }
+
+    public static PaymentCardPayload from(Order order, PaymentStatus status, String reason,
+                                          Long paidAmount, LocalDateTime paidAt, String failureReason) {
         List<Item> items = order.getOrderItems().stream()
                 .map(orderItem -> new Item(orderItem.getProductName(), orderItem.getProductUnit(),
                         orderItem.getQuantity(), orderItem.getLineAmount()))
                 .toList();
         return new PaymentCardPayload(TYPE, order.getId(), order.getOrderName(), items,
-                paidAmount, status, reason, paidAt);
+                paidAmount, status, reason, paidAt, failureReason);
     }
 
     public record Item(

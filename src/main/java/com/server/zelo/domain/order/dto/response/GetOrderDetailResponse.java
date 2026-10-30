@@ -105,7 +105,8 @@ public record GetOrderDetailResponse(
             PaymentStatus paymentStatus,
             Long amount,
             String paymentMethodName,
-            LocalDateTime paidAt
+            LocalDateTime paidAt,
+            String failureReason
     ) {
         public static PaymentInfo from(Payment payment) {
             return new PaymentInfo(
@@ -114,7 +115,8 @@ public record GetOrderDetailResponse(
                     payment.getStatus(),
                     payment.getAmount(),
                     payment.getPaymentMethodName(),
-                    payment.getPaidAt()
+                    payment.getPaidAt(),
+                    payment.getFailureReason()
             );
         }
     }
@@ -140,7 +142,8 @@ public record GetOrderDetailResponse(
             RefundStatus refundStatus,
             RefundType refundType,
             Long itemsAmount,
-            LocalDateTime refundedAt
+            LocalDateTime refundedAt,
+            String reason
     ) {
         public static RefundInfo from(Refund refund) {
             return new RefundInfo(
@@ -148,7 +151,8 @@ public record GetOrderDetailResponse(
                     refund.getStatus(),
                     refund.getRefundType(),
                     refund.getItemsAmount(),
-                    refund.getRefundedAt()
+                    refund.getRefundedAt(),
+                    refund.getReason()
             );
         }
     }

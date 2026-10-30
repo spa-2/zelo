@@ -92,7 +92,7 @@ public class PaymentCommandService {
         }
 
         if (pgPayment.isFailed()) {
-            return failPayment(portoneId, orderId);
+            return failPayment(portoneId, orderId, pgPayment.failureReason());
         }
 
         // 결제창을 닫아도 같은 주문으로 재결제할 수 있도록 결제만 취소하고 주문과 재고 선점은 그대로 둔다
@@ -125,7 +125,7 @@ public class PaymentCommandService {
         } catch (BusinessException e) {
             // 카드 거절은 돈이 빠져나가지 않았으므로 바로 실패 처리한다. 타임아웃 등은 결제됐을 수 있어 확인 대기로 남기고 웹훅이 반영한다
             if (e.getErrorCode() == ErrorCode.PG_REQUEST_REJECTED) {
-                return failPayment(portoneId, orderId);
+                return failPayment(portoneId, orderId, (String) e.getData());
             }
             throw e;
         }
@@ -135,17 +135,21 @@ public class PaymentCommandService {
         return orderService.getOrderWithItems(orderId).getStatus() == OrderStatus.PAYMENT_PENDING;
     }
 
-
     // 결제가 완료된 주문은 주문할 때 저장한 배송지로 배송을 접수한다
     private void createDelivery(Long orderId) {
         Order order = orderService.getOrderWithItems(orderId);
         deliveryService.createDelivery(orderId, order.getShippingAddress());
     }
 
-    // 결제는 이미 커밋돼서, 채팅 카드 저장이 실패해도 결제 확인 응답은 그대로 나가게 한다
     // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다
     private void createPaymentCard(Long orderId, PaymentStatus paymentStatus, String reason,
                                    Long paidAmount, LocalDateTime paidAt) {
+        createPaymentCard(orderId, paymentStatus, reason, paidAmount, paidAt, null);
+    }
+
+    // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다
+    private void createPaymentCard(Long orderId, PaymentStatus paymentStatus, String reason,
+                                   Long paidAmount, LocalDateTime paidAt, String failureReason) {
         try {
             transactionOperations.executeWithoutResult(status -> {
                 Order order = orderService.getOrderWithItems(orderId);
@@ -153,17 +157,11 @@ public class PaymentCommandService {
                     return;
                 }
                 chatMessageService.createPaymentCardMessage(order.getChatRoom().getId(), order.getUser().getId(),
-                        PaymentCardPayload.from(order, paymentStatus, reason, paidAmount, paidAt));
+                        PaymentCardPayload.from(order, paymentStatus, reason, paidAmount, paidAt, failureReason));
             });
         } catch (RuntimeException e) {
             log.error("결제 결과 카드 저장 실패 orderId={}, status={}", orderId, paymentStatus, e);
         }
-    }
-
-    private PaymentStatus failPayment(String portoneId, Long orderId) {
-        transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId));
-        createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null);
-        return PaymentStatus.FAILED;
     }
 
     // 확인 대기 결제는 재결제 전에 결제 확인 락을 걸고 다시 조회해야 해서 결제 ID를 먼저 꺼낸다
@@ -216,5 +214,9 @@ public class PaymentCommandService {
         return PaymentStatus.CANCELED;
     }
 
-
+    private PaymentStatus failPayment(String portoneId, Long orderId, String failureReason) {
+        transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId, failureReason));
+        createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null, failureReason);
+        return PaymentStatus.FAILED;
+    }
 }

@@ -49,15 +49,17 @@ class OrderDetailControllerTest {
     private static final String URL = "/api/orders/101";
     private static final LocalDateTime CREATED_AT = LocalDateTime.of(2030, 1, 2, 12, 0);
 
-    @Mock private OrderFacade facade;
-    @Mock private OrderCommandService command;
+    @Mock
+    private OrderFacade facade;
+    @Mock
+    private OrderCommandService command;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade,command))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(facade, command))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -193,10 +195,10 @@ class OrderDetailControllerTest {
                 List.of(new GetOrderDetailResponse.OrderItemInfo(1_001L, 20L, "구매 당시 사과", "1개",
                         1_000L, 3, 1, 2, 3_000L, StockState.DEDUCTED)),
                 new GetOrderDetailResponse.PaymentInfo(201L, "payment-detail-169", PaymentStatus.PAID,
-                        3_000L, "신한카드", CREATED_AT),
+                        3_000L, "신한카드", CREATED_AT, null),
                 new GetOrderDetailResponse.DeliveryInfo(301L, DeliveryStatus.READY, null, null),
                 new GetOrderDetailResponse.RefundInfo(401L, RefundStatus.COMPLETED, RefundType.PARTIAL,
-                        1_000L, CREATED_AT.plusMinutes(10)), 1_000L, 2_000L);
+                        1_000L, CREATED_AT.plusMinutes(10), "부분 환불"), 1_000L, 2_000L);
     }
 
     private void authenticate() {

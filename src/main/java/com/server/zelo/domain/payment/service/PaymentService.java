@@ -18,7 +18,6 @@ public class PaymentService {
     private static final String PORTONE_ID_PREFIX = "payment-";
     private final PaymentRepository paymentRepository;
 
-    // 주문이 결제 대기 상태가 될 때 주문 Command의 트랜잭션 안에서 호출한다.
     // 포트원 결제창을 띄우기 전에 서버가 결제 ID를 발급해야 웹훅이 와도 어느 주문의 결제인지 찾을 수 있다
     public Payment createPayment(Long orderId, Long amount) {
         String portoneId = PORTONE_ID_PREFIX + UUID.randomUUID().toString().replace("-", "");
@@ -48,9 +47,11 @@ public class PaymentService {
         getPayment(portoneId).complete(pgAmount, paidAt, paymentMethodName);
     }
 
-    public void fail(String portoneId) {
-        getPayment(portoneId).fail();
+    public void cancelLatePaid(String portoneId, Long pgAmount) {
+        getPayment(portoneId).cancelLatePaid(pgAmount);
     }
+
+    public void fail(String portoneId, String failureReason) {getPayment(portoneId).fail(failureReason);}
 
     public void cancel(String portoneId, Long pgAmount) {
         getPayment(portoneId).cancel(pgAmount);
@@ -66,9 +67,5 @@ public class PaymentService {
         payment.validateReady();
         payment.startConfirm();
         return payment;
-    }
-
-    public void cancelLatePaid(String portoneId, Long pgAmount) {
-        getPayment(portoneId).cancelLatePaid(pgAmount);
     }
 }

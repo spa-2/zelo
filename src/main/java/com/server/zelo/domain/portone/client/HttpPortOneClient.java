@@ -26,10 +26,12 @@ public class HttpPortOneClient implements PortOneClient {
     private final PortOneProperties portOneProperties;
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String IDEMPOTENCY_KEY_PREFIX = "cancel-";
+    private static final String PG_PROVIDER = "PG_PROVIDER";
     private static final String ALREADY_PAID = "ALREADY_PAID";
     private static final String ALREADY_CANCELLED = "PAYMENT_ALREADY_CANCELLED";
     private static final String IDEMPOTENCY_OUTSTANDING = "IDEMPOTENCY_OUTSTANDING_REQUEST";
     private static final String BILLING_KEY_ALREADY_DELETED = "BILLING_KEY_ALREADY_DELETED";
+
 
 
     @Override
@@ -142,8 +144,15 @@ public class HttpPortOneClient implements PortOneClient {
                 return;
             }
             log.warn("포트원 빌링키 결제 거절 portoneId={}, status={}", portoneId, e.getStatusCode());
-            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
+            throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
+                    ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
         } catch (RestClientResponseException e) {
+            // 포트원은 PG사가 결제를 거절하면 502(PG_PROVIDER)로 응답한다. 결제되지 않은 게 확인된 거절이라 사유와 함께 거절로 넘긴다
+            if (e.getStatusCode().value() == 502 && isErrorType(e, PG_PROVIDER)) {
+                log.warn("포트원 빌링키 결제 PG 거절 portoneId={}", portoneId);
+                throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
+                        ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
+            }
             log.error("포트원 빌링키 결제 실패 portoneId={}, status={}", portoneId, e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
@@ -247,12 +256,28 @@ public class HttpPortOneClient implements PortOneClient {
         }
     }
 
-    private boolean isErrorType(HttpClientErrorException e, String type) {
+    private boolean isErrorType(RestClientResponseException e, String type) {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
             return error != null && type.equals(error.type());
         } catch (RuntimeException parseError) {
             return false;
+        }
+    }
+
+    // 카드 거절 사유를 결제 실패 사유로 남기려고 꺼낸다. PG 문구가 없거나 비어 있으면 포트원 사유를, 본문을 읽을 수 없으면 null을 쓴다
+    private String rejectReason(RestClientResponseException e) {
+        try {
+            PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);
+            if (error == null) {
+                return null;
+            }
+            if (error.pgMessage() != null && !error.pgMessage().isBlank()) {
+                return error.pgMessage();
+            }
+            return error.message() == null || error.message().isBlank() ? null : error.message();
+        } catch (RuntimeException parseError) {
+            return null;
         }
     }
 }

@@ -10,7 +10,8 @@ public record PortOnePaymentResponse(
         String status,
         Amount amount,
         OffsetDateTime paidAt,
-        Method method
+        Method method,
+        Failure failure
 ) {
     public static final String ETC = "ETC";
 
@@ -41,5 +42,19 @@ public record PortOnePaymentResponse(
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Card(String name) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Failure(String reason, String pgMessage) {
+    }
+
+    public String failureReason() {
+        if (failure == null) {
+            return null;
+        }
+        if (failure.pgMessage() != null && !failure.pgMessage().isBlank()) {
+            return failure.pgMessage();
+        }
+        return failure.reason() == null || failure.reason().isBlank() ? null : failure.reason();
     }
 }

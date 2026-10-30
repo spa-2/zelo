@@ -10,7 +10,8 @@ public record PortOnePayment(
         PortOnePaymentStatus status,
         Long amount,
         LocalDateTime paidAt,
-        String methodName
+        String methodName,
+        String failureReason
 ) {
 
     public static PortOnePayment of(String portoneId, PortOnePaymentStatus status, Long amount, LocalDateTime paidAt) {
@@ -19,7 +20,7 @@ public record PortOnePayment(
 
     public static PortOnePayment of(String portoneId, PortOnePaymentStatus status, Long amount,
                                     LocalDateTime paidAt, String methodName) {
-        return new PortOnePayment(portoneId, status, amount, paidAt, methodName);
+        return new PortOnePayment(portoneId, status, amount, paidAt, methodName, null);
     }
 
     public static PortOnePayment from(PortOnePaymentResponse response, ZoneId zoneId) {
@@ -27,7 +28,9 @@ public record PortOnePayment(
         LocalDateTime paidAt = response.paidAt() == null
                 ? null
                 : response.paidAt().atZoneSameInstant(zoneId).toLocalDateTime();
-        return of(response.id(), PortOnePaymentStatus.from(response.status()), amount, paidAt, response.methodName());
+       return new PortOnePayment(response.id(),
+               PortOnePaymentStatus.from(response.status()), amount, paidAt,
+               response.methodName(), response.failureReason());
     }
 
     public boolean isPaid() {

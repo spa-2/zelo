@@ -128,10 +128,6 @@ public class RefundCommandService {
             failRequestedRefund(orderId, portoneId);
             return;
         }
-        if (pgPayment.isPartiallyCancelled()) {
-            partialCancellation(orderId, portoneId, pgPayment.cancelledAmount());
-            return;
-        }
         if (!pgPayment.isCancelled()) {
             log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={}, status={}", portoneId, pgPayment.status());
             return;
@@ -192,21 +188,4 @@ public class RefundCommandService {
         refundService.createRefund(refund);
     }
 
-    // 부분 취소 상태는 이전 부분 환불 때문일 수도 있기때문에, 포트원의 취소 총액에 이번 환불 금액까지 들어 있는지로 반영 여부를 판단한다
-    private void partialCancellation(Long orderId, String portoneId, Long cancelledAmount) {
-        transactionOperations.executeWithoutResult(status -> {
-            Payment payment = paymentService.getPayment(portoneId);
-            refundService.findRequestedRefund(payment.getId()).ifPresentOrElse(refund -> {
-                long completedAmount = refundService.calculateRefundedAmount(payment.getId());
-                if (cancelledAmount != null && cancelledAmount >= completedAmount + refund.getItemsAmount()) {
-                    refundService.complete(refund.getId(), LocalDateTime.now());
-                    orderCommandService.cancelItems(orderId, refund.getRefundItems().stream()
-                            .collect(Collectors.toMap(item -> item.getOrderItem().getId(), RefundItem::getQuantity)));
-                } else {
-                    refundService.fail(refund.getId());
-                }
-                deliveryService.releaseHold(orderId);
-            }, () -> log.warn("환불 요청 없이 포트원에서 부분 취소된 결제 portoneId={}", portoneId));
-        });
-    }
 }

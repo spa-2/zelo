@@ -32,7 +32,7 @@ public record PortOnePaymentResponse(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Amount(Long total, Long cancelled) {
+    public record Amount(Long total) {
     }
 
     // 포트원은 결제 수단 종류마다 다른 필드를 채운다. 이름을 만드는 데 쓰는 필드만 받는다

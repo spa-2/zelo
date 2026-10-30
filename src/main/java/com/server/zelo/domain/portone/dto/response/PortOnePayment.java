@@ -11,8 +11,7 @@ public record PortOnePayment(
         Long amount,
         LocalDateTime paidAt,
         String methodName,
-        String failureReason,
-        Long cancelledAmount
+        String failureReason
 ) {
 
     public static PortOnePayment of(String portoneId, PortOnePaymentStatus status, Long amount, LocalDateTime paidAt) {
@@ -21,7 +20,7 @@ public record PortOnePayment(
 
     public static PortOnePayment of(String portoneId, PortOnePaymentStatus status, Long amount,
                                     LocalDateTime paidAt, String methodName) {
-        return new PortOnePayment(portoneId, status, amount, paidAt, methodName, null,null);
+        return new PortOnePayment(portoneId, status, amount, paidAt, methodName, null);
     }
 
     public static PortOnePayment from(PortOnePaymentResponse response, ZoneId zoneId) {
@@ -31,7 +30,7 @@ public record PortOnePayment(
                 ? null
                 : response.paidAt().atZoneSameInstant(zoneId).toLocalDateTime();
         return new PortOnePayment(response.id(), PortOnePaymentStatus.from(response.status()), amount, paidAt,
-                response.methodName(), response.failureReason(), cancelledAmount);
+                response.methodName(), response.failureReason());
     }
 
     public boolean isPaid() {
@@ -46,6 +45,5 @@ public record PortOnePayment(
         return status == PortOnePaymentStatus.CANCELLED;
     }
 
-    public boolean isPartiallyCancelled() {return status == PortOnePaymentStatus.PARTIAL_CANCELLED;}
 
 }

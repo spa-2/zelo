@@ -1,6 +1,7 @@
 package com.server.zelo.global.config;
 
 import com.server.zelo.ai.gateway.LlmErrorClassifier;
+import com.server.zelo.ai.gateway.LlmTimeBudget;
 import com.server.zelo.common.monitoring.LogContextInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -50,14 +51,18 @@ public class LlmResilienceConfig {
         return llmTimeLimiterRegistry.timeLimiter(NAME);
     }
 
+    // 다시 보내면 나을 수 있는 오류라도, 채팅 메시지에 남은 시간이 재시도 대기 뒤 시도 최소 시간보다 적으면 재시도하지 않는다.
+    // 그래서 시간이 없어 실패한 호출은 시간 초과가 아니라 실제로 난 오류(429, 5xx 등)로 응답한다
     @Bean
     public RetryRegistry llmRetryRegistry(
             @Value("${zelo.llm.retry.max-attempts}") int maxAttempts,
-            @Value("${zelo.llm.retry.wait-duration}") Duration waitDuration) {
+            @Value("${zelo.llm.retry.wait-duration}") Duration waitDuration,
+            LlmTimeBudget llmTimeBudget) {
         return RetryRegistry.of(RetryConfig.custom()
                 .maxAttempts(maxAttempts)
                 .waitDuration(waitDuration)
-                .retryOnException(LlmErrorClassifier::isRetryable)
+                .retryOnException(throwable -> LlmErrorClassifier.isRetryable(throwable)
+                        && llmTimeBudget.allowsRetry(waitDuration))
                 .build());
     }
 

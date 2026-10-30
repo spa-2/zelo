@@ -17,6 +17,7 @@ import static org.mockito.Mockito.never;
 import com.server.zelo.ai.gateway.LlmGateway;
 import com.server.zelo.ai.gateway.LlmReply;
 import com.server.zelo.ai.gateway.LlmResult;
+import com.server.zelo.ai.gateway.LlmTimeBudget;
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.ai.plan.MenuPlanIntent;
@@ -48,7 +49,9 @@ import com.server.zelo.domain.quote.model.SubstituteItem;
 import com.server.zelo.domain.quote.service.QuoteService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -114,6 +117,10 @@ class ChatReplyCommandServiceTest {
     @Spy
     private QuoteExplainPrompt quoteExplainPrompt = new QuoteExplainPrompt(new ClassPathResource("prompts/quote-explain.md"));
 
+    // 메시지마다 마감 시각을 거는지 보려고 진짜 객체를 쓴다 (운영 설정과 같은 30초)
+    @Spy
+    private LlmTimeBudget llmTimeBudget = new LlmTimeBudget(Duration.ofSeconds(30), Duration.ofSeconds(3));
+
     @InjectMocks
     private ChatReplyCommandService chatReplyCommandService;
 
@@ -148,6 +155,45 @@ class ChatReplyCommandServiceTest {
         assertThat(chatPrompt.systemPrompt()).contains("[주문하기] 버튼");
         assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "GENERAL_QUESTION").tag("outcome", "SUCCESS")
                 .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 메시지_하나의_LLM_호출은_모두_같은_마감_시각_안에서_부르고_끝나면_마감을_지운다() {
+        // given: LLM을 부르는 순간 이번 시도에 줄 수 있는 시간을 기록한다 (마감 밖이면 시도당 제한 1시간이 그대로 나온다)
+        List<Duration> budgets = new ArrayList<>();
+        given(llmGateway.planMenu(anyString(), anyList(), anyString(), anyMap())).willAnswer(invocation -> {
+            budgets.add(llmTimeBudget.attemptTimeout(Duration.ofHours(1)).orElseThrow());
+            return planResult(plan(MenuPlanIntent.GENERAL_QUESTION));
+        });
+        given(llmGateway.explain(anyString(), anyList(), anyString())).willAnswer(invocation -> {
+            budgets.add(llmTimeBudget.attemptTimeout(Duration.ofHours(1)).orElseThrow());
+            return LlmReply.of("답변", "gpt-test", 10, 5);
+        });
+        givenAssistantMessage("답변");
+
+        // when
+        reply(List.of(), "안녕");
+
+        // then: 두 호출 모두 30초 예산 안의 남은 시간을 받고, 뒤 호출은 앞 호출이 쓴 만큼 줄어든 시간을 받는다
+        assertThat(budgets).hasSize(2)
+                .allSatisfy(budget -> assertThat(budget).isLessThanOrEqualTo(Duration.ofSeconds(30)));
+        assertThat(budgets.get(1)).isLessThanOrEqualTo(budgets.get(0));
+        assertThat(llmTimeBudget.attemptTimeout(Duration.ofHours(1))).contains(Duration.ofHours(1));
+    }
+
+    @Test
+    void LLM이_실패해도_마감을_지워_요청_스레드의_다음_요청에_남기지_않는다() {
+        // given
+        given(llmGateway.explain(anyString(), anyList(), anyString()))
+                .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT));
+        given(chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT))
+                .willReturn(fallbackMessage("AI_002"));
+
+        // when
+        assertThatThrownBy(() -> reply(List.of(), "안녕")).isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(llmTimeBudget.attemptTimeout(Duration.ofHours(1))).contains(Duration.ofHours(1));
     }
 
     @Test

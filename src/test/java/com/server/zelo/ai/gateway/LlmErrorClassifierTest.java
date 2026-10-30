@@ -121,4 +121,15 @@ class LlmErrorClassifierTest {
         assertThat(LlmErrorClassifier.classify(exception)).isEqualTo(ErrorCode.AI_RESPONSE_FAILED);
         assertThat(LlmErrorClassifier.isRetryable(exception)).isFalse();
     }
+
+    @Test
+    void 메시지_시간_예산이_바닥나_생긴_실패는_AI_TIMEOUT이지만_재시도하지_않고_서킷_실패로도_세지_않는다() {
+        // given
+        LlmTimeBudget.ExceededException exception = new LlmTimeBudget.ExceededException("예산 부족");
+
+        // when & then: 사용자에게는 시간 초과와 같지만, 다시 보낼 시간이 없고 OpenAI 장애의 증거도 아니다
+        assertThat(LlmErrorClassifier.classify(exception)).isEqualTo(ErrorCode.AI_TIMEOUT);
+        assertThat(LlmErrorClassifier.isRetryable(exception)).isFalse();
+        assertThat(LlmErrorClassifier.isCircuitFailure(exception)).isFalse();
+    }
 }

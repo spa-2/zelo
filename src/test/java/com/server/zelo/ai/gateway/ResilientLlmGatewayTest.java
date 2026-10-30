@@ -24,10 +24,10 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
+import com.server.zelo.global.config.LlmResilienceConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
-import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -58,6 +58,9 @@ class ResilientLlmGatewayTest {
 
     private static final Duration TIMEOUT = Duration.ofMillis(200);
     private static final Duration OPEN_DURATION = Duration.ofMillis(300);
+    // 메시지 하나의 시간 예산. 시도당 제한(200ms)을 몇 번 쓰면 바닥나도록 짧게 둔다
+    private static final Duration BUDGET = Duration.ofMillis(800);
+    private static final Duration MIN_ATTEMPT = Duration.ofMillis(50);
     private static final LlmReply REPLY = LlmReply.of("답변", "gpt-test", 10, 5);
     // 실패해서 응답이 없을 때 로그에 남는 설정 모델 이름 (성공 응답의 모델과 구분하려고 다른 이름을 쓴다)
     private static final String CONFIGURED_MODEL = "gpt-configured";
@@ -67,6 +70,8 @@ class ResilientLlmGatewayTest {
     @Mock
     private LlmGateway delegate;
 
+    private TimeLimiter timeLimiter;
+    private LlmTimeBudget llmTimeBudget;
     private CircuitBreaker circuitBreaker;
     private ExecutorService executorService;
     private SimpleMeterRegistry meterRegistry;
@@ -75,12 +80,8 @@ class ResilientLlmGatewayTest {
 
     @BeforeEach
     void setUp() {
-        Retry retry = Retry.of("test", RetryConfig.custom()
-                .maxAttempts(2)
-                .waitDuration(Duration.ofMillis(10))
-                .retryOnException(LlmErrorClassifier::isRetryable)
-                .build());
-        TimeLimiter timeLimiter = TimeLimiter.of("test", TimeLimiterConfig.custom()
+        llmTimeBudget = new LlmTimeBudget(BUDGET, MIN_ATTEMPT);
+        timeLimiter = TimeLimiter.of("test", TimeLimiterConfig.custom()
                 .timeoutDuration(TIMEOUT)
                 .cancelRunningFuture(true)
                 .build());
@@ -95,8 +96,7 @@ class ResilientLlmGatewayTest {
         executorService = Executors.newVirtualThreadPerTaskExecutor();
         meterRegistry = new SimpleMeterRegistry();
         quoteExplainPrompt = new QuoteExplainPrompt(new ClassPathResource("prompts/quote-explain.md"));
-        resilientLlmGateway = new ResilientLlmGateway(retry, CONFIGURED_MODEL, REVIEW_SUMMARY_MODEL, delegate, timeLimiter,
-                circuitBreaker, new BusinessMetrics(meterRegistry), executorService, quoteExplainPrompt);
+        resilientLlmGateway = gatewayWith(retryWaiting(Duration.ofMillis(10)));
     }
 
     @AfterEach
@@ -744,6 +744,104 @@ class ResilientLlmGatewayTest {
         // then
         assertThat(timerCount("zelo.llm.call", "MENU_PLAN", "SUCCESS")).isEqualTo(1);
         assertThat(timerCount("zelo.llm.call", "REVIEW_SUMMARY", "SUCCESS")).isEqualTo(1);
+    }
+
+    @Test
+    void 메시지_안이라도_남은_시간이_충분하면_지금처럼_시도당_제한으로_기다리고_재시도한다() {
+        // given
+        given(delegate.explain(anyString(), anyList(), anyString())).willAnswer(invocation -> {
+            Thread.sleep(2_000);
+            return REPLY;
+        });
+
+        // when & then: 200ms + 10ms + 200ms를 써도 예산(800ms)이 남아 두 시도 모두 시도당 제한만큼 기다린다
+        assertThatThrownBy(() -> llmTimeBudget.run(() -> resilientLlmGateway.explain("system", List.of(), "질문")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+        then(delegate).should(times(2)).explain(anyString(), anyList(), anyString());
+        assertThat(meterRegistry.find("zelo.llm.time.budget.exceeded").counter()).isNull();
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void 메시지에_남은_시간이_시도당_제한보다_짧으면_남은_시간만_기다리고_AI_TIMEOUT으로_실패한다() {
+        // given: 앞선 LLM 호출들이 예산 800ms 중 400ms를 썼다. 늦게 답하는 LLM에 첫 시도 200ms를 다 쓰면 약 190ms가 남는다
+        given(delegate.explain(anyString(), anyList(), anyString())).willAnswer(invocation -> {
+            Thread.sleep(2_000);
+            return REPLY;
+        });
+        long start = System.nanoTime();
+
+        // when & then
+        assertThatThrownBy(() -> llmTimeBudget.run(() -> {
+            sleep(Duration.ofMillis(400));
+            return resilientLlmGateway.explain("system", List.of(), "질문");
+        })).isInstanceOfSatisfying(BusinessException.class,
+                exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+
+        // then: 재시도는 시도당 제한(200ms)이 아니라 남은 시간만 기다리고 끊어, 메시지 예산 안에서 끝난다
+        then(delegate).should(times(2)).explain(anyString(), anyList(), anyString());
+        assertThat(budgetExceeded("CHAT_ANSWER", "CUT")).isEqualTo(1);
+        assertThat(elapsed).isLessThan(BUDGET.plusMillis(100));
+        // 서킷은 시도당 제한을 다 기다린 첫 시도만 실패로 센다. 예산 때문에 일찍 끊은 시도는 OpenAI 장애의 증거가 아니다
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(1);
+        assertThat(circuitBreaker.getMetrics().getNumberOfBufferedCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void 메시지에_남은_시간이_시도_최소_시간보다_적으면_LLM을_부르지_않고_AI_TIMEOUT으로_실패한다(CapturedOutput output) {
+        // when & then: 앞선 호출들이 예산을 거의 다 써서 시도 최소 시간(50ms)보다 적게 남았다
+        assertThatThrownBy(() -> llmTimeBudget.run(() -> {
+            sleep(BUDGET.minusMillis(20));
+            return resilientLlmGateway.explain("system", List.of(), "질문");
+        })).isInstanceOfSatisfying(BusinessException.class,
+                exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT));
+
+        // then: OpenAI에 보내지 않았으므로 시도 지표·서킷 장부에는 없고, 호출 1건과 건너뛴 수로만 남는다
+        then(delegate).should(never()).explain(anyString(), anyList(), anyString());
+        assertThat(budgetExceeded("CHAT_ANSWER", "SKIPPED")).isEqualTo(1);
+        assertThat(meterRegistry.find("zelo.llm.attempt").timer()).isNull();
+        assertThat(timerCount("zelo.llm.call", "CHAT_ANSWER", "AI_002")).isEqualTo(1);
+        assertThat(circuitBreaker.getMetrics().getNumberOfBufferedCalls()).isZero();
+        assertThat(output.getOut()).contains("LLM 시도 생략: 메시지 시간 예산 부족").contains("operation=CHAT_ANSWER");
+    }
+
+    @Test
+    void 재시도_대기_뒤에_메시지에_남는_시간이_없으면_재시도하지_않고_실제로_난_오류로_실패한다() {
+        // given: 재시도 대기가 메시지 예산만큼 길다
+        ResilientLlmGateway waitingGateway = gatewayWith(retryWaiting(BUDGET));
+        given(delegate.explain(anyString(), anyList(), anyString())).willThrow(OpenAiErrors.serverError(503));
+
+        // when & then: 기다려 봐야 시도할 시간이 없어 바로 실패하고, 응답 코드는 시간 초과가 아니라 실제로 난 서버 오류다
+        assertThatThrownBy(() -> llmTimeBudget.run(() -> waitingGateway.explain("system", List.of(), "질문")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_SERVER_ERROR));
+        then(delegate).should(times(1)).explain(anyString(), anyList(), anyString());
+    }
+
+    // 운영 설정(LlmResilienceConfig)의 재시도 조건을 그대로 쓴다: 다시 보내면 나을 수 있는 오류이고, 메시지에 남은 시간이 충분할 때만
+    private Retry retryWaiting(Duration waitDuration) {
+        return new LlmResilienceConfig().llmRetryRegistry(2, waitDuration, llmTimeBudget).retry("test");
+    }
+
+    private ResilientLlmGateway gatewayWith(Retry retry) {
+        return new ResilientLlmGateway(retry, CONFIGURED_MODEL, REVIEW_SUMMARY_MODEL, delegate, timeLimiter,
+                circuitBreaker, new BusinessMetrics(meterRegistry), llmTimeBudget, executorService, quoteExplainPrompt);
+    }
+
+    private double budgetExceeded(String operation, String stage) {
+        return meterRegistry.get("zelo.llm.time.budget.exceeded").tag("operation", operation).tag("stage", stage)
+                .counter().count();
+    }
+
+    private static void sleep(Duration duration) {
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     private long timerCount(String name, String operation, String outcome) {

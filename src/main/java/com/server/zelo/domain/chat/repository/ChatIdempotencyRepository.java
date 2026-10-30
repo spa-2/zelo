@@ -12,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class ChatIdempotencyRepository {
 
-    // 처리 중 표시는 요청 하나의 최악 시간(LLM 3번, 약 73.5초)보다 길게 둔다. 서버가 처리 중에 죽어도 이 시간이 지나면 풀린다
+    // 처리 중 표시는 요청 하나의 최악 시간(LLM 시간 예산 zelo.llm.time-budget.total 30초 + 저장)보다 길게 둔다. 서버가 처리 중에 죽어도 이 시간이 지나면 풀린다
     public static final Duration PROCESSING_TTL = Duration.ofMinutes(2);
     // 응답을 잃은 화면이 같은 키로 다시 보낼 시간
     public static final Duration DONE_TTL = Duration.ofMinutes(10);

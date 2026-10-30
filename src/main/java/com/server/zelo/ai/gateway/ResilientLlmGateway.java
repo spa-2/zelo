@@ -13,12 +13,15 @@ import com.server.zelo.domain.product.entity.BaseUnit;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
+import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
@@ -39,15 +42,21 @@ public class ResilientLlmGateway implements LlmGateway {
     public static final String DELEGATE = "llmDelegate";
     // [모니터링] 지표의 outcome 태그 값. 실패는 오류 코드(AI_002 등)를 그대로 쓴다
     private static final String SUCCESS = "SUCCESS";
+    // [모니터링] zelo.llm.time.budget.exceeded의 stage 태그 값: 시도하지 않음 / 남은 시간에 맞춰 짧게 기다리다 끊음
+    private static final String SKIPPED = "SKIPPED";
+    private static final String CUT = "CUT";
 
     private final Retry retry;
     private final String model;
+    // 시도당 시간 제한(zelo.llm.timeout). 메시지에 남은 시간이 이보다 적을 때만 더 짧게 기다린다
+    private final Duration timeout;
     private final String reviewSummaryModel;
     private final LlmGateway llmGateway;
     private final TimeLimiter timeLimiter;
     private final CircuitBreaker circuitBreaker;
     // [모니터링] zelo.llm.call, zelo.llm.attempt, zelo.llm.tokens 지표를 남기는 데만 쓴다
     private final BusinessMetrics businessMetrics;
+    private final LlmTimeBudget llmTimeBudget;
     private final ExecutorService executorService;
     // [모니터링] explain 호출을 QUOTE_EXPLAIN과 CHAT_ANSWER로 나눠 기록하는 데만 쓴다 (explainOperation)
     private final QuoteExplainPrompt quoteExplainPrompt;
@@ -61,6 +70,7 @@ public class ResilientLlmGateway implements LlmGateway {
             TimeLimiter timeLimiter,
             CircuitBreaker circuitBreaker,
             BusinessMetrics businessMetrics,
+            LlmTimeBudget llmTimeBudget,
             ExecutorService executorService,
             QuoteExplainPrompt quoteExplainPrompt) {
         this.retry = retry;
@@ -68,8 +78,10 @@ public class ResilientLlmGateway implements LlmGateway {
         this.reviewSummaryModel = reviewSummaryModel;
         this.llmGateway = llmGateway;
         this.timeLimiter = timeLimiter;
+        this.timeout = timeLimiter.getTimeLimiterConfig().getTimeoutDuration();
         this.circuitBreaker = circuitBreaker;
         this.businessMetrics = businessMetrics;
+        this.llmTimeBudget = llmTimeBudget;
         this.executorService = executorService;
         this.quoteExplainPrompt = quoteExplainPrompt;
     }
@@ -108,18 +120,24 @@ public class ResilientLlmGateway implements LlmGateway {
     // 재시도(바깥) → 서킷 브레이커 → 시도당 시간 제한(안쪽) 순서로 감싼다.
     // 그래서 재시도한 시도도 서킷 브레이커가 한 번씩 세고, 서킷이 열려 막힌 호출은 재시도하지 않는다
     // 지표는 두 단계로 남긴다: 시도 1번(zelo.llm.attempt)과, 재시도까지 끝난 호출 1건(zelo.llm.call = 사용자가 실제로 기다린 시간)
+    // 채팅 메시지 안의 호출이면 시도마다 메시지에 남은 시간(LlmTimeBudget)을 보고 기다릴 시간을 정한다
     private <T> LlmResult<T> call(LlmOperation operation, String requestModel, Supplier<LlmResult<T>> request) {
-
-        // (가) 시도 1번 = 다른 스레드에서 실행하고, 5초만 기다린다.
-        Callable<LlmResult<T>> attempt = () -> timeLimiter.executeFutureSupplier(
-                () -> executorService.submit(() -> request.get()));
-
-        // (나) 그 시도를 서킷 브레이커로 감싼다.
-        Callable<LlmResult<T>> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);
-
-        // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
         AtomicInteger attemptNumber = new AtomicInteger();
-        Callable<LlmResult<T>> logged = () -> logAttempt(operation, requestModel, attemptNumber.incrementAndGet(), guarded);
+        Callable<LlmResult<T>> logged = () -> {
+            // 남은 시간이 부족하면 서킷 브레이커에 닿기 전에 멈춘다. OpenAI에 보내지 않은 시도라 서킷이 세지 않게 한다
+            Duration attemptTimeout = llmTimeBudget.attemptTimeout(timeout)
+                    .orElseThrow(() -> skipAttempt(operation));
+
+            // (가) 시도 1번 = 다른 스레드에서 실행하고, 정한 시간만 기다린다.
+            Callable<LlmResult<T>> attempt = () -> limitTime(operation, attemptTimeout,
+                    () -> executorService.submit(() -> request.get()));
+
+            // (나) 그 시도를 서킷 브레이커로 감싼다.
+            Callable<LlmResult<T>> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);
+
+            // 재시도 안쪽·서킷 바깥에서 기록해, 시도마다 한 줄씩 남고 서킷에 막힌 호출도 남는다
+            return logAttempt(operation, requestModel, attemptNumber.incrementAndGet(), guarded);
+        };
         long start = System.nanoTime(); // [모니터링] zelo.llm.call 시간 측정 시작
         try {
             // (다) 그걸 다시 재시도로 감싸서 실행한다.
@@ -140,6 +158,33 @@ public class ResilientLlmGateway implements LlmGateway {
             }
             throw new BusinessException(errorCode);
         }
+    }
+
+    // 시도당 제한 그대로 기다리면 빈으로 등록한 TimeLimiter를 써서 resilience4j 시간 초과 지표에 남긴다.
+    // 메시지에 남은 시간이 더 짧으면 같은 설정에 시간만 바꾼 TimeLimiter로 기다리고, 그 시간 초과는 예산 초과로 바꾼다.
+    // 시도당 제한을 다 기다리지 못하고 끊은 것은 OpenAI 장애의 증거가 아니라서 서킷 브레이커가 세지 않게 하기 위해서다
+    private <T> LlmResult<T> limitTime(LlmOperation operation, Duration attemptTimeout,
+                                       Supplier<Future<LlmResult<T>>> attempt) throws Exception {
+        if (attemptTimeout.equals(timeout)) {
+            return timeLimiter.executeFutureSupplier(attempt);
+        }
+        TimeLimiter shortened = TimeLimiter.of(TimeLimiterConfig.from(timeLimiter.getTimeLimiterConfig())
+                .timeoutDuration(attemptTimeout)
+                .build());
+        try {
+            return shortened.executeFutureSupplier(attempt);
+        } catch (TimeoutException e) {
+            businessMetrics.count(BusinessMetric.LLM_TIME_BUDGET_EXCEEDED, "operation", operation.name(), "stage", CUT); // [모니터링]
+            throw new LlmTimeBudget.ExceededException("메시지 시간 예산 안에 답하지 않음: " + attemptTimeout.toMillis() + "ms");
+        }
+    }
+
+    // 남은 시간이 시도 최소 시간보다 적어 OpenAI에 보내지 않는다. 보내지 않았으므로 시도 지표(zelo.llm.attempt)에는 남기지 않는다
+    private LlmTimeBudget.ExceededException skipAttempt(LlmOperation operation) {
+        log.warn("LLM 시도 생략: 메시지 시간 예산 부족 remainingMs={} operation={}",
+                llmTimeBudget.remaining().map(Duration::toMillis).orElse(0L), operation);
+        businessMetrics.count(BusinessMetric.LLM_TIME_BUDGET_EXCEEDED, "operation", operation.name(), "stage", SKIPPED); // [모니터링]
+        return new LlmTimeBudget.ExceededException("메시지 시간 예산 부족으로 시도하지 않음");
     }
 
     // 프롬프트·사용자 메시지 원문은 남기지 않는다

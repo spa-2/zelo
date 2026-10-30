@@ -57,6 +57,12 @@ zelo:
      # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
      max-attempts: 2
      wait-duration: 500ms
+    # 채팅 메시지 하나(LLM 2~3번)를 답하는 전체 시간 (LlmTimeBudget). 위 시간 제한·재시도는 호출 한 건 단위라 메시지 하나는 최악 73.5초까지 걸린다
+    time-budget:
+      # 견적 수정(LLM 3번)이 세 번 모두 p95(약 7.5초)로 느리고 견적 락을 3초 기다려도(약 25.5초) 끊기지 않는 값
+      total: 30s
+      # 남은 시간이 이보다 적으면 시도하지 않는다. 가장 빠른 답변 호출도 p50이 3.5초라 그보다 짧으면 답을 받기 어렵다
+      min-attempt: 3s
     circuit-breaker:
       # 트래픽이 적어도 판단할 수 있도록 시간이 아닌 최근 시도 횟수로 실패율을 본다
       sliding-window-size: 10

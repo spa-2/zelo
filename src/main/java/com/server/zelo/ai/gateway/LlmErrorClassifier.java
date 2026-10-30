@@ -33,15 +33,18 @@ public final class LlmErrorClassifier {
     private LlmErrorClassifier() {
     }
 
-    // 위 4가지 오류 중 하나면 재시도
+    // 위 4가지 오류 중 하나면 재시도. 메시지 시간 예산이 바닥나 생긴 실패는 다시 보내도 기다릴 시간이 없어 재시도하지 않는다
     public static boolean isRetryable(Throwable throwable) {
-        return RETRYABLE.contains(classify(throwable));
+        return !(throwable instanceof LlmTimeBudget.ExceededException)
+                && RETRYABLE.contains(classify(throwable));
     }
 
     // 요청 자체가 잘못된 4xx는 OpenAI 장애가 아니므로 서킷 실패로 세지 않는다.
-    // 세면 한 사용자의 잘못된 요청이 반복될 때 서킷이 열려 다른 사용자의 정상 요청까지 막힌다
+    // 세면 한 사용자의 잘못된 요청이 반복될 때 서킷이 열려 다른 사용자의 정상 요청까지 막힌다.
+    // 메시지 시간 예산 때문에 시도당 제한보다 일찍 끊은 시도도 OpenAI 장애의 증거가 아니라 세지 않는다
     public static boolean isCircuitFailure(Throwable throwable) {
-        return !NOT_CIRCUIT_FAILURES.contains(classify(throwable));
+        return !(throwable instanceof LlmTimeBudget.ExceededException)
+                && !NOT_CIRCUIT_FAILURES.contains(classify(throwable));
     }
 
     // LLM이 보낸 예외를 우리 ErrorCode로 바꿈
@@ -49,6 +52,8 @@ public final class LlmErrorClassifier {
         return switch (throwable) {
             case BusinessException e -> e.getErrorCode();
             case TimeoutException ignored -> ErrorCode.AI_TIMEOUT;
+            // 사용자에게는 시간 초과와 같다: 기다린 끝에 답을 받지 못했다
+            case LlmTimeBudget.ExceededException ignored -> ErrorCode.AI_TIMEOUT;
             case CallNotPermittedException ignored -> ErrorCode.AI_CIRCUIT_OPEN;
             // 구조화 출력(MenuPlan 등)에서 LLM이 준 JSON을 객체로 바꾸지 못하면 Spring AI가 Jackson 예외를 그대로 던진다
             case JacksonException ignored -> ErrorCode.AI_INVALID_RESPONSE;

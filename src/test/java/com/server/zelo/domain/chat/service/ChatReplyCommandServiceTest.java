@@ -508,6 +508,40 @@ class ChatReplyCommandServiceTest {
     }
 
     @Test
+    void 견적이_만료됐으면_앞_대화의_마지막_견적_메뉴를_메뉴_계획에_알리고_재료_수정은_만료_안내로_답한다() {
+        // given: 견적은 10분이 지나 Redis에서 사라졌지만 앞 대화에 김치볶음밥 견적 카드가 있다
+        List<ChatMessage> history = List.of(ChatMessage.of(10L, ChatSender.ASSISTANT, "김치볶음밥 견적이에요.",
+                "{\"type\":\"QUOTE_CARD\",\"menuName\":\"김치볶음밥\"}"));
+        given(chatMessageService.findLastQuoteCardMenuName(history)).willReturn(Optional.of("김치볶음밥"));
+        givenPlan(plan(MenuPlanIntent.QUOTE_EDIT));
+        givenAssistantMessage(NO_QUOTE_TO_EDIT);
+
+        // when
+        ChatMessageResponse response = reply(history, "마요네즈도 추가해 봐");
+
+        // then
+        ArgumentCaptor<String> systemPrompt = ArgumentCaptor.forClass(String.class);
+        then(llmGateway).should().planMenu(systemPrompt.capture(), eq(history), eq("마요네즈도 추가해 봐"), anyMap());
+        assertThat(systemPrompt.getValue()).contains("## 현재 견적 메뉴\n없음 (앞에서 만든 김치볶음밥 견적은 시간이 지나 만료됨)\n");
+        assertThat(response.content()).isEqualTo(NO_QUOTE_TO_EDIT);
+        then(chatQuoteFacade).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 현재_견적이_있으면_만료된_견적을_찾지_않는다() {
+        // given
+        Quote current = quote(List.of(KIMCHI_ITEM, EGG_ITEM), List.of());
+        givenEditRequest(current, QuoteEditPlan.of(List.of(), "어떤 상품을 뺄까요?"));
+        givenAssistantMessage("어떤 상품을 뺄까요?");
+
+        // when
+        reply("하나 빼줘");
+
+        // then
+        then(chatMessageService).should(never()).findLastQuoteCardMenuName(any());
+    }
+
+    @Test
     void 수정_계획에는_현재_견적_목록과_재료_목록과_대화_기록과_이번_말을_보낸다() {
         // given
         List<ChatMessage> history = List.of(ChatMessage.of(10L, ChatSender.USER, "김치볶음밥 재료 준비해 줘"));

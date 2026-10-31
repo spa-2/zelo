@@ -425,6 +425,34 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 대화_기록에서_가장_최근_견적_카드의_메뉴_이름을_찾는다() {
+        // given: 오래된 순서의 기록. DB(jsonb)는 키 순서를 바꿔 돌려준다
+        List<ChatMessage> history = List.of(
+                ChatMessage.of(10L, ChatSender.ASSISTANT, "해물파전 견적", "{\"menuName\": \"해물파전\", \"type\": \"QUOTE_CARD\"}"),
+                ChatMessage.of(10L, ChatSender.USER, "안 매운 김치볶음밥"),
+                ChatMessage.of(10L, ChatSender.ASSISTANT, "김치볶음밥 견적", "{\"menuName\": \"김치볶음밥\", \"type\": \"QUOTE_CARD\"}"),
+                ChatMessage.of(10L, ChatSender.SYSTEM_EVENT, "결제가 완료됐어요.", "{\"type\": \"PAYMENT_CARD\", \"orderId\": 3}"));
+
+        // when
+        Optional<String> menuName = chatMessageService.findLastQuoteCardMenuName(history);
+
+        // then
+        assertThat(menuName).contains("김치볶음밥");
+    }
+
+    @Test
+    void 대화_기록에_견적_카드가_없으면_메뉴_이름이_없다() {
+        // given
+        List<ChatMessage> history = List.of(
+                ChatMessage.of(10L, ChatSender.USER, "안녕"),
+                ChatMessage.of(10L, ChatSender.ASSISTANT, "안녕하세요"));
+
+        // when & then
+        assertThat(chatMessageService.findLastQuoteCardMenuName(history)).isEmpty();
+        assertThat(chatMessageService.findLastQuoteCardMenuName(List.of())).isEmpty();
+    }
+
+    @Test
     void 견적_카드가_아니면_견적_ID가_없다() {
         // when & then
         assertThat(chatMessageService.findQuoteCardId(null)).isEmpty();

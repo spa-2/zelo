@@ -87,7 +87,12 @@ public class ChatReplyCommandService {
             // 담은 상품도 대체 후보도 없는 견적은 고칠 것도 주문할 것도 없어서 견적이 없는 것으로 본다
             Optional<Quote> currentQuote = quoteService.findQuote(roomId).filter(QuoteCardPayload::isShowable);
             String currentMenuName = currentQuote.map(Quote::menuName).orElse(null);
-            MenuPlan menuPlan = planMenu(roomId, userId, history, text, ingredientUnits, currentMenuName, toResponse);
+            // 견적이 10분이 지나 사라졌으면 "마요네즈도 추가해 줘"가 새 견적(재료를 처음부터 다시 정함)이 되지 않도록, 앞에서 만든 견적이 있었다고 알린다
+            String expiredMenuName = currentQuote.isPresent()
+                    ? null
+                    : chatMessageService.findLastQuoteCardMenuName(history).orElse(null);
+            MenuPlan menuPlan = planMenu(roomId, userId, history, text, ingredientUnits, currentMenuName, expiredMenuName,
+                    toResponse);
             intent = menuPlan.intent().name();
             ChatMessageResponse reply = switch (menuPlan.intent()) {
                 case SHOPPING_REQUEST -> replyWithQuote(roomId, userId, menuPlan, toResponse);
@@ -115,8 +120,8 @@ public class ChatReplyCommandService {
     // 현재 견적 메뉴는 "4인분으로"처럼 메뉴를 말하지 않은 요청과, 같은 메뉴에서 재료만 고치는 요청을 구분하는 데 쓴다
     private <T> MenuPlan planMenu(Long roomId, Long userId, List<ChatMessage> history, String text,
                                   Map<String, BaseUnit> ingredientUnits, String currentMenuName,
-                                  Function<ChatMessageResponse, T> toResponse) {
-        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits, currentMenuName);
+                                  String expiredMenuName, Function<ChatMessageResponse, T> toResponse) {
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits, currentMenuName, expiredMenuName);
         try {
             return llmGateway.planMenu(systemPrompt, history, text, ingredientUnits).content();
         } catch (BusinessException e) {

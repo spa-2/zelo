@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 public class MenuPlanPrompt {
 
     private static final String NO_CURRENT_MENU = "없음";
+    private static final String EXPIRED_MENU_FORMAT = "없음 (앞에서 만든 %s 견적은 시간이 지나 만료됨)";
     private static final String KEYWORDS_PLACEHOLDER = "{{KEYWORDS}}";
     private static final String INGREDIENTS_PLACEHOLDER = "{{INGREDIENTS}}";
     private static final String CURRENT_MENU_PLACEHOLDER = "{{CURRENT_MENU}}";
@@ -32,9 +33,21 @@ public class MenuPlanPrompt {
     // 재료 목록은 상품 시드가 들어간 뒤의 재료 테이블 값을 써야 해서, 앱 시작 때가 아니라 요청마다 채운다.
     // 현재 견적 메뉴는 "4인분으로"처럼 메뉴를 말하지 않은 수정 요청과 새 메뉴 요청을 구분하는 데 쓴다
     public String systemPrompt(Map<String, BaseUnit> ingredientUnits, String currentMenuName) {
+        return systemPrompt(ingredientUnits, currentMenuName, null);
+    }
+
+    // 만료된 견적 메뉴는 현재 견적이 없을 때만 쓴다. 처음부터 견적이 없던 방과 견적이 시간이 지나 사라진 방을 LLM이 구분하게 한다
+    public String systemPrompt(Map<String, BaseUnit> ingredientUnits, String currentMenuName, String expiredMenuName) {
         return template
                 .replace(INGREDIENTS_PLACEHOLDER, ingredientLines(ingredientUnits))
-                .replace(CURRENT_MENU_PLACEHOLDER, StringUtils.hasText(currentMenuName) ? currentMenuName : NO_CURRENT_MENU);
+                .replace(CURRENT_MENU_PLACEHOLDER, currentMenu(currentMenuName, expiredMenuName));
+    }
+
+    private static String currentMenu(String currentMenuName, String expiredMenuName) {
+        if (StringUtils.hasText(currentMenuName)) {
+            return currentMenuName;
+        }
+        return StringUtils.hasText(expiredMenuName) ? EXPIRED_MENU_FORMAT.formatted(expiredMenuName) : NO_CURRENT_MENU;
     }
 
     // 견적 수정 프롬프트도 같은 모양의 재료 목록을 써서 같은 패키지에 연다

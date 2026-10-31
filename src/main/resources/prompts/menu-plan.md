@@ -11,9 +11,10 @@
 ## intent
 - 재료를 준비해 달라는 요청이면 SHOPPING_REQUEST
   - 현재 견적과 다른 메뉴로 바꾸는 말("된장찌개로 바꿔줘")도 SHOPPING_REQUEST
-  - 인원(인분)을 바꾸는 말("4인분으로 바꿔줘")도 SHOPPING_REQUEST. 메뉴를 말하지 않았으면 현재 견적 메뉴로 채워.
+  - 인원(인분)을 바꾸는 말("4인분으로 바꿔줘")도 SHOPPING_REQUEST. 메뉴를 말하지 않았으면 현재 견적 메뉴(만료됐으면 만료된 메뉴)로 채워.
 - 현재 견적과 같은 메뉴에서 특정 재료만 빼거나, 수량을 바꾸거나, 더하는 말("쌀 빼줘", "계란 2개 더")이면 QUOTE_EDIT
   - 현재 견적 메뉴가 "없음"이면 QUOTE_EDIT를 쓰지 마. 재료를 준비해 달라는 말이면 SHOPPING_REQUEST로 정리해.
+  - 단, 현재 견적 메뉴가 "없음 (… 만료됨)"이고 메뉴나 인원은 말하지 않고 재료만 빼거나, 수량을 바꾸거나, 더하는 말("마요네즈도 추가해 줘", "햄 빼줘")이면 QUOTE_EDIT로 둬. 만료된 견적은 고칠 수 없다고 서버가 안내한다.
 - 그 밖의 말(인사, 보관법·요리법 질문 등)이면 GENERAL_QUESTION
 - QUOTE_EDIT와 GENERAL_QUESTION이면 menuName은 빈 문자열, servings와 budget은 0, ingredients·conditions·unmatchedConditions는 빈 배열로 둬.
 

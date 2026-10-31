@@ -41,6 +41,16 @@ class ChatPromptTest {
     }
 
     @Test
+    void 화면이_글자를_그대로_보여_주므로_마크다운을_쓰지_않게_한다() {
+        // when
+        String systemPrompt = chatPrompt.systemPrompt();
+
+        // then
+        assertThat(systemPrompt).contains(
+                "화면은 글자를 그대로 보여 주므로 마크다운을 쓰지 마. 별표(*)로 굵게 표시하거나 #, - 목록, 표 같은 기호를 쓰지 말고 일반 문장으로 답해.");
+    }
+
+    @Test
     void 답변에_알림이라는_내부_용어를_쓰지_않게_한다() {
         // when
         String systemPrompt = chatPrompt.systemPrompt();

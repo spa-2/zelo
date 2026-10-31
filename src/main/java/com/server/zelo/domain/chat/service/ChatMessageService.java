@@ -201,6 +201,20 @@ public class ChatMessageService {
         return Optional.of(node.path("quoteId").asString());
     }
 
+    // 대화 기록에서 가장 최근 견적 카드의 메뉴 이름. 견적이 시간이 지나 사라졌을 때, 앞에서 만든 견적이 있었는지 메뉴 계획에 알리는 데 쓴다
+    public Optional<String> findLastQuoteCardMenuName(List<ChatMessage> history) {
+        for (ChatMessage chatMessage : history.reversed()) {
+            if (chatMessage.getPayload() == null) {
+                continue;
+            }
+            JsonNode node = jsonMapper.readTree(chatMessage.getPayload());
+            if (QuoteCardPayload.TYPE.equals(node.path("type").asString(""))) {
+                return Optional.of(node.path("menuName").asString("")).filter(menuName -> !menuName.isBlank());
+            }
+        }
+        return Optional.empty();
+    }
+
     // 다시 시도할 수 있는 FALLBACK인지. 방의 마지막 메시지인지는 부르는 쪽이 본다
     public boolean isRetryable(String payload) {
         if (payload == null) {

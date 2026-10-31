@@ -58,6 +58,36 @@ class MenuPlanPromptTest {
     }
 
     @Test
+    void 현재_견적이_없고_만료된_견적이_있었으면_없음과_만료된_메뉴를_함께_넣는다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null, "김치볶음밥");
+
+        // then
+        assertThat(systemPrompt).contains("## 현재 견적 메뉴\n없음 (앞에서 만든 김치볶음밥 견적은 시간이 지나 만료됨)\n");
+    }
+
+    @Test
+    void 현재_견적이_있으면_만료된_메뉴는_넣지_않는다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), "된장찌개", "김치볶음밥");
+
+        // then
+        assertThat(systemPrompt).contains("## 현재 견적 메뉴\n된장찌개\n").doesNotContain("앞에서 만든 김치볶음밥");
+    }
+
+    @Test
+    void 만료된_견적에_재료만_고치는_말은_새_견적이_아니라_견적_수정으로_두는_규칙이_들어_있다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
+
+        // then: 견적이 만료된 뒤 "마요네즈도 추가해 봐"가 새 견적이 되어 통햄이 빠진 적이 있다(2026-10-31)
+        assertThat(systemPrompt)
+                .contains("단, 현재 견적 메뉴가 \"없음 (… 만료됨)\"이고 메뉴나 인원은 말하지 않고 재료만 빼거나, 수량을 바꾸거나, 더하는 말")
+                .contains("QUOTE_EDIT로 둬. 만료된 견적은 고칠 수 없다고 서버가 안내한다.")
+                .contains("현재 견적 메뉴(만료됐으면 만료된 메뉴)로 채워");
+    }
+
+    @Test
     void 견적_수정_판단_규칙과_앞_대화_유지_규칙이_들어_있다() {
         // when
         String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);

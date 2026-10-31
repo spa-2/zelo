@@ -50,7 +50,43 @@ class ReviewSummaryPromptTest {
         assertThat(systemPrompt).contains("한두 명만 말한 내용은 빼")
                 .contains("식품 안전 문제는 1건이라도 빼지 마")
                 .contains("일부 ~라는 의견도 있어요")
-                .contains("맛·취향이나 배송 의견은 한두 명이면 그대로 빼");
+                .contains("배송·포장 의견은 한두 명이면 아예 쓰지 마");
+    }
+
+    @Test
+    void system_프롬프트는_일부_문장을_식품_안전에만_쓰고_의견이_갈린다는_말에_기준을_둔다() {
+        // when
+        String systemPrompt = reviewSummaryPrompt.systemPrompt();
+
+        // then: gpt-6-luna가 한두 명의 맛 의견을 "일부 ~"로 덧붙이고, 30개 중 2~3건을 "의견이 갈려요"로 부풀렸다(2026-10-30 실측)
+        assertThat(systemPrompt)
+                .contains("\"일부 ~\", \"~라는 분도 있어요\"처럼 소수라고 밝혀 덧붙이는 것도 쓰는 것이야.")
+                .contains("\"일부 ~라는 의견도 있어요\"는 아래 식품 안전 문제에만 쓰는 문장이야.")
+                .contains("서로 반대되는 의견이 둘 다 리뷰의 3분의 1 이상일 때만 의견이 갈린다고 써. 그보다 적으면 많은 쪽만 써.");
+    }
+
+    @Test
+    void system_프롬프트는_근거_규칙_중_소수_의견_규칙을_가장_앞에_둔다() {
+        // when
+        String systemPrompt = reviewSummaryPrompt.systemPrompt();
+
+        // then: 소수 의견을 빼는 규칙 → 식품 안전 예외 → 나머지 근거 규칙 순서로 읽게 한다
+        String evidence = systemPrompt.substring(systemPrompt.indexOf("## 근거"), systemPrompt.indexOf("## 형식"));
+        assertThat(evidence.lines().skip(1).findFirst())
+                .hasValue("- 여러 리뷰에서 공통으로 나온 특징을 먼저 쓰고, 한두 명만 말한 내용은 빼.");
+        assertThat(evidence.indexOf("배송·포장 의견은 한두 명이면 아예 쓰지 마"))
+                .isLessThan(evidence.indexOf("식품 안전 문제는 1건이라도 빼지 마"));
+        assertThat(evidence.indexOf("식품 안전 문제는 1건이라도 빼지 마"))
+                .isLessThan(evidence.indexOf("리뷰에 적힌 내용만 근거로"));
+    }
+
+    @Test
+    void system_프롬프트는_리뷰에_쓰인_낱말을_바꾸지_말고_표준_맞춤법으로_쓰라고_한다() {
+        // when
+        String systemPrompt = reviewSummaryPrompt.systemPrompt();
+
+        // then
+        assertThat(systemPrompt).contains("리뷰에 쓰인 낱말을 바꾸지 말고 표준 맞춤법으로 써.");
     }
 
     @Test

@@ -332,6 +332,13 @@ class QuoteExplainPromptTest {
     }
 
     @Test
+    void 프롬프트에_화면이_글자를_그대로_보여_주므로_마크다운을_쓰지_않는_규칙이_있다() {
+        // then
+        assertThat(quoteExplainPrompt.systemPrompt()).contains(
+                "화면은 글자를 그대로 보여 주므로 마크다운을 쓰지 마. 별표(*)로 굵게 표시하거나 #, - 목록, 표 같은 기호를 쓰지 말고 일반 문장으로 답해.");
+    }
+
+    @Test
     void 프롬프트에_수정한_내용과_하지_못한_수정을_안내하는_규칙이_있다() {
         // then
         assertThat(quoteExplainPrompt.systemPrompt())

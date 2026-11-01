@@ -26,10 +26,13 @@ public class GlobalExceptionHandler {
         HttpHeaders headers = new HttpHeaders();
         // 몇 초 후 재시도 가능한지 명요
         headers.add("Retry-After", String.valueOf(e.getRetryAfterSeconds()));
-        ErrorCode errorCode = e.getErrorCode();
-        return ResponseEntity.status(errorCode.getStatus())
+        ErrorCode code = e.getErrorCode();
+
+        log.info("요청 횟수 제한 code={} retryAfter={}s", code.getCode(), e.getRetryAfterSeconds());
+
+        return ResponseEntity.status(code.getStatus())
                 .headers(headers)
-                .body(ApiResponse.error(errorCode, e.getMessage()));
+                .body(ApiResponse.error(code, e.getMessage()));
     }
 
     /**
@@ -42,6 +45,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException e) {
         ErrorCode code = e.getErrorCode();
+
+        if (code.getStatus().is5xxServerError()) {
+            log.warn("비즈니스 예외 code={} message={}", code.getCode(), e.getMessage());
+        } else {
+            log.info("비즈니스 예외 code={} message={}", code.getCode(), e.getMessage());
+        }
+
         return ResponseEntity.status(code.getStatus())
                 .body(ApiResponse.error(code, e.getMessage(), e.getData()));
     }
@@ -59,6 +69,9 @@ public class GlobalExceptionHandler {
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("입력값이 올바르지 않습니다");
+
+        log.info("입력값 검증 실패 {}", message);
+
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT, message));
     }
@@ -72,6 +85,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
         log.info("body값 누락");
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
+    }
+
+    /**
+     * 경로 변수나 요청 파라미터의 타입 변환 실패를 입력 오류 응답으로 변환한다.
+     *
+     * @param e 요청 인자의 타입 변환 중 발생한 예외
+     * @return HTTP 400 상태와 {@link ErrorCode#INVALID_INPUT} 코드를 담은 오류 응답
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        log.info("요청 인자 타입 변환 실패: name={}, requiredType={}", e.getName(), e.getRequiredType());
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
     }
@@ -101,18 +127,5 @@ public class GlobalExceptionHandler {
         log.error("서버 오류 발생", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR));
-    }
-
-    /**
-     * 경로 변수나 요청 파라미터의 타입 변환 실패를 입력 오류 응답으로 변환한다.
-     *
-     * @param e 요청 인자의 타입 변환 중 발생한 예외
-     * @return HTTP 400 상태와 {@link ErrorCode#INVALID_INPUT} 코드를 담은 오류 응답
-     */
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
-        log.info("요청 인자 타입 변환 실패: name={}, requiredType={}", e.getName(), e.getRequiredType());
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
     }
 }

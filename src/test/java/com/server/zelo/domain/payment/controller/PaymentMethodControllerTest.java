@@ -5,11 +5,13 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.payment.entity.PaymentMethod;
 import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.payment.service.PaymentMethodCommandService;
 import com.server.zelo.domain.payment.service.PaymentMethodService;
 import com.server.zelo.domain.user.entity.UserRole;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,7 +62,7 @@ class PaymentMethodControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(paymentMethodController)
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

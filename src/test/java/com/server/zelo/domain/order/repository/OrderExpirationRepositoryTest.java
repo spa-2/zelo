@@ -9,10 +9,12 @@ import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderAuditAction;
 import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.entity.StockState;
+import com.server.zelo.domain.order.service.OrderAuditService;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -88,6 +90,7 @@ class OrderExpirationRepositoryTest {
     @Autowired private OrderRepository orderRepository;
     @Autowired private PaymentRepository paymentRepository;
     @Autowired private InventoryRepository inventoryRepository;
+    @Autowired private OrderAuditLogRepository orderAuditLogRepository;
     @Autowired private PlatformTransactionManager transactionManager;
 
     @DynamicPropertySource
@@ -281,6 +284,19 @@ class OrderExpirationRepositoryTest {
                         .containsOnly(StockState.RELEASED);
                 assertQuantities(inventory, 10, 2, 8);
             });
+            // 두 트랜잭션이 경쟁해도 취소 기록은 실제로 취소한 한 건만 남는다
+            assertThat(orderAuditLogRepository.findByOrderIdOrderByIdAsc(fixture.orderId()))
+                    .singleElement()
+                    .satisfies(log -> {
+                        assertThat(log.getAction()).isEqualTo(OrderAuditAction.CANCELED);
+                        assertThat(log.getActorType()).isEqualTo(ActorType.SYSTEM);
+                        assertThat(log.getActorId()).isNull();
+                        assertThat(log.getPreviousStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
+                        assertThat(log.getNewStatus()).isEqualTo(OrderStatus.CANCELED);
+                        assertThat(log.getUserId()).isEqualTo(fixture.userId());
+                        assertThat(log.getReason()).isEqualTo("결제 대기 시간 만료");
+                        assertThat(log.getCreatedAt()).isNotNull();
+                    });
         } finally {
             releaseFirst.countDown();
             workers.shutdownNow();
@@ -312,6 +328,8 @@ class OrderExpirationRepositoryTest {
                         .containsOnly(StockState.RESERVED);
                 assertQuantities(inventory, 10, 2, 8);
             });
+            // 감사 로그는 주문 변경과 같은 트랜잭션이라 같이 롤백된다
+            assertThat(orderAuditLogRepository.findByOrderIdOrderByIdAsc(fixture.orderId())).isEmpty();
         } finally {
             cleanup(fixture);
         }
@@ -389,7 +407,7 @@ class OrderExpirationRepositoryTest {
                 mock(UserService.class), orderService, mock(QuoteService.class), mock(RefundService.class),
                 mock(ProductService.class), new PaymentService(paymentRepository), mock(ChatRoomService.class),
                 mock(DeliveryService.class), new InventoryService(inventoryRepository), mock(UserAddressService.class),
-                new TransactionTemplate(transactionManager));
+                new TransactionTemplate(transactionManager), new OrderAuditService(orderAuditLogRepository));
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(transactionManager);
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
@@ -400,6 +418,8 @@ class OrderExpirationRepositoryTest {
 
     private void cleanup(FixtureIds fixture) {
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            entityManager.createQuery("delete from OrderAuditLog l where l.orderId = :id")
+                    .setParameter("id", fixture.orderId()).executeUpdate();
             entityManager.createQuery("delete from OrderItem i where i.order.id = :id")
                     .setParameter("id", fixture.orderId()).executeUpdate();
             delete("Inventory", fixture.inventoryId());

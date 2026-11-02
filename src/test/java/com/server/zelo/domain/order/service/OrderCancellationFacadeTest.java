@@ -35,12 +35,13 @@ class OrderCancellationFacadeTest {
 
     @Mock private OrderCommandService command;
     @Mock private LockDistributeService lockService;
+    @Mock private OrderAuditService auditService;
 
     private OrderFacade facade;
 
     @BeforeEach
     void setUp() {
-        facade = new OrderFacade(command, lockService);
+        facade = new OrderFacade(command, lockService, auditService);
     }
 
     @Test

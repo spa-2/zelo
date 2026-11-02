@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,12 +30,13 @@ class OrderFacadeTest {
 
     @Mock private OrderCommandService command;
     @Mock private LockDistributeService lockService;
+    @Mock private OrderAuditService auditService;
 
     private OrderFacade facade;
 
     @BeforeEach
     void setUp() {
-        facade = new OrderFacade(command, lockService);
+        facade = new OrderFacade(command, lockService, auditService);
     }
 
     @Test
@@ -57,6 +59,34 @@ class OrderFacadeTest {
         then(command).should().createOrder(USER_ID, REQUEST);
         then(lockService).should().execute(eq(LockKey.createOrder(USER_ID)),
                 org.mockito.ArgumentMatchers.<Supplier<CreateOrderResult>>any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void 주문_요청이_거부되면_거부_기록을_남기고_같은_예외를_던진다() {
+        // given
+        BusinessException failure = new BusinessException(ErrorCode.QUOTE_EXPIRED);
+        given(lockService.execute(eq(LockKey.createOrder(USER_ID)),
+                org.mockito.ArgumentMatchers.<Supplier<CreateOrderResult>>any())).willThrow(failure);
+
+        // when
+        // then
+        assertThatThrownBy(() -> facade.createOrder(USER_ID, REQUEST)).isSameAs(failure);
+        then(auditService).should().recordRejection(USER_ID, REQUEST.quoteId(), failure);
+    }
+
+    @Test
+    void 거부_기록_저장이_실패해도_원래_예외를_던진다() {
+        // given
+        BusinessException failure = new BusinessException(ErrorCode.QUOTE_EXPIRED);
+        given(lockService.execute(eq(LockKey.createOrder(USER_ID)),
+                org.mockito.ArgumentMatchers.<Supplier<CreateOrderResult>>any())).willThrow(failure);
+        willThrow(new IllegalStateException("audit down")).given(auditService)
+                .recordRejection(USER_ID, REQUEST.quoteId(), failure);
+
+        // when
+        // then
+        assertThatThrownBy(() -> facade.createOrder(USER_ID, REQUEST)).isSameAs(failure);
     }
 
     @Test

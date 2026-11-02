@@ -1,28 +1,47 @@
 package com.server.zelo.domain.order.service;
 
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.lock.LockDistributeService;
 import com.server.zelo.common.lock.LockKey;
 import com.server.zelo.domain.order.dto.request.CreateOrderRequest;
 import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.model.CreateOrderResult;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OrderFacade {
     private final OrderCommandService orderCommandService;
     private final LockDistributeService lockDistributeService;
+    private final OrderAuditService orderAuditService;
 
     // Command의 트랜잭션이 커밋될 때까지 사용자별 주문 생성 락을 유지
     public CreateOrderResult createOrder(Long userId, CreateOrderRequest request) {
-        return lockDistributeService.execute(
-                LockKey.createOrder(userId),
-                () -> orderCommandService.createOrder(userId, request)
-        );
+        try {
+            return lockDistributeService.execute(
+                    LockKey.createOrder(userId),
+                    () -> orderCommandService.createOrder(userId, request)
+            );
+        } catch (BusinessException exception) {
+            // 주문 트랜잭션은 이미 롤백됐으므로 거부 기록은 따로 남김
+            recordRejection(userId, request.quoteId(), exception);
+            throw exception;
+        }
+    }
+
+    // 기록에 실패해도 사용자에게는 원래 오류를 그대로 돌려줌
+    private void recordRejection(Long userId, String quoteId, BusinessException exception) {
+        try {
+            orderAuditService.recordRejection(userId, quoteId, exception);
+        } catch (RuntimeException auditException) {
+            log.warn("주문 거부 감사 로그 저장 실패 userId={} quoteId={}", userId, quoteId, auditException);
+        }
     }
 
     public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId) {

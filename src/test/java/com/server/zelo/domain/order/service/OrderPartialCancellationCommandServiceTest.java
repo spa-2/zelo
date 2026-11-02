@@ -45,6 +45,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class OrderPartialCancellationCommandServiceTest {
 
+    @Mock private OrderAuditService orderAuditService;
+
     private static final Long ORDER_ID = 101L;
     private static final Long FIRST_ITEM_ID = 1_001L;
     private static final Long SECOND_ITEM_ID = 1_002L;
@@ -86,7 +88,7 @@ class OrderPartialCancellationCommandServiceTest {
                 deliveryService,
                 inventories,
                 userAddressService,
-                transactionTemplate);
+                transactionTemplate, orderAuditService);
     }
 
     @Test
@@ -134,6 +136,8 @@ class OrderPartialCancellationCommandServiceTest {
         assertThat(fixture.secondItem().getStockState()).isEqualTo(StockState.DEDUCTED);
         assertQuantities(fixture.firstInventory(), 10, 1, 9);
         assertQuantities(fixture.secondInventory(), 18, 1, 17);
+        // 주문 상태가 그대로라 기록하지 않음
+        then(orderAuditService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -154,6 +158,8 @@ class OrderPartialCancellationCommandServiceTest {
         then(inventoryRepository).should().findInventoryByProduct_Id(20L);
         then(inventoryRepository).shouldHaveNoMoreInteractions();
         assertSnapshots(fixture);
+        then(orderAuditService).should().recordStateChange(fixture.order(), OrderAuditAction.CANCELED,
+                OrderStatus.PAID, ActorType.SYSTEM, null, "모든 상품 환불 완료");
     }
 
     @Test

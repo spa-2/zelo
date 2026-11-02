@@ -41,6 +41,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class OrderCommandServiceTest {
 
+    @Mock private OrderAuditService orderAuditService;
+
     private static final Long ORDER_ID = 101L;
 
     @Mock
@@ -106,7 +108,7 @@ class OrderCommandServiceTest {
                 deliveryService,
                 inventoryService,
                 userAddressService,
-                transactionTemplate);
+                transactionTemplate, orderAuditService);
     }
 
     @Test
@@ -127,6 +129,9 @@ class OrderCommandServiceTest {
         assertQuantities(fixture.secondInventory(), 18, 1, 17);
         then(productService).should().increaseSalesCount(7L, 3);
         then(productService).should().increaseSalesCount(9L, 2);
+        // 결제 결과 반영은 서버 처리라 SYSTEM으로 기록
+        then(orderAuditService).should().recordStateChange(fixture.order(), OrderAuditAction.PAID,
+                OrderStatus.PAYMENT_PENDING, ActorType.SYSTEM, null, null);
     }
 
     @Test

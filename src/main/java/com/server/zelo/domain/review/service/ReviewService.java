@@ -75,6 +75,12 @@ public class ReviewService {
         return reviewRepository.findByProductIdOrderByIdDesc(productId, Limit.of(MAX_REVIEWS_FOR_SUMMARY));
     }
 
+    // 채팅에서 "최근 리뷰 보여 줘"에 답할 때 쓴다. 개수는 부르는 쪽이 정한다
+    @Transactional(readOnly = true)
+    public List<Review> findRecentReviews(Long productId, Integer count) {
+        return reviewRepository.findByProductIdOrderByIdDesc(productId, Limit.of(count));
+    }
+
     public void updateSummaryContent(Long productId, String content) {
         ProductReviewSummary summary = productReviewSummaryRepository.findById(productId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_SUMMARY_NOT_FOUND));

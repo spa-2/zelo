@@ -58,4 +58,27 @@ class ChatPromptTest {
         // then
         assertThat(systemPrompt).contains("답할 때 \"결제 알림\", \"알림\"이라는 말은 쓰지 말고 결과만 자연스럽게 말해.");
     }
+
+    @Test
+    void 리뷰를_물을_때만_도구를_부르고_도구_결과에_있는_값만_말하게_한다() {
+        // when
+        String systemPrompt = chatPrompt.systemPrompt();
+
+        // then
+        assertThat(systemPrompt)
+                .contains("상품의 평점이나 리뷰를 물을 때만 리뷰 도구를 불러. 인사, 보관법·요리법 같은 질문에는 도구를 부르지 마.")
+                .contains("리뷰는 도구 결과에 있는 내용만 말해. reviewCount가 0이면 아직 리뷰가 없다고 말해.")
+                .contains("가격·재고·리뷰 수·평점은 서버가 대화나 도구 결과로 준 값만 말해.");
+    }
+
+    @Test
+    void 견적에_담긴_상품을_가리키면_견적_상품의_productId로_리뷰를_고르게_한다() {
+        // when
+        String systemPrompt = chatPrompt.systemPrompt();
+
+        // then: 대화 기록에는 카드의 상품 목록이 없어서 "여기 담긴 김치"를 다른 김치로 답한 적이 있다(2026-11-01)
+        assertThat(systemPrompt).contains(
+                "\"여기 담긴 김치\", \"이거\"처럼 견적에 담긴 상품을 가리키면 먼저 견적 상품 도구로 그 상품의 productId를 확인하고, "
+                        + "리뷰 결과 중 같은 productId의 리뷰만 말해. 견적 상품이 비어 있으면 지금 견적이 없다고 말해.");
+    }
 }

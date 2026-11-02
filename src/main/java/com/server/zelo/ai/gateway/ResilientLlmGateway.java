@@ -92,6 +92,16 @@ public class ResilientLlmGateway implements LlmGateway {
                 () -> withUsage(requireText(llmGateway.explain(systemPrompt, history, userText)))).content();
     }
 
+    // 도구 호출 왕복 전체가 시도 1번이라, 시간 제한·재시도·서킷도 왕복 전체에 한 번씩 걸린다.
+    // 도구는 조회만 하므로 재시도로 처음부터 다시 불려도 결과가 같다.
+    // 추론 강도와 요청 횟수가 일반 답변과 달라 걸리는 시간·토큰도 다르므로, 지표는 LOOKUP_ANSWER로 따로 남긴다
+    @Override
+    public LlmReply answerWithTools(String systemPrompt, List<ChatMessage> history, String userText, Object tools,
+                                    Map<String, Object> toolContext) {
+        return call(LlmOperation.LOOKUP_ANSWER, model, () -> withUsage(requireText(
+                llmGateway.answerWithTools(systemPrompt, history, userText, tools, toolContext)))).content();
+    }
+
     // [모니터링] explain은 견적 안내와 일반 답변이 함께 쓴다. 프롬프트가 달라 걸리는 시간·토큰도 달라서, 견적 안내 프롬프트인지로 나눠 기록한다
     private LlmOperation explainOperation(String systemPrompt) {
         return quoteExplainPrompt.systemPrompt().equals(systemPrompt) ? LlmOperation.QUOTE_EXPLAIN : LlmOperation.CHAT_ANSWER;

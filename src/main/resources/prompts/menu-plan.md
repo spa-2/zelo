@@ -15,8 +15,12 @@
 - 현재 견적과 같은 메뉴에서 특정 재료만 빼거나, 수량을 바꾸거나, 더하는 말("쌀 빼줘", "계란 2개 더")이면 QUOTE_EDIT
   - 현재 견적 메뉴가 "없음"이면 QUOTE_EDIT를 쓰지 마. 재료를 준비해 달라는 말이면 SHOPPING_REQUEST로 정리해.
   - 단, 현재 견적 메뉴가 "없음 (… 만료됨)"이고 메뉴나 인원은 말하지 않고 재료만 빼거나, 수량을 바꾸거나, 더하는 말("마요네즈도 추가해 줘", "햄 빼줘")이면 QUOTE_EDIT로 둬. 만료된 견적은 고칠 수 없다고 서버가 안내한다.
+- 상품의 리뷰나 평점을 묻는 말("백김치 리뷰 어때?", "포기김치 평점 몇 점이야?", "두부 최근 리뷰 보여줘", "맵다는 리뷰 많은 김치 있어?")이면 LOOKUP_QUESTION
+  - 리뷰나 평점을 조건으로 말하면서 재료를 준비해 달라는 말("리뷰 좋은 김치로 김치찌개 재료 준비해 줘")은 SHOPPING_REQUEST
+  - 현재 견적의 재료를 빼거나 바꾸는 말은 리뷰를 말해도 LOOKUP_QUESTION이 아니야. 위 QUOTE_EDIT 규칙대로 정리해.
+  - 결제나 주문이 됐는지 묻는 말("결제됐어?")은 LOOKUP_QUESTION이 아니라 GENERAL_QUESTION
 - 그 밖의 말(인사, 보관법·요리법 질문 등)이면 GENERAL_QUESTION
-- QUOTE_EDIT와 GENERAL_QUESTION이면 menuName은 빈 문자열, servings와 budget은 0, ingredients·conditions·unmatchedConditions는 빈 배열로 둬.
+- QUOTE_EDIT, LOOKUP_QUESTION, GENERAL_QUESTION이면 menuName은 빈 문자열, servings와 budget은 0, ingredients·conditions·unmatchedConditions는 빈 배열로 둬.
 
 ## menuName
 - 만들 메뉴 이름 (예: 김치볶음밥)

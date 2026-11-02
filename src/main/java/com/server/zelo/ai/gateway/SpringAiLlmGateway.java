@@ -31,6 +31,8 @@ public class SpringAiLlmGateway implements LlmGateway {
     // 위조는 system 역할로 막고, 이 이름표는 LLM이 알림을 지시가 아닌 결제 결과로 읽게 한다(chat.md 규칙이 가리킴).
     // 지금 SYSTEM_EVENT는 결제 결과 알림뿐이다
     private static final String PAYMENT_NOTICE_LABEL = "결제 알림: ";
+    // gpt-6-luna는 Chat Completions에서 도구를 추론 none일 때만 쓸 수 있다(기본 설정은 low)
+    private static final String TOOL_REASONING_EFFORT = "none";
 
     private final Duration timeout;
     private final ChatClient chatClient;
@@ -58,6 +60,18 @@ public class SpringAiLlmGateway implements LlmGateway {
     @Override
     public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
         return reply(chatClient.prompt().messages(toMessages(history)), systemPrompt, userText);
+    }
+
+    // 요청 옵션을 넣으면 기본 옵션의 timeout이 기본값(60초)으로 덮이므로 timeout도 다시 넣는다
+    // LOOKUP_QUESTION만 answerWithTools()를 거치고, GENERAL_QUESTION은 explain()(기본 추론, 도구 없음)으로 답하는 구조
+    @Override
+    public LlmReply answerWithTools(String systemPrompt, List<ChatMessage> history, String userText, Object tools,
+                                    Map<String, Object> toolContext) {
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
+                .reasoningEffort(TOOL_REASONING_EFFORT)
+                .timeout(timeout);
+        return reply(chatClient.prompt().options(options).messages(toMessages(history))
+                .tools(tools).toolContext(toolContext), systemPrompt, userText);
     }
 
     // 리뷰 요약도 문장 하나를 받는 호출이라 채팅 답변과 같은 방식으로 보내고, 리뷰 전용 system 프롬프트와 모델만 다르다.

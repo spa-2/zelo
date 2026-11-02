@@ -53,6 +53,13 @@ public class FakeLlmGateway implements LlmGateway {
         return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);
     }
 
+    // 도구는 부르지 않고 explain과 같은 고정 답을 준다. 도구 호출 왕복은 SpringAiLlmGateway 테스트에서 확인한다
+    @Override
+    public LlmReply answerWithTools(String systemPrompt, List<ChatMessage> history, String userText, Object tools,
+                                    Map<String, Object> toolContext) {
+        return explain(systemPrompt, history, userText);
+    }
+
     // 사용자 말·대화 기록과 관계없이 정해 둔 판단(planIntent)대로 같은 메모를 돌려준다.
     // 판단과 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
     @Override

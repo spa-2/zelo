@@ -22,6 +22,7 @@ import org.springframework.web.client.*;
 public class KakaoSocialLoginClient implements SocialLoginClient {
 
     private final RestClient kakaoSocialRestClient;
+    private final SocialApiMetrics socialApiMetrics;
     private final KakaoOAuthProperties kakaoOAuthProperties;
 
     @Override
@@ -31,8 +32,13 @@ public class KakaoSocialLoginClient implements SocialLoginClient {
 
     @Override
     public SocialProfile getProfile(String code, String redirectUri, String codeVerifier) {
-        SocialTokenResponse socialTokenResponse = fetchKakaoToken(code, redirectUri);
-        KakaoUserInfoResponse userInfoResponse = getUserInfo(socialTokenResponse.accessToken());
+
+        SocialTokenResponse socialTokenResponse = socialApiMetrics.measure(
+                getProvider(),"TOKEN", () -> fetchKakaoToken(code, redirectUri));
+
+        KakaoUserInfoResponse userInfoResponse = socialApiMetrics.measure(
+                getProvider(),"USER_INFO", () -> getUserInfo(socialTokenResponse.accessToken()));
+
         return SocialProfile.of(
                 getProvider(),
                 userInfoResponse.getProviderId(),
@@ -80,7 +86,7 @@ public class KakaoSocialLoginClient implements SocialLoginClient {
                 throw new BusinessException(ErrorCode.SOCIAL_PROVIDER_UNAVAILABLE);
             }
 
-            log.error("카카오 토큰 교환 실패 (4xx), 상태코드: {}, 응답: {}", e.getStatusCode(), responseBody);
+            log.warn("카카오 토큰 교환 실패 (4xx), 상태코드: {}, 응답: {}", e.getStatusCode(), responseBody);
             throw new BusinessException(ErrorCode.SOCIAL_AUTH_FAILED);
         } catch (RestClientException e) {
             // 응답 본문을 해석하지 못한 경우 등 (그대로 두면 500)

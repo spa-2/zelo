@@ -2,8 +2,11 @@ package com.server.zelo.domain.user.social;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.entity.SocialProvider;
 import com.server.zelo.domain.user.social.config.GoogleOAuthProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -32,6 +35,7 @@ class GoogleSocialLoginClientTest {
     private static final String USER_INFO_URI = "https://google.test/userinfo";
     private static final String REDIRECT_URI = "http://localhost:8080/auth/google/callback";
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private MockRestServiceServer server;
     private GoogleSocialLoginClient client;
 
@@ -42,7 +46,8 @@ class GoogleSocialLoginClientTest {
         GoogleOAuthProperties properties = new GoogleOAuthProperties(
                 "client-id", "client-secret", TOKEN_URI, USER_INFO_URI,
                 Duration.ofSeconds(1), Duration.ofSeconds(1));
-        client = new GoogleSocialLoginClient(builder.build(), properties);
+        SocialApiMetrics socialApiMetrics = new SocialApiMetrics(new BusinessMetrics(meterRegistry));
+        client = new GoogleSocialLoginClient(socialApiMetrics, builder.build(), properties);
     }
 
     private void expectTokenSuccess() {
@@ -62,6 +67,38 @@ class GoogleSocialLoginClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(expected);
+    }
+
+    private long callCount(String operation, String outcome) {
+        return meterRegistry.get(BusinessMetric.SOCIAL_API_CALL.getKey())
+                .tags("provider", "GOOGLE", "operation", operation, "outcome", outcome)
+                .timer().count();
+    }
+
+    @Test
+    void 정상_흐름이면_토큰_교환과_사용자_정보_조회_시간을_각각_남긴다() {
+        // given
+        expectTokenSuccess();
+        expectUserInfo("{\"sub\":\"1234\"}");
+
+        // when
+        client.getProfile("auth-code", REDIRECT_URI, null);
+
+        // then
+        assertThat(callCount("TOKEN", "SUCCESS")).isEqualTo(1);
+        assertThat(callCount("USER_INFO", "SUCCESS")).isEqualTo(1);
+    }
+
+    @Test
+    void 토큰_교환이_실패해도_걸린_시간을_에러_코드와_함께_남긴다() {
+        // given
+        server.expect(requestTo(TOKEN_URI)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+
+        // when
+        assertErrorCode(() -> client.getProfile("auth-code", REDIRECT_URI, null), ErrorCode.SOCIAL_PROVIDER_UNAVAILABLE);
+
+        // then 실패한 호출이 기록에서 빠지면 구글이 응답하지 않을 때 그래프가 오히려 조용해짐
+        assertThat(callCount("TOKEN", ErrorCode.SOCIAL_PROVIDER_UNAVAILABLE.getCode())).isEqualTo(1);
     }
 
     @Test

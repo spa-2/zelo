@@ -6,6 +6,7 @@ import com.server.zelo.domain.portone.dto.request.PortOneBillingKeyRequest;
 import com.server.zelo.domain.portone.dto.request.PortOneCancelRequest;
 import com.server.zelo.domain.portone.dto.response.*;
 import com.server.zelo.domain.portone.config.PortOneProperties;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -166,33 +167,37 @@ public class HttpPortOneClient implements PortOneClient {
     }
 
     @Override
-    public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
-                                        Long currentCancellableAmount, String reason) {
+    public PortOneCancellationStatus cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
+                                                             Long currentCancellableAmount, String reason) {
         validateCancelAmount(amount, currentCancellableAmount);
-        cancel(portoneId, cancelKey,
+        PortOneCancelResponse response = cancel(portoneId, cancelKey,
                 PortOneCancelRequest.of(
                         portOneProperties.storeId(),
                         reason,
                         amount,
                         currentCancellableAmount),
                 false);
-
+        // 응답에 상태가 없으면 취소가 확정됐는지 알 수 없어 처리 중으로 본다
+        if (response == null || response.cancellation() == null) {
+            return PortOneCancellationStatus.UNKNOWN;
+        }
+        return PortOneCancellationStatus.from(response.cancellation().status());
     }
 
     // 전액 취소는 이미 취소된 결제면 목표를 이룬 것이지만, 금액 지정 취소는 이번 금액이 취소된 게 아니므로 실패로 본다
-    private void cancel(String portoneId, String idempotencyKey, PortOneCancelRequest request,
-                        boolean alreadyCancelledIsSuccess) {
+    private PortOneCancelResponse cancel(String portoneId, String idempotencyKey, PortOneCancelRequest request,
+                                         boolean alreadyCancelledIsSuccess) {
         try {
-            portOneRestClient.post()
+            return portOneRestClient.post()
                     .uri("/payments/{paymentId}/cancel", portoneId)
                     .header(IDEMPOTENCY_KEY_HEADER, idempotencyKey)
                     .body(request)
                     .retrieve()
-                    .toBodilessEntity();
+                    .body(PortOneCancelResponse.class);
         } catch (HttpClientErrorException e) {
             if (alreadyCancelledIsSuccess && isAlreadyCancelled(e)) {
                 log.info("포트원 결제 이미 취소됨 portoneId={}", portoneId);
-                return;
+                return null;
             }
             if (e.getStatusCode().value() == 404) {
                 throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);

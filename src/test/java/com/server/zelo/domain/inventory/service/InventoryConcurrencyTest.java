@@ -2,12 +2,11 @@ package com.server.zelo.domain.inventory.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.support.Concurrency;
-import java.util.concurrent.atomic.AtomicInteger;
+import com.server.zelo.support.Concurrency.Result;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,24 +42,17 @@ class InventoryConcurrencyTest {
     void 재고보다_많은_주문이_동시에_와도_재고만큼만_선점된다() throws InterruptedException {
         // given
         stock = fixture.saveStock(10);
-        AtomicInteger insufficientCount = new AtomicInteger();
 
         // when
-        int successCount = fixture.runConcurrently(BUYER_COUNT, () -> {
-            try {
-                inventoryService.reserve(stock.productId(), 1);
-            } catch (BusinessException e) {
-                if (e.getErrorCode() == ErrorCode.INSUFFICIENT_STOCK) {
-                    insufficientCount.incrementAndGet();
-                }
-                throw e;
-            }
-        });
+        Result result = fixture.runConcurrently(BUYER_COUNT,
+                () -> inventoryService.reserve(stock.productId(), 1));
 
         // then
         Inventory inventory = inventoryRepository.findById(stock.inventoryId()).orElseThrow();
-        assertThat(successCount).isEqualTo(10);
-        assertThat(insufficientCount).hasValue(BUYER_COUNT - 10);
+        assertThat(result.successCount()).isEqualTo(10);
+        assertThat(result.errorCodes())
+                .hasSize(BUYER_COUNT - 10)
+                .containsOnly(ErrorCode.INSUFFICIENT_STOCK);
         assertThat(inventory.getReservedQuantity()).isEqualTo(10);
         assertThat(inventory.getAvailableQuantity()).isZero();
     }
@@ -71,12 +63,12 @@ class InventoryConcurrencyTest {
         stock = fixture.saveStock(BUYER_COUNT);
 
         // when
-        int successCount = fixture.runConcurrently(BUYER_COUNT,
+        Result result = fixture.runConcurrently(BUYER_COUNT,
                 () -> inventoryService.reserve(stock.productId(), 1));
 
         // then
         Inventory inventory = inventoryRepository.findById(stock.inventoryId()).orElseThrow();
-        assertThat(successCount).isEqualTo(BUYER_COUNT);
+        assertThat(result.failures()).isEmpty();
         assertThat(inventory.getReservedQuantity()).isEqualTo(BUYER_COUNT);
     }
 }

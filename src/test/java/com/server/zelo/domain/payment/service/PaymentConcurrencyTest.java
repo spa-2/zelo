@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import com.server.zelo.support.Concurrency.Result;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -67,15 +68,15 @@ class PaymentConcurrencyTest {
         Set<String> portoneIds = ConcurrentHashMap.newKeySet();
 
         // when
-        int successCount = fixture.runConcurrently(THREAD_COUNT, () -> portoneIds.add(
+        Result result = fixture.runConcurrently(THREAD_COUNT, () -> portoneIds.add(
                 paymentFacade.retryPayment(savedOrder.userId(), savedOrder.orderId()).portoneId()));
 
         // then
         List<Payment> payments = findPayments();
-        assertThat(successCount).isEqualTo(THREAD_COUNT);
         assertThat(payments).hasSize(2);
         assertThat(payments).filteredOn(Payment::isReady).hasSize(1);
         assertThat(portoneIds).hasSize(1);
+        assertThat(result.failures()).isEmpty();
     }
 
     // 프론트 확인·웹훅·대사 스케줄러가 같은 결제를 동시에 확인하는 상황
@@ -86,18 +87,18 @@ class PaymentConcurrencyTest {
         Set<PaymentStatus> results = ConcurrentHashMap.newKeySet();
 
         // when
-        int successCount = fixture.runConcurrently(THREAD_COUNT,
+        Result result = fixture.runConcurrently(THREAD_COUNT,
                 () -> results.add(paymentFacade.confirmPayment(savedOrder.portoneId())));
 
         // then
         Inventory inventory = inventoryRepository.findById(savedOrder.stock().inventoryId()).orElseThrow();
-        assertThat(successCount).isEqualTo(THREAD_COUNT);
         assertThat(results).containsExactly(PaymentStatus.PAID);
         then(portOneClient).should(times(1)).getPayment(savedOrder.portoneId());
         assertThat(orderRepository.findById(savedOrder.orderId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(inventory.getStockQuantity()).isEqualTo(9);
         assertThat(inventory.getReservedQuantity()).isZero();
         assertThat(findDeliveries()).hasSize(1);
+        assertThat(result.failures()).isEmpty();
     }
 
     private List<Payment> findPayments() {

@@ -31,6 +31,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.exception.ErrorCode;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 // 동시성 테스트는 여러 스레드가 커밋된 데이터를 함께 봐야 해서 @Transactional 롤백 대신 만든 데이터를 직접 지운다
 @TestComponent
@@ -38,6 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class Concurrency {
 
     public static final long UNIT_PRICE = 3_000L;
+    private static final long TIMEOUT_SECONDS = 30;
 
     private final JdbcTemplate jdbcTemplate;
     private final UserRepository userRepository;
@@ -110,13 +115,24 @@ public class Concurrency {
         });
     }
 
-    // 모든 스레드를 준비시킨 뒤 같은 순간에 출발시키고, 예외 없이 끝난 요청 수를 돌려준다
-    public int runConcurrently(int threadCount, Runnable task) throws InterruptedException {
+    // 실패한 요청의 예외를 모아 두어, 테스트가 허용한 실패인지 원인까지 검증할 수 있게 한다
+    public record Result(int successCount, List<RuntimeException> failures) {
+
+        public List<ErrorCode> errorCodes() {
+            return failures.stream()
+                    .map(failure -> failure instanceof BusinessException e ? e.getErrorCode() : null)
+                    .toList();
+        }
+    }
+
+    // 모든 스레드를 준비시킨 뒤 같은 순간에 출발시킨다
+    public Result runConcurrently(int threadCount, Runnable task) throws InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger();
+        List<RuntimeException> failures = new CopyOnWriteArrayList<>();
         for (int i = 0; i < threadCount; i++) {
             executor.submit(() -> {
                 ready.countDown();
@@ -127,7 +143,7 @@ public class Concurrency {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (RuntimeException e) {
-                    // 락이나 상태 검증에 막힌 요청은 성공 수에서 빠진다
+                    failures.add(e);
                 } finally {
                     done.countDown();
                 }
@@ -135,9 +151,13 @@ public class Concurrency {
         }
         ready.await();
         start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
-        return successCount.get();
+        boolean finished = done.await(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        executor.shutdownNow();
+        // 끝나지 않은 요청이 있으면 중간 상태로 개수를 세지 않도록 바로 실패시킨다 (락 교착이나 DB 지연 의심)
+        if (!finished || !executor.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            throw new AssertionError(TIMEOUT_SECONDS + "초 안에 끝나지 않은 요청이 있습니다. 남은 요청 수: " + done.getCount());
+        }
+        return new Result(successCount.get(), List.copyOf(failures));
     }
 
     // 외래 키 순서대로 지운다. 주문 이력과 배송은 주문 ID만 들고 있어 주문보다 먼저 지운다

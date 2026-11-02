@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
 import com.server.zelo.domain.payment.entity.Payment;
@@ -16,6 +17,7 @@ import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundStatus;
 import com.server.zelo.domain.refund.repository.RefundRepository;
 import com.server.zelo.support.Concurrency;
+import com.server.zelo.support.Concurrency.Result;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -65,7 +67,7 @@ class RefundConcurrencyTest {
         CreateRefundRequest request = new CreateRefundRequest("단순 변심", null);
 
         // when
-        int successCount = fixture.runConcurrently(THREAD_COUNT,
+        Result result = fixture.runConcurrently(THREAD_COUNT,
                 () -> refundFacade.createRefund(savedOrder.userId(), savedOrder.orderId(), request));
 
         // then
@@ -74,7 +76,11 @@ class RefundConcurrencyTest {
                 .filter(refund -> refund.getPaymentId().equals(payment.getId()))
                 .toList();
         Inventory inventory = inventoryRepository.findById(savedOrder.stock().inventoryId()).orElseThrow();
-        assertThat(successCount).isEqualTo(1);
+        assertThat(result.successCount()).isEqualTo(1);
+        // 늦게 온 요청은 락을 못 얻었거나, 락을 얻은 뒤 이미 환불된 결제라 거절돼야 한다. 그 밖의 오류는 실패로 본다
+        assertThat(result.errorCodes())
+                .hasSize(THREAD_COUNT - 1)
+                .isSubsetOf(ErrorCode.TIMEOUT_EXCEPTION, ErrorCode.PAYMENT_NOT_REFUNDABLE, ErrorCode.REFUND_IN_PROGRESS);
         then(portOneClient).should(times(1))
                 .cancelPaymentWithAmount(eq(savedOrder.portoneId()), any(), any(), any(), any());
         assertThat(refunds).singleElement()

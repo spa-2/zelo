@@ -17,6 +17,7 @@ import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.entity.Ingredient;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.review.dto.response.CreateReviewSummariesResponse;
 import com.server.zelo.domain.review.entity.Review;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,18 +53,36 @@ class ReviewCommandServiceTest {
     void 요약_대상_상품마다_최근_리뷰로_요약을_만들어_저장한다() {
         // given
         List<Review> baekReviews = reviews("백김치", "하나도 안 매워요");
-        given(reviewService.findSummaryTargetProductIds()).willReturn(List.of(BAEK_ID));
+        given(reviewService.findSummaryTargetProductIds(false)).willReturn(List.of(BAEK_ID));
         given(reviewService.findRecentReviews(BAEK_ID)).willReturn(baekReviews);
         given(llmGateway.summarizeReviews(reviewSummaryPrompt.systemPrompt(),
                 reviewSummaryPrompt.userText("백김치", baekReviews)))
                 .willReturn(LlmReply.of("맵지 않다는 평이 많아요", "gpt-test", 1, 1));
 
         // when
-        int created = reviewCommandService.createSummaries();
+        CreateReviewSummariesResponse response = reviewCommandService.createSummaries(false);
 
         // then
-        assertThat(created).isEqualTo(1);
+        assertThat(response).isEqualTo(new CreateReviewSummariesResponse(1, 1, 0));
         then(reviewService).should().updateSummaryContent(BAEK_ID, "맵지 않다는 평이 많아요");
+    }
+
+    @Test
+    void 다시_만들기를_요청하면_요약이_있는_상품까지_대상으로_골라_새_요약으로_바꾼다() {
+        // given
+        List<Review> baekReviews = reviews("백김치", "하나도 안 매워요");
+        given(reviewService.findSummaryTargetProductIds(true)).willReturn(List.of(BAEK_ID));
+        given(reviewService.findRecentReviews(BAEK_ID)).willReturn(baekReviews);
+        given(llmGateway.summarizeReviews(reviewSummaryPrompt.systemPrompt(),
+                reviewSummaryPrompt.userText("백김치", baekReviews)))
+                .willReturn(LlmReply.of("아이들도 잘 먹는 순한 맛이에요", "gpt-test", 1, 1));
+
+        // when
+        CreateReviewSummariesResponse response = reviewCommandService.createSummaries(true);
+
+        // then
+        assertThat(response).isEqualTo(new CreateReviewSummariesResponse(1, 1, 0));
+        then(reviewService).should().updateSummaryContent(BAEK_ID, "아이들도 잘 먹는 순한 맛이에요");
     }
 
     @Test
@@ -71,7 +90,7 @@ class ReviewCommandServiceTest {
         // given
         List<Review> baekReviews = reviews("백김치", "하나도 안 매워요");
         List<Review> pogiReviews = reviews("포기김치", "얼큰해요");
-        given(reviewService.findSummaryTargetProductIds()).willReturn(List.of(BAEK_ID, POGI_ID));
+        given(reviewService.findSummaryTargetProductIds(false)).willReturn(List.of(BAEK_ID, POGI_ID));
         given(reviewService.findRecentReviews(BAEK_ID)).willReturn(baekReviews);
         given(reviewService.findRecentReviews(POGI_ID)).willReturn(pogiReviews);
         given(llmGateway.summarizeReviews(reviewSummaryPrompt.systemPrompt(),
@@ -82,10 +101,10 @@ class ReviewCommandServiceTest {
                 .willReturn(LlmReply.of("얼큰하다는 평이 많아요", "gpt-test", 1, 1));
 
         // when
-        int created = reviewCommandService.createSummaries();
+        CreateReviewSummariesResponse response = reviewCommandService.createSummaries(false);
 
         // then
-        assertThat(created).isEqualTo(1);
+        assertThat(response).isEqualTo(new CreateReviewSummariesResponse(2, 1, 1));
         then(reviewService).should(never()).updateSummaryContent(eq(BAEK_ID), anyString());
         then(reviewService).should().updateSummaryContent(POGI_ID, "얼큰하다는 평이 많아요");
     }
@@ -93,27 +112,27 @@ class ReviewCommandServiceTest {
     @Test
     void 요약_대상이_없으면_LLM을_부르지_않는다() {
         // given
-        given(reviewService.findSummaryTargetProductIds()).willReturn(List.of());
+        given(reviewService.findSummaryTargetProductIds(false)).willReturn(List.of());
 
         // when
-        int created = reviewCommandService.createSummaries();
+        CreateReviewSummariesResponse response = reviewCommandService.createSummaries(false);
 
         // then
-        assertThat(created).isZero();
+        assertThat(response).isEqualTo(new CreateReviewSummariesResponse(0, 0, 0));
         then(llmGateway).shouldHaveNoInteractions();
     }
 
     @Test
     void 요약_집계는_있는데_리뷰가_없으면_LLM을_부르지_않고_건너뛴다() {
         // given
-        given(reviewService.findSummaryTargetProductIds()).willReturn(List.of(BAEK_ID));
+        given(reviewService.findSummaryTargetProductIds(false)).willReturn(List.of(BAEK_ID));
         given(reviewService.findRecentReviews(BAEK_ID)).willReturn(List.of());
 
         // when
-        int created = reviewCommandService.createSummaries();
+        CreateReviewSummariesResponse response = reviewCommandService.createSummaries(false);
 
         // then
-        assertThat(created).isZero();
+        assertThat(response).isEqualTo(new CreateReviewSummariesResponse(1, 0, 1));
         then(llmGateway).shouldHaveNoInteractions();
         then(reviewService).should(never()).updateSummaryContent(anyLong(), anyString());
     }

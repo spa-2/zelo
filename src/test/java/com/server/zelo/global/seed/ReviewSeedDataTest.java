@@ -6,6 +6,7 @@ import com.server.zelo.global.seed.ReviewSeedLoader.ReviewSeed;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,17 @@ class ReviewSeedDataTest {
         // then: 백김치(맵지 않음)와 포기김치(얼큰함)가 "초등학생"·"매콤하게" 시연의 리뷰 근거가 된다
         assertThat(seeds).filteredOn(seed -> seed.productCode().equals("SID-0008")).hasSizeGreaterThanOrEqualTo(5);
         assertThat(seeds).filteredOn(seed -> seed.productCode().equals("SID-0006")).hasSizeGreaterThanOrEqualTo(5);
+    }
+
+    @Test
+    void 리뷰가_요약_기준인_5건_이상인_상품은_자주_쓰는_재료_200개뿐이다() {
+        // given
+        Map<String, Long> reviewCounts = seeds.stream()
+                .collect(Collectors.groupingBy(ReviewSeed::productCode, Collectors.counting()));
+
+        // then: 자주 쓰는 재료는 10건, 그다음 300개는 4건, 나머지는 1건이라 요약은 200개만 만든다
+        assertThat(reviewCounts.values()).containsOnly(10L, 4L, 1L);
+        assertThat(reviewCounts.values()).filteredOn(count -> count >= 5).hasSize(200);
     }
 
     private static List<ReviewSeed> readSeeds() {

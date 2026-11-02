@@ -171,6 +171,26 @@ class ReviewRepositoryTest {
     }
 
     @Test
+    void 다시_만들기_대상은_AI_요약이_있어도_리뷰가_기준_이상인_상품을_고른다() {
+        // given
+        ProductReviewSummary noContent = ProductReviewSummary.of(baek, new BigDecimal("4.5"), 23);
+        ProductReviewSummary hasContent = ProductReviewSummary.of(pogi, new BigDecimal("4.7"), 30);
+        hasContent.updateContent("얼큰하다는 평이 많아요");
+        ProductReviewSummary fewReviews = ProductReviewSummary.of(yeolmu, new BigDecimal("4.0"), 3);
+        productReviewSummaryRepository.saveAll(List.of(noContent, hasContent, fewReviews));
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<ProductReviewSummary> result = productReviewSummaryRepository.findAllByReviewCountGreaterThanEqual(5);
+
+        // then: 로컬 DB에 다른 요약이 있을 수 있어, 이 테스트가 넣은 상품 중에서만 확인한다
+        assertThat(result).extracting(ProductReviewSummary::getProductId)
+                .contains(baek.getId(), pogi.getId())
+                .doesNotContain(yeolmu.getId());
+    }
+
+    @Test
     void 최근_리뷰를_최신순으로_개수만큼_상품과_함께_가져온다() {
         // given
         Review first = Review.of(9_000_301L, baek, 5, "첫 리뷰");

@@ -9,7 +9,6 @@ import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
 import com.server.zelo.domain.review.repository.ReviewRepository;
-import com.server.zelo.domain.review.service.ReviewCommandService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
@@ -22,8 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -36,44 +35,24 @@ import tools.jackson.databind.json.JsonMapper;
 // 로컬 시연용 리뷰 데이터. 상품 시드와 같이 ZELO_SEED_ENABLED=true 로 켰을 때만 돌고, 리뷰가 이미 있으면 건너뜀
 // 리뷰는 상품에 붙으므로, 상품 시드(ApplicationRunner)가 모두 끝난 뒤 오는 ApplicationReadyEvent에서 넣는다
 // 리뷰 내용에 쉼표가 들어가서 상품 시드의 CSV 대신 JSON으로 읽는다
+// 요약 문장은 만들지 않는다. 리뷰를 넣은 뒤 관리자 API(POST /api/admin/reviews/summaries)로 원할 때 만든다
 @Slf4j
 @Component
+@RequiredArgsConstructor
 @ConditionalOnProperty(name = "zelo.seed.enabled", havingValue = "true")
 public class ReviewSeedLoader {
 
     private static final String REVIEWS_JSON = "seed/reviews.json";
     // 리뷰는 회원과 FK로 묶지 않아서, 실제 회원 ID와 섞이지 않을 번호대부터 작성자 ID를 붙인다
     private static final long SEED_USER_ID_START = 9_100_000L;
-    private static final String REAL_LLM_MODE = "real";
     private static final int AVG_RATING_SCALE = 2;
 
-    private final String llmMode;
     private final JsonMapper jsonMapper;
     private final ReviewRepository reviewRepository;
     private final ProductRepository productRepository;
     private final TransactionTemplate transactionTemplate;
-    private final ReviewCommandService reviewCommandService;
     private final ProductReviewKeywordRepository productReviewKeywordRepository;
     private final ProductReviewSummaryRepository productReviewSummaryRepository;
-
-    public ReviewSeedLoader(
-            @Value("${zelo.llm.mode}") String llmMode,
-            JsonMapper jsonMapper,
-            ReviewRepository reviewRepository,
-            ProductRepository productRepository,
-            TransactionTemplate transactionTemplate,
-            ReviewCommandService reviewCommandService,
-            ProductReviewKeywordRepository productReviewKeywordRepository,
-            ProductReviewSummaryRepository productReviewSummaryRepository) {
-        this.llmMode = llmMode;
-        this.jsonMapper = jsonMapper;
-        this.reviewRepository = reviewRepository;
-        this.productRepository = productRepository;
-        this.transactionTemplate = transactionTemplate;
-        this.reviewCommandService = reviewCommandService;
-        this.productReviewKeywordRepository = productReviewKeywordRepository;
-        this.productReviewSummaryRepository = productReviewSummaryRepository;
-    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void load() {
@@ -84,14 +63,6 @@ public class ReviewSeedLoader {
         List<ReviewSeed> seeds = readSeeds();
         Integer reviewCount = transactionTemplate.execute(status -> saveReviews(seeds));
         log.info("리뷰 시드 저장 완료 리뷰={}", reviewCount);
-
-        // 요약은 리뷰를 처음 넣을 때 한 번만 만든다. LLM을 부르므로 저장이 커밋된 뒤 트랜잭션 밖에서 하고,
-        // fake 모드의 고정 문구가 실제 요약처럼 DB에 남지 않도록 real 모드에서만 만든다
-        if (REAL_LLM_MODE.equals(llmMode)) {
-            reviewCommandService.createSummaries();
-        } else {
-            log.info("LLM이 real 모드가 아니라 리뷰 요약은 만들지 않음 mode={}", llmMode);
-        }
     }
 
     // 리뷰를 저장하면서 상품별 평균 평점·리뷰 수와 키워드 언급 수를 함께 세서 집계 테이블을 채운다

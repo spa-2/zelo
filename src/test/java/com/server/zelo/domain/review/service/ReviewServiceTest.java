@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
@@ -199,10 +200,24 @@ class ReviewServiceTest {
                 .willReturn(List.of(summary(product(BAEK_ID), "4.5", 23), summary(product(POGI_ID), "4.7", 30)));
 
         // when
-        List<Long> result = reviewService.findSummaryTargetProductIds();
+        List<Long> result = reviewService.findSummaryTargetProductIds(false);
 
         // then
         assertThat(result).containsExactly(BAEK_ID, POGI_ID);
+    }
+
+    @Test
+    void 다시_만들기_대상은_요약이_있어도_리뷰가_5건_이상인_상품의_ID다() {
+        // given
+        given(productReviewSummaryRepository.findAllByReviewCountGreaterThanEqual(5))
+                .willReturn(List.of(summary(product(BAEK_ID), "4.5", 23), summary(product(POGI_ID), "4.7", 30)));
+
+        // when
+        List<Long> result = reviewService.findSummaryTargetProductIds(true);
+
+        // then
+        assertThat(result).containsExactly(BAEK_ID, POGI_ID);
+        then(productReviewSummaryRepository).should(never()).findAllByContentIsNullAndReviewCountGreaterThanEqual(5);
     }
 
     @Test

@@ -62,10 +62,13 @@ public class ReviewService {
         return evidences;
     }
 
+    // overwrite가 false면 요약이 없는 상품만, true면 이미 요약이 있는 상품까지 고른다
     @Transactional(readOnly = true)
-    public List<Long> findSummaryTargetProductIds() {
-        return productReviewSummaryRepository
-                .findAllByContentIsNullAndReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY).stream()
+    public List<Long> findSummaryTargetProductIds(Boolean overwrite) {
+        List<ProductReviewSummary> summaries = overwrite
+                ? productReviewSummaryRepository.findAllByReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY)
+                : productReviewSummaryRepository.findAllByContentIsNullAndReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY);
+        return summaries.stream()
                 .map(ProductReviewSummary::getProductId)
                 .toList();
     }

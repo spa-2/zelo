@@ -4,6 +4,7 @@ import com.server.zelo.ai.gateway.LlmGateway;
 import com.server.zelo.ai.gateway.LlmReply;
 import com.server.zelo.ai.prompt.ReviewSummaryPrompt;
 import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.domain.review.dto.response.CreateReviewSummariesResponse;
 import com.server.zelo.domain.review.entity.Review;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -21,20 +22,23 @@ public class ReviewCommandService {
     private final ReviewService reviewService;
     private final ReviewSummaryPrompt reviewSummaryPrompt;
 
-    // 요약이 아직 없는 상품만 골라 만든다. 이미 요약이 있는 상품은 대상에서 빠지므로 여러 번 실행해도 LLM을 다시 부르지 않는다
-    public int createSummaries() {
-        List<Long> productIds = reviewService.findSummaryTargetProductIds();
+    // overwrite가 false면 요약이 없는 상품만 만들어서, 여러 번 실행해도 이미 만든 상품은 LLM을 다시 부르지 않는다.
+    // true면 요약이 있는 상품까지 다시 만든다
+    public CreateReviewSummariesResponse createSummaries(Boolean overwrite) {
+        List<Long> productIds = reviewService.findSummaryTargetProductIds(overwrite);
         int created = 0;
         for (Long productId : productIds) {
             if (createSummary(productId)) {
                 created++;
             }
         }
-        log.info("리뷰 요약 생성 targets={} created={} failed={}", productIds.size(), created, productIds.size() - created);
-        return created;
+        log.info("리뷰 요약 생성 overwrite={} targets={} created={} failed={}",
+                overwrite, productIds.size(), created, productIds.size() - created);
+        return CreateReviewSummariesResponse.of(productIds.size(), created);
     }
 
-    // 한 상품이 실패해도 요약은 비워 둔 채 다음 상품으로 넘어간다. 요약은 없어도 리뷰 근거(평점·언급 수)는 그대로 쓸 수 있다
+    // 한 상품이 실패해도 요약을 바꾸지 않고(없으면 null, 있으면 이전 요약) 다음 상품으로 넘어간다.
+    // 요약은 없어도 리뷰 근거(평점·언급 수)는 그대로 쓸 수 있다
     private boolean createSummary(Long productId) {
         List<Review> reviews = reviewService.findRecentReviews(productId);
         if (reviews.isEmpty()) {

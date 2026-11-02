@@ -20,7 +20,6 @@ import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.repository.ProductReviewKeywordRepository;
 import com.server.zelo.domain.review.repository.ProductReviewSummaryRepository;
 import com.server.zelo.domain.review.repository.ReviewRepository;
-import com.server.zelo.domain.review.service.ReviewCommandService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.Predicate;
@@ -52,25 +51,22 @@ class ReviewSeedLoaderTest {
     private TransactionTemplate transactionTemplate;
 
     @Mock
-    private ReviewCommandService reviewCommandService;
-
-    @Mock
     private ProductReviewKeywordRepository productReviewKeywordRepository;
 
     @Mock
     private ProductReviewSummaryRepository productReviewSummaryRepository;
 
     @Test
-    void 리뷰가_이미_있으면_아무것도_넣지_않고_요약도_만들지_않는다() {
+    void 리뷰가_이미_있으면_아무것도_넣지_않는다() {
         // given
         given(reviewRepository.count()).willReturn(5L);
 
         // when
-        loader("real").load();
+        loader().load();
 
         // then
         then(reviewRepository).should(never()).saveAll(any());
-        then(reviewCommandService).shouldHaveNoInteractions();
+        then(productReviewSummaryRepository).should(never()).saveAll(any());
     }
 
     @Test
@@ -80,7 +76,7 @@ class ReviewSeedLoaderTest {
         ArgumentCaptor<List<Review>> reviewsCaptor = captor();
 
         // when
-        loader("real").load();
+        loader().load();
 
         // then
         then(reviewRepository).should().saveAll(reviewsCaptor.capture());
@@ -98,7 +94,7 @@ class ReviewSeedLoaderTest {
         ArgumentCaptor<List<ProductReviewSummary>> summariesCaptor = captor();
 
         // when
-        loader("real").load();
+        loader().load();
 
         // then: 자주 쓰는 재료는 10건(백김치·포기김치), 그다음은 4건(유기농 고구마), 나머지는 1건(못난이 양파)
         then(productReviewSummaryRepository).should().saveAll(summariesCaptor.capture());
@@ -121,7 +117,7 @@ class ReviewSeedLoaderTest {
         ArgumentCaptor<List<ProductReviewKeyword>> keywordsCaptor = captor();
 
         // when
-        loader("real").load();
+        loader().load();
 
         // then
         then(productReviewKeywordRepository).should().saveAll(keywordsCaptor.capture());
@@ -139,31 +135,6 @@ class ReviewSeedLoaderTest {
     }
 
     @Test
-    void real_모드면_리뷰를_저장한_뒤_요약을_만든다() {
-        // given
-        givenEmptyReviewsAndSeedProducts();
-
-        // when
-        loader("real").load();
-
-        // then
-        then(reviewCommandService).should().createSummaries();
-    }
-
-    @Test
-    void fake_모드면_고정_문구가_요약으로_남지_않게_요약을_만들지_않는다() {
-        // given
-        givenEmptyReviewsAndSeedProducts();
-
-        // when
-        loader("fake").load();
-
-        // then
-        then(reviewRepository).should().saveAll(any());
-        then(reviewCommandService).shouldHaveNoInteractions();
-    }
-
-    @Test
     void 시드_파일의_상품_코드가_상품에_없으면_시작을_멈춘다() {
         // given: 백김치(SID-0008)만 빠진 상품 목록
         given(reviewRepository.count()).willReturn(0L);
@@ -174,16 +145,14 @@ class ReviewSeedLoaderTest {
                 .toList());
 
         // when & then
-        assertThatThrownBy(() -> loader("real").load())
+        assertThatThrownBy(() -> loader().load())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("SID-0008");
-        then(reviewCommandService).shouldHaveNoInteractions();
     }
 
-    private ReviewSeedLoader loader(String llmMode) {
-        return new ReviewSeedLoader(llmMode, JsonMapper.builder().build(), reviewRepository, productRepository,
-                transactionTemplate, reviewCommandService, productReviewKeywordRepository,
-                productReviewSummaryRepository);
+    private ReviewSeedLoader loader() {
+        return new ReviewSeedLoader(JsonMapper.builder().build(), reviewRepository, productRepository,
+                transactionTemplate, productReviewKeywordRepository, productReviewSummaryRepository);
     }
 
     private void givenEmptyReviewsAndSeedProducts() {

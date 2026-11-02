@@ -71,10 +71,12 @@ public class ReconcileScheduler {
                     completed = false;
                     break;
                 }
-                log.error("결제 정합성 대사 실패 portoneId={}", target.portoneId(), e);
+                log.warn("결제 정합성 대사 실패 portoneId={} code={}", target.portoneId(), e.getErrorCode().getCode());
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", e.getErrorCode().name());
             } catch (RuntimeException e) {
                 // 한 건의 실패가 나머지 정리를 막지 않도록 함
                 log.error("결제 정합성 대사 실패 portoneId={}", target.portoneId(), e);
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", "ERROR");
             }
             paymentCursor = target.paymentId();
         }
@@ -98,9 +100,11 @@ public class ReconcileScheduler {
                     log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", target.portoneId());
                     break;
                 }
-                log.error("환불 정합성 대사 실패 portoneId={}", target.portoneId(), e);
+                log.warn("환불 정합성 대사 실패 portoneId={} code={}", target.portoneId(), e.getErrorCode().getCode());
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "REFUND", "result", e.getErrorCode().name());
             } catch (RuntimeException e) {
                 log.error("환불 정합성 대사 실패 portoneId={}", target.portoneId(), e);
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "REFUND", "result", "ERROR");
             }
             refundCursor = target.refundId();
         }
@@ -112,7 +116,7 @@ public class ReconcileScheduler {
         Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
         businessMetrics.record(BusinessMetric.RECONCILE_RUN, elapsed, "target", target);
         if (size > 0) {
-            log.info("정합성 대사 실행 target={}, size={}, elapsedMs={}", target, size, elapsed.toMillis());
+            log.info("정합성 대사 실행 target={} size={} elapsedMs={}", target, size, elapsed.toMillis());
         }
     }
 }

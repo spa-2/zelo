@@ -2,6 +2,8 @@ package com.server.zelo.domain.payment.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.server.zelo.domain.chat.dto.response.PaymentCardPayload;
 import com.server.zelo.domain.chat.entity.ChatRoom;
 import com.server.zelo.domain.chat.service.ChatMessageService;
@@ -81,7 +83,8 @@ class PaymentCommandServiceTest {
     // 트랜잭션 없이 콜백만 바로 실행해서 결제 확인 흐름만 검증한다
     @BeforeEach
     void setUp() {
-        paymentCommandService = new PaymentCommandService(orderService, portOneClient, paymentService,
+        paymentCommandService = new PaymentCommandService(new BusinessMetrics(new SimpleMeterRegistry()),
+                orderService, portOneClient, paymentService,
                 deliveryService, chatMessageService, orderCommandService, paymentMethodService,
                 TransactionOperations.withoutTransaction());
     }

@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -30,10 +32,11 @@ public class PaymentCommandService {
 
     private static final String AMOUNT_MISMATCH_REASON = "결제 금액 불일치";
     private static final String CLOSED_ORDER_REASON = "결제 대기 중이 아닌 주문";
+    private static final String NO_REASON = "NONE";
     private static final String LATE_PAID_REASON = "실패 처리 후 늦게 승인된 결제";
     private static final String CONFIRM_REASON = "결제 결과를 확인하지 못했습니다";
 
-
+    private final BusinessMetrics businessMetrics;
     private final OrderService orderService;
     private final PortOneClient portOneClient;
     private final PaymentService paymentService;
@@ -65,10 +68,12 @@ public class PaymentCommandService {
 
         if (pgPayment.isPaid() && !isPaymentPending(orderId)) {
             // 주문이 먼저 취소되어 결제를 반영할 수 없으므로, 이미 빠져나간 돈을 돌려주고 결제만 취소로 맞춘다
+            log.warn("닫힌 주문의 결제를 환불 portoneId={} orderId={}", portoneId, orderId);
             portOneClient.cancelPayment(portoneId, CLOSED_ORDER_REASON);
             transactionOperations.executeWithoutResult(
                     status -> paymentService.cancel(portoneId, pgPayment.amount()));
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.ORDER_CLOSED, pgPayment.amount(), null);
+            countResult(PaymentStatus.CANCELED, PaymentCardPayload.ORDER_CLOSED);
             return PaymentStatus.CANCELED;
         }
 
@@ -79,17 +84,22 @@ public class PaymentCommandService {
                 createDelivery(orderId);
             });
             createPaymentCard(orderId, PaymentStatus.PAID, null, pgPayment.amount(), pgPayment.paidAt());
+            log.info("결제 승인 portoneId={} orderId={} amount={}", portoneId, orderId, pgPayment.amount());
+            countResult(PaymentStatus.PAID, NO_REASON);
             return PaymentStatus.PAID;
         }
 
         if (pgPayment.isPaid()) {
             // 이미 돈이 빠져나간 상태라 실패 처리만 하면 고객 돈이 묶이므로 포트원에 환불을 먼저 요청한다
+            log.error("결제 금액 불일치로 환불 portoneId={} orderId={} expected={} actual={}",
+                    portoneId, orderId, payment.getAmount(), pgPayment.amount());
             portOneClient.cancelPayment(portoneId, AMOUNT_MISMATCH_REASON);
             transactionOperations.executeWithoutResult(status -> {
                 paymentService.cancel(portoneId, pgPayment.amount());
                 orderCommandService.cancel(orderId);
             });
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.AMOUNT_MISMATCH, pgPayment.amount(), null);
+            countResult(PaymentStatus.CANCELED, PaymentCardPayload.AMOUNT_MISMATCH);
             return PaymentStatus.CANCELED;
         }
 
@@ -101,6 +111,8 @@ public class PaymentCommandService {
         if (pgPayment.isCancelled()) {
             transactionOperations.executeWithoutResult(status -> paymentService.cancel(portoneId, pgPayment.amount()));
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED, null, null);
+            log.info("결제창 닫음으로 결제 취소 portoneId={} orderId={}", portoneId, orderId);
+            countResult(PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED);
             return PaymentStatus.CANCELED;
         }
 
@@ -162,7 +174,7 @@ public class PaymentCommandService {
                         PaymentCardPayload.from(order, paymentStatus, reason, paidAmount, paidAt, failureReason));
             });
         } catch (RuntimeException e) {
-            log.error("결제 결과 카드 저장 실패 orderId={}, status={}", orderId, paymentStatus, e);
+            log.warn("결제 결과 카드 저장 실패 orderId={} status={}", orderId, paymentStatus, e);
         }
     }
 
@@ -209,16 +221,19 @@ public class PaymentCommandService {
         if (!pgPayment.isPaid()) {
             return payment.getStatus();
         }
-        log.warn("실패 처리 후 늦게 승인된 결제 환불 portoneId={}, orderId={}", portoneId, payment.getOrderId());
+        log.warn("실패 처리 후 늦게 승인된 결제 환불 portoneId={} orderId={}", portoneId, payment.getOrderId());
         portOneClient.cancelPayment(portoneId, LATE_PAID_REASON);
         transactionOperations.executeWithoutResult(status -> paymentService.cancelLatePaid(portoneId, pgPayment.amount()));
         createPaymentCard(payment.getOrderId(), PaymentStatus.CANCELED, PaymentCardPayload.LATE_PAID, pgPayment.amount(), null);
+        countResult(PaymentStatus.CANCELED, PaymentCardPayload.LATE_PAID);
         return PaymentStatus.CANCELED;
     }
 
     private PaymentStatus failPayment(String portoneId, Long orderId, String failureReason) {
         transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId, failureReason));
         createPaymentCard(orderId, PaymentStatus.FAILED, null, null, null, failureReason);
+        log.info("결제 실패 portoneId={} orderId={}", portoneId, orderId);
+        countResult(PaymentStatus.FAILED, NO_REASON);
         return PaymentStatus.FAILED;
     }
 
@@ -250,5 +265,10 @@ public class PaymentCommandService {
             }
             throw e;
         }
+    }
+
+    // 태그 키를 status와 reason으로 고정해야 대시보드에서 한 지표로 묶인다
+    private void countResult(PaymentStatus status, String reason) {
+        businessMetrics.count(BusinessMetric.PAYMENT_RESULT, "status", status.name(), "reason", reason);
     }
 }

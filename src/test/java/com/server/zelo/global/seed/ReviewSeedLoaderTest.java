@@ -37,9 +37,10 @@ import tools.jackson.databind.json.JsonMapper;
 @ExtendWith(MockitoExtension.class)
 class ReviewSeedLoaderTest {
 
-    // reviews.json에 리뷰가 있는 상품 코드 (상품 시드 products.csv의 코드)
-    private static final List<String> SEED_PRODUCT_CODES = List.of(
-            "SID-0006", "SID-0008", "SID-0007", "SID-0005", "MEA-0025", "MEA-0030", "SID-0014", "SID-0012");
+    // reviews.json은 상품 시드(products.csv)의 모든 상품에 리뷰를 단다
+    private static final List<String> SEED_PRODUCT_CODES = SeedDataLoader.readRows("seed/products.csv").stream()
+            .map(row -> row[0])
+            .toList();
 
     @Mock
     private ReviewRepository reviewRepository;
@@ -84,7 +85,7 @@ class ReviewSeedLoaderTest {
         // then
         then(reviewRepository).should().saveAll(reviewsCaptor.capture());
         List<Review> reviews = reviewsCaptor.getValue();
-        assertThat(reviews).hasSize(94);
+        assertThat(reviews).hasSize(3525);
         // 실제 회원 ID와 섞이지 않는 번호대부터 하나씩 붙인다
         assertThat(reviews.getFirst().getUserId()).isEqualTo(9_100_000L);
         assertThat(reviews).extracting(Review::getUserId).doesNotHaveDuplicates();
@@ -99,15 +100,16 @@ class ReviewSeedLoaderTest {
         // when
         loader("real").load();
 
-        // then: 백김치 23건 평균 4.52, 포기김치(브랜드 G) 35건 평균 4.26, 포기김치 500g 3건
+        // then: 자주 쓰는 재료는 10건(백김치·포기김치), 그다음은 4건(유기농 고구마), 나머지는 1건(못난이 양파)
         then(productReviewSummaryRepository).should().saveAll(summariesCaptor.capture());
         assertThat(summariesCaptor.getValue())
                 .extracting(summary -> summary.getProduct().getProductCode(), ProductReviewSummary::getReviewCount,
                         ProductReviewSummary::getAvgRating)
                 .contains(
-                        tuple("SID-0008", 23, new BigDecimal("4.52")),
-                        tuple("SID-0006", 35, new BigDecimal("4.26")),
-                        tuple("SID-0005", 3, new BigDecimal("4.33")))
+                        tuple("SID-0008", 10, new BigDecimal("4.50")),
+                        tuple("SID-0006", 10, new BigDecimal("3.90")),
+                        tuple("VEG-0004", 4, new BigDecimal("4.25")),
+                        tuple("VEG-0121", 1, new BigDecimal("4.00")))
                 .hasSize(SEED_PRODUCT_CODES.size());
         assertThat(summariesCaptor.getValue()).allSatisfy(summary -> assertThat(summary.getContent()).isNull());
     }
@@ -127,12 +129,12 @@ class ReviewSeedLoaderTest {
         assertThat(keywords).filteredOn(of("SID-0008"))
                 .extracting(ProductReviewKeyword::getKeyword, ProductReviewKeyword::getMentionCount)
                 .containsExactlyInAnyOrder(
-                        tuple(Keyword.NOT_SPICY, 15), tuple(Keyword.LOW_SALT, 6), tuple(Keyword.SPICY, 1));
+                        tuple(Keyword.NOT_SPICY, 9), tuple(Keyword.LOW_SALT, 2));
         assertThat(keywords).filteredOn(of("SID-0006"))
                 .extracting(ProductReviewKeyword::getKeyword, ProductReviewKeyword::getMentionCount)
-                .containsExactlyInAnyOrder(tuple(Keyword.SPICY, 15), tuple(Keyword.NOT_SPICY, 1));
-        // 키워드가 하나도 언급되지 않은 상품(계란 10구)은 행을 만들지 않는다
-        assertThat(keywords).filteredOn(of("MEA-0025")).isEmpty();
+                .containsExactly(tuple(Keyword.SPICY, 9));
+        // 키워드가 하나도 언급되지 않은 상품(흙당근)은 행을 만들지 않는다
+        assertThat(keywords).filteredOn(of("VEG-0005")).isEmpty();
         assertThat(keywords).allSatisfy(keyword -> assertThat(keyword.getMentionCount()).isPositive());
     }
 

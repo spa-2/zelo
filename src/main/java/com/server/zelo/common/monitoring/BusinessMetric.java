@@ -11,6 +11,9 @@ public enum BusinessMetric {
 
     //TODO 이름만 미리 만들어 둔거니 각자 가져가서 붙히시면 됩니다~!
 
+    // 공통. GlobalExceptionHandler가 오류 응답을 만들 때마다 센다 (code는 ErrorCode 값)
+    API_ERROR("zelo.api.error", "오류 응답 수 (code)"),
+
     // 견적
     QUOTE_CREATED("zelo.quote.created", "견적 발급 수"),
     QUOTE_EXCLUDED("zelo.quote.excluded", "견적에서 빠진 품목 수 (reason)"),

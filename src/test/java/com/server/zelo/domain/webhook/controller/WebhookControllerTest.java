@@ -3,9 +3,11 @@ package com.server.zelo.domain.webhook.controller;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.webhook.dto.request.WebhookRequest;
 import com.server.zelo.domain.webhook.service.PortOneWebhookVerifier;
 import com.server.zelo.domain.webhook.service.WebhookCommandService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,7 +45,7 @@ class WebhookControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(webhookController)
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

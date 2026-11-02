@@ -62,10 +62,13 @@ public class ReviewService {
         return evidences;
     }
 
+    // overwrite가 false면 요약이 없는 상품만, true면 이미 요약이 있는 상품까지 고른다
     @Transactional(readOnly = true)
-    public List<Long> findSummaryTargetProductIds() {
-        return productReviewSummaryRepository
-                .findAllByContentIsNullAndReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY).stream()
+    public List<Long> findSummaryTargetProductIds(Boolean overwrite) {
+        List<ProductReviewSummary> summaries = overwrite
+                ? productReviewSummaryRepository.findAllByReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY)
+                : productReviewSummaryRepository.findAllByContentIsNullAndReviewCountGreaterThanEqual(MIN_REVIEW_COUNT_FOR_SUMMARY);
+        return summaries.stream()
                 .map(ProductReviewSummary::getProductId)
                 .toList();
     }
@@ -73,6 +76,12 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public List<Review> findRecentReviews(Long productId) {
         return reviewRepository.findByProductIdOrderByIdDesc(productId, Limit.of(MAX_REVIEWS_FOR_SUMMARY));
+    }
+
+    // 채팅에서 "최근 리뷰 보여 줘"에 답할 때 쓴다. 개수는 부르는 쪽이 정한다
+    @Transactional(readOnly = true)
+    public List<Review> findRecentReviews(Long productId, Integer count) {
+        return reviewRepository.findByProductIdOrderByIdDesc(productId, Limit.of(count));
     }
 
     public void updateSummaryContent(Long productId, String content) {

@@ -1,5 +1,6 @@
 package com.server.zelo.domain.order.controller;
 
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.auth.AuthArgumentResolver;
@@ -11,6 +12,7 @@ import com.server.zelo.domain.order.dto.response.GetOrderSummaryResponse;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.service.OrderCommandService;
 import com.server.zelo.domain.order.service.OrderFacade;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,7 +65,7 @@ class OrderControllerTest {
         SecurityContextHolder.clearContext();
         mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderFacade,orderCommandService))
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

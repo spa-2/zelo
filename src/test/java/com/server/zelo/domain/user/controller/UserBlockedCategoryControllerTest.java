@@ -16,6 +16,7 @@ import com.server.zelo.common.auth.AuthUser;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.user.dto.response.CreateBlockedCategoryResponse;
 import com.server.zelo.domain.user.entity.User;
@@ -23,6 +24,7 @@ import com.server.zelo.domain.user.entity.UserBlockedCategory;
 import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.domain.user.service.UserBlockedCategoryCommandService;
 import com.server.zelo.domain.user.service.UserBlockedCategoryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,7 +59,7 @@ class UserBlockedCategoryControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(userBlockedCategoryController)
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

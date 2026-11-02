@@ -56,6 +56,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @ExtendWith(MockitoExtension.class)
 class OrderConfirmationCommandServiceTest {
 
+    @Mock private OrderAuditService orderAuditService;
+
     private static final Long USER_ID = 7L;
     private static final Long ROOM_ID = 10L;
     private static final String QUOTE_ID = "QUOTE-114";
@@ -120,7 +122,7 @@ class OrderConfirmationCommandServiceTest {
                 deliveryService,
                 inventoryService,
                 userAddressService,
-                transactionTemplate);
+                transactionTemplate, orderAuditService);
     }
 
     @Test

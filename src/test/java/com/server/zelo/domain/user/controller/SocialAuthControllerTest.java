@@ -4,9 +4,11 @@ import com.server.zelo.common.auth.RefreshTokenCookieFactory;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.dto.request.CreateSocialUserRequest;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.service.SocialFacade;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +64,7 @@ class SocialAuthControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new SocialAuthController(socialFacade, socialCommandService,
                                 new RefreshTokenCookieFactory(REFRESH_EXPIRATION)))
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

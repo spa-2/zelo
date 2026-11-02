@@ -2,6 +2,7 @@ package com.server.zelo.ai.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -700,6 +701,51 @@ class ResilientLlmGatewayTest {
         // then
         assertThat(timerCount("zelo.llm.call", "QUOTE_EXPLAIN", "SUCCESS")).isEqualTo(1);
         assertThat(meterRegistry.find("zelo.llm.call").tag("operation", "CHAT_ANSWER").timer()).isNull();
+    }
+
+    @Test
+    void 도구를_붙인_조회_답변은_같은_보호를_거치고_LOOKUP_ANSWER로_남긴다(CapturedOutput output) {
+        // given
+        Object tools = new Object();
+        given(delegate.answerWithTools("system", List.of(), "백김치 리뷰 어때?", tools, Map.of("roomId", 10L))).willReturn(REPLY);
+
+        // when
+        LlmReply reply = resilientLlmGateway.answerWithTools("system", List.of(), "백김치 리뷰 어때?", tools, Map.of("roomId", 10L));
+
+        // then
+        assertThat(reply).isEqualTo(REPLY);
+        assertThat(timerCount("zelo.llm.call", "LOOKUP_ANSWER", "SUCCESS")).isEqualTo(1);
+        assertThat(tokens("LOOKUP_ANSWER", "prompt")).isEqualTo(10);
+        assertThat(meterRegistry.find("zelo.llm.call").tag("operation", "CHAT_ANSWER").timer()).isNull();
+        assertThat(attemptLogLines(output).getFirst()).contains("operation=LOOKUP_ANSWER");
+    }
+
+    @Test
+    void 조회_답변이_서버_오류면_도구_왕복_전체를_한_번_더_시도한다() {
+        // given: 도구는 조회만 해서 다시 불려도 결과가 같다
+        Object tools = new Object();
+        given(delegate.answerWithTools(anyString(), anyList(), anyString(), any(), anyMap()))
+                .willThrow(OpenAiErrors.serverError(500))
+                .willReturn(REPLY);
+
+        // when
+        LlmReply reply = resilientLlmGateway.answerWithTools("system", List.of(), "질문", tools, Map.of());
+
+        // then
+        assertThat(reply).isEqualTo(REPLY);
+        then(delegate).should(times(2)).answerWithTools("system", List.of(), "질문", tools, Map.of());
+    }
+
+    @Test
+    void 조회_답변이_비어_있으면_AI_EMPTY_RESPONSE로_실패한다() {
+        // given
+        given(delegate.answerWithTools(anyString(), anyList(), anyString(), any(), anyMap()))
+                .willReturn(LlmReply.of(" ", "gpt-test", 10, 0));
+
+        // when & then
+        assertThatThrownBy(() -> resilientLlmGateway.answerWithTools("system", List.of(), "질문", new Object(), Map.of()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_EMPTY_RESPONSE));
     }
 
     @Test

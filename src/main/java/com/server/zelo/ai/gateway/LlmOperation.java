@@ -6,5 +6,6 @@ public enum LlmOperation {
     QUOTE_EDIT_PLAN, // 견적 수정 계획
     QUOTE_EXPLAIN, // 견적 안내 문장
     CHAT_ANSWER, // 일반 질문 답변
+    LOOKUP_ANSWER, // 조회 질문 답변 (도구 호출 왕복 포함, 추론 none)
     REVIEW_SUMMARY // 리뷰 한 줄 요약
 }

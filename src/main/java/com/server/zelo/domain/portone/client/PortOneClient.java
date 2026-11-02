@@ -1,6 +1,7 @@
 package com.server.zelo.domain.portone.client;
 import com.server.zelo.domain.portone.dto.response.PortOneBillingKey;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 
 public interface PortOneClient {
 
@@ -8,7 +9,7 @@ public interface PortOneClient {
 
     void cancelPayment(String portoneId, String reason);
 
-    void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount, Long currentCancellableAmount, String reason);
+    PortOneCancellationStatus cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount, Long currentCancellableAmount, String reason);
 
     PortOneBillingKey getBillingKey(String billingKey);
 

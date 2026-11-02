@@ -1,6 +1,7 @@
 package com.server.zelo.domain.review;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willAnswer;
 
@@ -43,7 +44,9 @@ class ReviewSummaryIntegrationTest {
     @Autowired
     private EntityManager entityManager;
 
-    @Autowired
+    // 요약 대상 조회는 실제 쿼리를 그대로 쓰되 이 테스트가 만든 상품만 남긴다.
+    // 로컬 DB를 같이 쓰므로, 거르지 않으면 시드 상품 요약까지 [FAKE] 문구로 채우거나 덮어쓴다
+    @MockitoSpyBean
     private ReviewService reviewService;
 
     @Autowired
@@ -65,8 +68,12 @@ class ReviewSummaryIntegrationTest {
     private Long productId;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         llmCircuitBreaker.reset();
+        willAnswer(invocation -> ((List<Long>) invocation.callRealMethod()).stream()
+                .filter(id -> id.equals(productId))
+                .toList()).given(reviewService).findSummaryTargetProductIds(anyBoolean());
         // 카테고리·재료 이름과 상품 코드는 유니크라서, 로컬 DB에 있는 데이터와 겹치지 않을 이름을 쓴다
         productId = transactionTemplate.execute(status -> {
             Category category = Category.of("리뷰테스트-9000501", true);
@@ -102,7 +109,7 @@ class ReviewSummaryIntegrationTest {
     @Test
     void 요약을_만들면_커밋되어_남고_리뷰_근거_조회에_함께_나온다() {
         // when
-        reviewCommandService.createSummaries();
+        reviewCommandService.createSummaries(false);
 
         // then
         ProductReviewEvidence evidence = reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId);
@@ -120,7 +127,7 @@ class ReviewSummaryIntegrationTest {
         }).given(resilientLlmGateway).summarizeReviews(anyString(), anyString());
 
         // when
-        reviewCommandService.createSummaries();
+        reviewCommandService.createSummaries(false);
 
         // then: 트랜잭션 안에서 부르면 LLM을 기다리는 동안 DB 커넥션을 붙잡는다
         assertThat(transactionActive).isFalse();
@@ -132,7 +139,7 @@ class ReviewSummaryIntegrationTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when
-        reviewCommandService.createSummaries();
+        reviewCommandService.createSummaries(false);
 
         // then
         assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary()).isNull();
@@ -141,14 +148,43 @@ class ReviewSummaryIntegrationTest {
     @Test
     void 이미_요약이_있으면_다시_실행해도_LLM을_부르지_않는다() {
         // given
-        reviewCommandService.createSummaries();
+        reviewCommandService.createSummaries(false);
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
 
         // when: 다시 부르면 실패 모드라도 대상이 아니므로 요약이 그대로 남는다
-        reviewCommandService.createSummaries();
+        reviewCommandService.createSummaries(false);
 
         // then
         assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary())
                 .isEqualTo(FakeLlmGateway.REVIEW_SUMMARY);
+    }
+
+    @Test
+    void 다시_만들기를_요청하면_요약이_있는_상품도_LLM을_불러_새_요약으로_바꾼다() {
+        // given: 이전 요약이 남아 있는 상품
+        transactionTemplate.executeWithoutResult(status ->
+                entityManager.find(ProductReviewSummary.class, productId).updateContent("이전 요약"));
+
+        // when
+        reviewCommandService.createSummaries(true);
+
+        // then
+        assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary())
+                .isEqualTo(FakeLlmGateway.REVIEW_SUMMARY);
+    }
+
+    @Test
+    void 다시_만들다가_LLM이_실패하면_이전_요약을_그대로_둔다() {
+        // given
+        transactionTemplate.executeWithoutResult(status ->
+                entityManager.find(ProductReviewSummary.class, productId).updateContent("이전 요약"));
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.FAIL);
+
+        // when
+        reviewCommandService.createSummaries(true);
+
+        // then
+        assertThat(reviewService.findReviewEvidences(List.of(productId), Set.of()).get(productId).summary())
+                .isEqualTo("이전 요약");
     }
 }

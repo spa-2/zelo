@@ -228,6 +228,20 @@ class ChatQuoteApiIntegrationTest {
     }
 
     @Test
+    void 조회_질문이면_견적을_만들지_않고_조회_답변을_201로_돌려준다() throws Exception {
+        // given
+        Long roomId = createRoom();
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.LOOKUP_QUESTION);
+
+        // when & then
+        send(roomId, "백김치 리뷰 어때?")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.content").value("[FAKE] 백김치 리뷰 어때?에 대한 답변입니다."))
+                .andExpect(jsonPath("$.data.payload").doesNotExist());
+        then(quoteCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
     void 카드_버튼으로_빼면_LLM_없이_새_견적_카드를_201로_돌려준다() throws Exception {
         // given
         Long roomId = createRoom();

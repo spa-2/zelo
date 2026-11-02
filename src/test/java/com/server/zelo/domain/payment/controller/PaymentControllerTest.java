@@ -1,6 +1,7 @@
 package com.server.zelo.domain.payment.controller;
 
 import com.server.zelo.common.exception.BusinessException;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.AuthArgumentResolver;
 import com.server.zelo.common.auth.AuthUser;
@@ -8,6 +9,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.service.PaymentFacade;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +50,7 @@ class PaymentControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(paymentController)
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 
@@ -83,7 +85,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/api/payments/{portoneId}/confirm", PORTONE_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 주문을 다시 진행해 주시길 바랍니다."));
+                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 결제 수단을 다시 골라 주세요."));
     }
 
     @Test

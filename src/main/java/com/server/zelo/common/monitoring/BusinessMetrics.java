@@ -35,6 +35,14 @@ public class BusinessMetrics {
                 .increment();
     }
 
+    // 값을 올리지 않고 0으로 미리 등록만 함. 처음 나타난 시계열은 increase()가 첫 증가를 놓쳐서, 드물게 나는 지표에 씀
+    public void register(BusinessMetric metric, String... tags) {
+        Counter.builder(metric.getKey())
+                .description(metric.getDescription())
+                .tags(tags)
+                .register(meterRegistry);
+    }
+
     // 토큰 수처럼 1이 아닌 양을 더할 때 씀
     public void count(BusinessMetric metric, double amount, String... tags) {
         Counter.builder(metric.getKey())

@@ -3,6 +3,7 @@ package com.server.zelo.domain.portone.dto.response;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PortOnePaymentResponse(
@@ -11,9 +12,15 @@ public record PortOnePaymentResponse(
         Amount amount,
         OffsetDateTime paidAt,
         Method method,
-        Failure failure
+        Failure failure,
+        List<Cancellation> cancellations
 ) {
     public static final String ETC = "ETC";
+
+    public PortOnePaymentResponse(String id, String status, Amount amount, OffsetDateTime paidAt,
+                                  Method method, Failure failure) {
+        this(id, status, amount, paidAt, method, failure, null);
+    }
 
     public String methodName() {
         if (method == null) {
@@ -46,6 +53,11 @@ public record PortOnePaymentResponse(
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Failure(String reason, String pgMessage) {
+    }
+
+    // 취소된 결제와 부분 취소된 결제에만 채워진다
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Cancellation(String id, String status, Long totalAmount, OffsetDateTime requestedAt) {
     }
 
     public String failureReason() {

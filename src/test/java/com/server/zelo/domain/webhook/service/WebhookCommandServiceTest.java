@@ -134,6 +134,23 @@ class WebhookCommandServiceTest {
     }
 
     @Test
+    void 부분_취소_웹훅이면_결제_확인_뒤_취소를_동기화한다() {
+        // given
+        WebhookRequest partialCancelled =
+                new WebhookRequest("Transaction.PartialCancelled", new WebhookRequest.Data(PORTONE_ID));
+        given(webhookEventService.receive(WEBHOOK_ID, partialCancelled, BODY)).willReturn(receivedEvent());
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(10L, PORTONE_ID, 32_000L));
+
+        // when
+        webhookCommandService.handle(WEBHOOK_ID, partialCancelled, BODY);
+
+        // then
+        then(paymentFacade).should().confirmPayment(PORTONE_ID);
+        then(refundFacade).should().syncCancellation(10L, PORTONE_ID);
+        then(webhookEventService).should().process(eq(1L), any(LocalDateTime.class));
+    }
+
+    @Test
     void 처리하지_않는_웹훅_종류면_무시로_기록하고_결제를_확인하지_않는다() {
         // given
         WebhookRequest ready = new WebhookRequest("Transaction.Ready", new WebhookRequest.Data(PORTONE_ID));

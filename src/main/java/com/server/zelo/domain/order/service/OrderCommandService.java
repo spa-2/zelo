@@ -61,11 +61,14 @@ public class OrderCommandService {
     private final InventoryService inventoryService;
     private final UserAddressService userAddressService;
     private final TransactionTemplate transactionTemplate;
+    private final OrderAuditService orderAuditService;
 
     // 결제 성공시
     public void completePayment(Long orderId) {
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        OrderStatus previousStatus = order.getStatus();
         order.pay(); // OrderStatus: PAYMENT_PENDING -> PAID
+        orderAuditService.recordStateChange(order, OrderAuditAction.PAID, previousStatus, ActorType.SYSTEM, null, null);
 
         // 품목별 재고 차감 확정
         for(OrderItem orderItem : getItemsInProductOrder(order)) {
@@ -78,7 +81,9 @@ public class OrderCommandService {
     // 결제 실패시
     public void failPayment(Long orderId) {
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        OrderStatus previousStatus = order.getStatus();
         order.failPayment(); // OrderStatus: PAYMENT_PENDING -> PAYMENT_FAILED
+        orderAuditService.recordStateChange(order, OrderAuditAction.PAYMENT_FAILED, previousStatus, ActorType.SYSTEM, null, null);
 
         // 품목별 선점 해제
         for(OrderItem orderItem : getItemsInProductOrder(order)) {
@@ -108,8 +113,15 @@ public class OrderCommandService {
      *         품목의 재고 상태가 허용되지 않으면 INVALID_STOCK_STATUS
      */
     public void cancel(Long orderId) {
+        // 결제·환불 결과를 반영하는 서버 처리에서 부름
+        cancel(orderId, ActorType.SYSTEM, null, null);
+    }
+
+    private void cancel(Long orderId, ActorType actorType, Long actorId, String reason) {
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
+        OrderStatus previousStatus = order.getStatus();
         order.cancel();
+        orderAuditService.recordStateChange(order, OrderAuditAction.CANCELED, previousStatus, actorType, actorId, reason);
 
         for (OrderItem orderItem : getItemsInProductOrder(order)) {
             switch (orderItem.getStockState()) {
@@ -175,9 +187,13 @@ public class OrderCommandService {
 
     // 주문 잠금 후 CANCELED로 바꿀 수 있을 때만 취소 처리, 아니면 건너뜀
     public void cancelIfPossible(Long orderId) {
+        cancelIfPossible(orderId, null);
+    }
+
+    private void cancelIfPossible(Long orderId, String reason) {
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
         if (order.getStatus().isTransitionAllowed(OrderStatus.CANCELED)) {
-            cancel(orderId);
+            cancel(orderId, ActorType.SYSTEM, null, reason);
         } else {
             log.info("취소 반영 건너뜀 orderId={}, status={}", orderId, order.getStatus());
         }
@@ -216,7 +232,7 @@ public class OrderCommandService {
      * 본인의 결제 전 주문을 취소하고 선점 재고를 해제한다.
      * 결제 확인과의 동시 실행을 막는 Facade의 공통 락 안에서 호출한다.
      */
-    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId) {
+    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId, String reason) {
         // 상태 검증부터 재고 해제까지 주문 행 잠금을 유지
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
 
@@ -239,7 +255,7 @@ public class OrderCommandService {
         });
 
         // 기존 주문 취소와 품목별 재고 처리 로직을 재사용
-        cancel(orderId);
+        cancel(orderId, ActorType.USER, userId, reason);
 
         return CancelOrderResponse.from(order);
     }
@@ -332,7 +348,10 @@ public class OrderCommandService {
 
         // 재고 복원이 끝났으므로 주문 상태만 변경
         if (order.isFullyCanceled()) {
+            OrderStatus previousStatus = order.getStatus();
             order.cancel();
+            orderAuditService.recordStateChange(order, OrderAuditAction.CANCELED, previousStatus,
+                    ActorType.SYSTEM, null, "모든 상품 환불 완료");
         }
     }
 
@@ -388,7 +407,7 @@ public class OrderCommandService {
             return false;
         }
 
-        cancelIfPossible(orderId);
+        cancelIfPossible(orderId, "결제 대기 시간 만료");
 
         log.info("결제 대기 만료 주문 자동 취소 orderId={}", orderId);
         return true;
@@ -474,6 +493,8 @@ public class OrderCommandService {
         }
 
         Order savedOrder = orderService.createOrder(order);
+        orderAuditService.recordStateChange(savedOrder, OrderAuditAction.CREATED, null,
+                savedOrder.getRequesterType(), userId, null);
 
         // 다른 재고 처리와 잠금 순서를 맞추기 위해 상품 ID 오름차순으로 선점
         for (OrderItem item : getItemsInProductOrder(savedOrder)) {

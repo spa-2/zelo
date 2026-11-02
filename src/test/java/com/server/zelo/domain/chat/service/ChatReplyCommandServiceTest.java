@@ -28,6 +28,7 @@ import com.server.zelo.ai.prompt.ChatPrompt;
 import com.server.zelo.ai.prompt.MenuPlanPrompt;
 import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
+import com.server.zelo.ai.tool.ReviewTools;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetrics;
@@ -86,6 +87,9 @@ class ChatReplyCommandServiceTest {
 
     @Mock
     private LlmGateway llmGateway;
+
+    @Mock
+    private ReviewTools reviewTools;
 
     @Mock
     private QuoteService quoteService;
@@ -154,6 +158,63 @@ class ChatReplyCommandServiceTest {
         assertThat(response.quoteCardStatus()).isNull();
         assertThat(chatPrompt.systemPrompt()).contains("[주문하기] 버튼");
         assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "GENERAL_QUESTION").tag("outcome", "SUCCESS")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 조회_질문은_채팅_프롬프트와_대화_기록과_리뷰_도구를_넘겨_답하고_AI_메시지로_저장한다() {
+        // given
+        List<ChatMessage> history = List.of(ChatMessage.of(10L, ChatSender.USER, "김치볶음밥 재료 준비해 줘"));
+        givenPlan(plan(MenuPlanIntent.LOOKUP_QUESTION));
+        given(llmGateway.answerWithTools(chatPrompt.systemPrompt(), history, "백김치 리뷰 어때?", reviewTools,
+                Map.of(ReviewTools.ROOM_ID, 10L)))
+                .willReturn(LlmReply.of("백김치는 평점 4.52점이에요.", "gpt-test", 10, 5));
+        givenAssistantMessage("백김치는 평점 4.52점이에요.");
+
+        // when
+        ChatMessageResponse response = reply(history, "백김치 리뷰 어때?");
+
+        // then: 조회 질문은 견적을 만들거나 고치지 않고, 도구 없는 일반 답변(explain)도 부르지 않는다
+        assertThat(response.content()).isEqualTo("백김치는 평점 4.52점이에요.");
+        assertThat(response.payload()).isNull();
+        then(llmGateway).should(never()).explain(any(), any(), any());
+        then(chatQuoteFacade).shouldHaveNoInteractions();
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "LOOKUP_QUESTION").tag("outcome", "SUCCESS")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 일반_질문은_도구를_붙이지_않고_답한다() {
+        // given: 도구를 붙이면 추론 none으로 답하게 되므로, 결제 결과 안내 같은 일반 질문은 지금 추론 강도 그대로 둔다
+        givenAssistantAnswer();
+
+        // when
+        reply("결제됐어?");
+
+        // then
+        then(llmGateway).should().explain(eq(chatPrompt.systemPrompt()), anyList(), eq("결제됐어?"));
+        then(llmGateway).should(never()).answerWithTools(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 조회_답변을_받지_못하면_고정_문구를_저장하고_그_실패_코드로_예외를_던진다() {
+        // given
+        givenPlan(plan(MenuPlanIntent.LOOKUP_QUESTION));
+        given(llmGateway.answerWithTools(anyString(), anyList(), anyString(), any(), anyMap()))
+                .willThrow(new BusinessException(ErrorCode.AI_TIMEOUT));
+        given(chatMessageService.createFallbackMessage(10L, 1L, ErrorCode.AI_TIMEOUT))
+                .willReturn(fallbackMessage("AI_002"));
+        given(chatMessageService.isRetryable("{\"type\":\"FALLBACK\",\"code\":\"AI_002\"}")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> reply("백김치 리뷰 어때?"))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_TIMEOUT);
+                    assertThat(((ChatMessageResponse) exception.getData()).retryable()).isTrue();
+                });
+        then(chatMessageService).should(never()).createAssistantMessage(anyLong(), anyLong(), anyString());
+        assertThat(counter("zelo.chat.fallback", "code", "AI_002")).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("intent", "LOOKUP_QUESTION").tag("outcome", "AI_002")
                 .timer().count()).isEqualTo(1);
     }
 

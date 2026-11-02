@@ -22,6 +22,7 @@ public class WebhookCommandService {
     private static final String PAID = "Transaction.Paid";
     private static final String FAILED = "Transaction.Failed";
     private static final String CANCELLED = "Transaction.Cancelled";
+    private static final String PARTIAL_CANCELLED = "Transaction.PartialCancelled";
     private final RefundFacade refundFacade;
     private final PaymentFacade paymentFacade;
     private final PaymentService paymentService;
@@ -60,14 +61,18 @@ public class WebhookCommandService {
     private void dispatch(WebhookRequest request) {
         String portoneId = request.data().paymentId();
         paymentFacade.confirmPayment(portoneId);
-        if (CANCELLED.equals(request.type())) {
+        if (isCancellation(request.type())) {
             Long orderId = paymentService.getPayment(portoneId).getOrderId();
             refundFacade.syncCancellation(orderId, portoneId);
         }
     }
 
     private boolean isHandledType(String type) {
-        return PAID.equals(type) || FAILED.equals(type) || CANCELLED.equals(type);
+        return PAID.equals(type) || FAILED.equals(type) || isCancellation(type);
+    }
+
+    private boolean isCancellation(String type) {
+        return CANCELLED.equals(type) || PARTIAL_CANCELLED.equals(type);
     }
 
     private WebhookEvent receiveEvent(String webhookId, WebhookRequest request, String payload) {

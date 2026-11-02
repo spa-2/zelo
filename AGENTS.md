@@ -118,10 +118,10 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 ### 로깅 · 지표 (자세한 기준: `docs/logging-metrics-guide.md`)
 - 예외 로그와 실패 횟수는 `GlobalExceptionHandler`가 한 곳에서 남긴다. 서비스는 `throw`만 하고 로그를 찍지 않는다.
 - 로그를 직접 찍는 경우는 둘뿐이다. ① 예외를 잡고 삼킬 때 ② 원래 예외를 `BusinessException`으로 바꿔 던질 때(원인을 담을 수 없으므로 바꾸기 전에 `catch`에서 한 번 찍는다).
-- 핸들러까지 올라가는 실패는 `zelo.api.error`(태그 `code`)로 자동 집계된다. 같은 실패를 서비스에서 `BusinessMetrics`로 또 세지 않는다. 핸들러에 닿지 않는 실패(삼킨 예외, FALLBACK 처리)만 직접 센다.
+- 핸들러까지 올라가는 실패는 `zelo.api.error`(태그 `code`)로 자동 집계되고, 모든 `ErrorCode`는 앱 시작 때 0으로 미리 등록된다(`ApiErrorMetricsInitializer`). 같은 실패를 서비스에서 `BusinessMetrics`로 또 세지 않는다. 핸들러에 닿지 않는 실패(삼킨 예외, FALLBACK 처리)만 직접 센다.
 - 성공 횟수·시간은 `BusinessMetrics`로 남기고, 이름은 `BusinessMetric` enum에만 추가한다. 태그는 값이 몇 개로 정해진 것(`SUCCESS`, 에러 코드)만 쓰고 `userId`, `orderId` 같은 값은 넣지 않는다.
 - 로그 줄 수로 횟수를 세지 않는다. 횟수는 지표, 한 건의 원인은 로그로 남긴다.
-- 로그 레벨: 예상 못 한 문제 `ERROR`(스택트레이스 포함), 예상했고 처리한 실패 `WARN`, 비즈니스 이정표 `INFO`. 운영에서는 `DEBUG`, `TRACE`를 켜지 않는다.
+- 로그 레벨: 예상 못 한 문제 `ERROR`(스택트레이스 포함), 우리·외부 서비스 문제를 처리한 실패 `WARN`(5xx 비즈니스 예외, FALLBACK), 사용자 요청 때문에 거절한 실패(4xx, 429)와 비즈니스 이정표 `INFO`. 운영에서는 `DEBUG`, `TRACE`를 켜지 않는다.
 - 로그에 토큰, 비밀번호, 이메일 등 개인정보, LLM 프롬프트·응답 전문을 남기지 않는다. `userId`, `orderId` 같은 식별자만 쓴다.
 ### 미정 (임의로 만들지 말고 먼저 물어볼 것)
 - 현재 없음

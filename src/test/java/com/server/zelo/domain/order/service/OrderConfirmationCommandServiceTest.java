@@ -9,6 +9,10 @@ import com.server.zelo.domain.refund.service.RefundService;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.request.CreateOrderConfirmationRequest;
 import com.server.zelo.domain.order.dto.response.CreateOrderConfirmationResponse;
+import com.server.zelo.domain.order.entity.ActorType;
+import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderStatus;
+import com.server.zelo.domain.order.entity.ShippingAddress;
 import com.server.zelo.domain.order.repository.OrderConfirmationRepository;
 import com.server.zelo.domain.order.repository.OrderRepository;
 import com.server.zelo.domain.quote.model.Quote;
@@ -17,6 +21,7 @@ import com.server.zelo.domain.quote.repository.QuoteRepository;
 import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.user.dto.response.GetUserAddressResponse;
+import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.service.UserAddressService;
 import com.server.zelo.domain.user.service.UserService;
 import com.server.zelo.domain.product.service.ProductService;
@@ -35,6 +40,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -49,6 +55,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -149,7 +156,8 @@ class OrderConfirmationCommandServiceTest {
         calls.verify(orderConfirmationRepository).save(
                 result.confirmationId(), USER_ID, ROOM_ID, QUOTE_ID, EXPIRES_AT);
         calls.verifyNoMoreInteractions();
-        verifyNoInteractions(orderRepository, inventoryService);
+        verifyNoInteractions(inventoryService);
+        assertOnlyLookedUpExistingOrder();
     }
 
     @Test
@@ -168,7 +176,8 @@ class OrderConfirmationCommandServiceTest {
         assertThat(confirmationIdCaptor.getAllValues()).containsExactly(first.confirmationId(), second.confirmationId());
         assertThat(confirmationIdCaptor.getAllValues()).allSatisfy(id ->
                 assertThat(UUID.fromString(id).toString()).isEqualTo(id));
-        verifyNoInteractions(orderRepository, inventoryService);
+        verifyNoInteractions(inventoryService);
+        assertOnlyLookedUpExistingOrder();
     }
 
     @ParameterizedTest
@@ -183,7 +192,8 @@ class OrderConfirmationCommandServiceTest {
         assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
-        verifyNoInteractions(orderConfirmationRepository, orderRepository, inventoryService);
+        verifyNoInteractions(orderConfirmationRepository, inventoryService);
+        assertOnlyLookedUpExistingOrder();
     }
 
     @ParameterizedTest
@@ -247,7 +257,43 @@ class OrderConfirmationCommandServiceTest {
         // when
         // then
         assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST)).isSameAs(failure);
-        verifyNoInteractions(orderRepository, inventoryService);
+        verifyNoInteractions(inventoryService);
+        assertOnlyLookedUpExistingOrder();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = OrderStatus.class, names = {"CANCELED", "PAYMENT_FAILED"})
+    void 이미_끝난_주문의_견적이면_확인_정보를_발급하지_않는다(OrderStatus status) {
+        // given
+        given(chatRoomService.getOwnedChatRoom(ROOM_ID, USER_ID)).willReturn(ChatRoom.of(USER_ID));
+        given(quoteRepository.findByRoomId(ROOM_ID)).willReturn(Optional.of(quote(USER_ID, QUOTE_ID)));
+        given(orderRepository.findByQuoteId(QUOTE_ID)).willReturn(Optional.of(closedOrder(status)));
+
+        // when
+        // then
+        assertThatThrownBy(() -> orderCommandService.createConfirmation(USER_ID, REQUEST))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ORDER_ALREADY_CLOSED));
+        verifyNoInteractions(userAddressService, orderConfirmationRepository, inventoryService);
+    }
+
+    // 확인 정보 발급은 이미 주문된 견적인지만 조회하고 주문을 만들거나 바꾸지 않음
+    private void assertOnlyLookedUpExistingOrder() {
+        then(orderRepository).should(atLeastOnce()).findByQuoteId(QUOTE_ID);
+        then(orderRepository).shouldHaveNoMoreInteractions();
+    }
+
+    private static Order closedOrder(OrderStatus status) {
+        User user = User.of("closed@test.dev", "password", "취소 테스트", "01012345678");
+        ReflectionTestUtils.setField(user, "id", USER_ID);
+        Order order = Order.of(user, QUOTE_ID, "기존 주문", ActorType.USER, null, 10_500L,
+                ShippingAddress.of("홍길동", "01012345678", "12345", "서울 주소"));
+        if (status == OrderStatus.CANCELED) {
+            order.cancel();
+        } else {
+            order.failPayment();
+        }
+        return order;
     }
 
     private void stubQuoteAndAddresses(List<GetUserAddressResponse> addresses) {

@@ -83,7 +83,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/api/payments/{portoneId}/confirm", PORTONE_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 주문을 다시 진행해 주시길 바랍니다."));
+                .andExpect(jsonPath("$.data.message").value("결제에 실패했어요. 결제 수단을 다시 골라 주세요."));
     }
 
     @Test

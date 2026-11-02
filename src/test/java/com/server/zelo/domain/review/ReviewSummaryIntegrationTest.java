@@ -43,7 +43,9 @@ class ReviewSummaryIntegrationTest {
     @Autowired
     private EntityManager entityManager;
 
-    @Autowired
+    // 요약 대상 조회는 실제 쿼리를 그대로 쓰되 이 테스트가 만든 상품만 남긴다.
+    // 로컬 DB를 같이 쓰므로, 거르지 않으면 시드 상품 요약까지 [FAKE] 문구로 채운다
+    @MockitoSpyBean
     private ReviewService reviewService;
 
     @Autowired
@@ -65,8 +67,12 @@ class ReviewSummaryIntegrationTest {
     private Long productId;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         llmCircuitBreaker.reset();
+        willAnswer(invocation -> ((List<Long>) invocation.callRealMethod()).stream()
+                .filter(id -> id.equals(productId))
+                .toList()).given(reviewService).findSummaryTargetProductIds();
         // 카테고리·재료 이름과 상품 코드는 유니크라서, 로컬 DB에 있는 데이터와 겹치지 않을 이름을 쓴다
         productId = transactionTemplate.execute(status -> {
             Category category = Category.of("리뷰테스트-9000501", true);

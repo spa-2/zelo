@@ -9,6 +9,7 @@ import com.server.zelo.ai.prompt.ChatPrompt;
 import com.server.zelo.ai.prompt.MenuPlanPrompt;
 import com.server.zelo.ai.prompt.QuoteEditPrompt;
 import com.server.zelo.ai.prompt.QuoteExplainPrompt;
+import com.server.zelo.ai.tool.ReviewTools;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.monitoring.BusinessMetric;
@@ -36,7 +37,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-// 사용자 메시지 하나에 LLM으로 답한다. 메뉴 계획으로 의도를 판단해 견적 발급·견적 수정·일반 질문으로 나누고,
+// 사용자 메시지 하나에 LLM으로 답한다. 메뉴 계획으로 의도를 판단해 견적 발급·견적 수정·조회 질문·일반 질문으로 나누고,
 // 견적을 바꾸는 구간만 ChatQuoteFacade의 방 단위 락 안에서 한다.
 // @Transactional을 걸지 않는다: 전체를 한 트랜잭션으로 묶으면 LLM 응답을 기다리는 동안(재시도 포함 약 10초) DB 커넥션을 붙잡아
 // 커넥션 풀(10개)이 채팅 요청에 묶이고 주문·결제까지 멈출 수 있다. 저장은 ChatMessageService의 짧은 트랜잭션으로 나눈다
@@ -54,6 +55,7 @@ public class ChatReplyCommandService {
 
     private final ChatPrompt chatPrompt;
     private final LlmGateway llmGateway;
+    private final ReviewTools reviewTools;
     private final QuoteService quoteService;
     private final LlmTimeBudget llmTimeBudget;
     private final MenuPlanPrompt menuPlanPrompt;
@@ -64,7 +66,7 @@ public class ChatReplyCommandService {
     private final ChatMessageService chatMessageService;
     private final QuoteExplainPrompt quoteExplainPrompt;
 
-    // 메시지가 장보기 요청인지, 견적 수정인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
+    // 메시지가 장보기 요청인지, 견적 수정인지, 조회 질문인지, 일반 질문인지를 메뉴 계획으로 먼저 판단하고 서버가 길을 나눈다.
     // 견적 발급·수정은 LLM이 아니라 서버가 직접 부른다(매번 같은 순서라 예측·테스트할 수 있고, LLM 재시도와 얽히지 않는다)
     // 메시지 하나를 답하는 데 걸린 전체 시간(LLM 여러 번 + 견적 발급·수정 + 저장)을 의도·결과별로 남긴다.
     // 의도를 정하기 전에 실패하면 intent=UNKNOWN이다.
@@ -101,6 +103,7 @@ public class ChatReplyCommandService {
                         .map(quote -> editQuote(roomId, userId, history, text, ingredientUnits, quote, toResponse))
                         .orElseGet(() -> rejectEdit(roomId, userId, ErrorCode.QUOTE_EXPIRED.name(),
                                 QuoteEditReply.NO_QUOTE_TO_EDIT.getText()));
+                case LOOKUP_QUESTION -> replyText(roomId, userId, answerLookup(roomId, userId, history, text, toResponse));
                 case GENERAL_QUESTION -> replyText(roomId, userId,
                         explain(roomId, userId, chatPrompt.systemPrompt(), history, text, toResponse).text());
             };
@@ -232,6 +235,19 @@ public class ChatReplyCommandService {
                                  Function<ChatMessageResponse, T> toResponse) {
         try {
             return llmGateway.explain(systemPrompt, history, text);
+        } catch (BusinessException e) {
+            throw fallback(roomId, userId, e, toResponse);
+        }
+    }
+
+    // 조회 질문은 답하는 LLM이 리뷰 조회 도구를 골라 부를 수 있게 한다.
+    // gpt-6-luna는 도구를 추론 none일 때만 쓸 수 있어서, 도구가 필요한 조회 질문만 이 길로 보내고
+    // 결제 결과 안내처럼 지금 추론 강도로 맞춰 온 일반 질문은 explain으로 답한다
+    private <T> String answerLookup(Long roomId, Long userId, List<ChatMessage> history, String text,
+                                    Function<ChatMessageResponse, T> toResponse) {
+        try {
+            return llmGateway.answerWithTools(chatPrompt.systemPrompt(), history, text, reviewTools,
+                    Map.of(ReviewTools.ROOM_ID, roomId)).text();
         } catch (BusinessException e) {
             throw fallback(roomId, userId, e, toResponse);
         }

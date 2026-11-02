@@ -45,6 +45,15 @@ class MenuPlanTest {
     }
 
     @Test
+    void 조회_질문은_메뉴와_재료가_비어_있어도_검증을_통과한다() {
+        // given
+        MenuPlan menuPlan = MenuPlan.of(MenuPlanIntent.LOOKUP_QUESTION, "", 0, 0L, List.of(), List.of(), List.of());
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
     void 견적_수정_요청은_메뉴와_재료가_비어_있어도_검증을_통과한다() {
         // given: 무엇을 바꿀지는 견적 수정 도구가 정한다
         MenuPlan menuPlan = MenuPlan.of(MenuPlanIntent.QUOTE_EDIT, "", 0, 0L, List.of(), List.of(), List.of());

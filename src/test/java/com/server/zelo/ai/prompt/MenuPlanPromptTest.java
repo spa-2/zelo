@@ -101,6 +101,21 @@ class MenuPlanPromptTest {
     }
 
     @Test
+    void 리뷰_평점을_묻는_말은_조회_질문으로_두고_장보기_견적_수정_결제_질문과_구분하는_규칙이_들어_있다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
+
+        // then
+        assertThat(systemPrompt)
+                .contains("상품의 리뷰나 평점을 묻는 말(\"백김치 리뷰 어때?\"")
+                .contains("이면 LOOKUP_QUESTION")
+                .contains("리뷰나 평점을 조건으로 말하면서 재료를 준비해 달라는 말(\"리뷰 좋은 김치로 김치찌개 재료 준비해 줘\")은 SHOPPING_REQUEST")
+                .contains("현재 견적의 재료를 빼거나 바꾸는 말은 리뷰를 말해도 LOOKUP_QUESTION이 아니야.")
+                .contains("결제나 주문이 됐는지 묻는 말(\"결제됐어?\")은 LOOKUP_QUESTION이 아니라 GENERAL_QUESTION")
+                .contains("QUOTE_EDIT, LOOKUP_QUESTION, GENERAL_QUESTION이면 menuName은 빈 문자열");
+    }
+
+    @Test
     void 일정과_상황은_적지_않고_유통기한_같은_상품_날짜는_조건으로_남기는_규칙이_들어_있다() {
         // when
         String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);

@@ -2,6 +2,9 @@ package com.server.zelo.common.exception;
 
 
 import com.server.zelo.common.api.ApiResponse;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.client.RedisConnectionException;
 import org.redisson.client.RedisTimeoutException;
@@ -18,7 +21,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @Slf4j(topic = "service")
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final BusinessMetrics businessMetrics;
 
     // 요청 횟수 제한(로그인 시도, 메일 발송 등), 429와 함께 Retry-After 헤더를 내려줌
     @ExceptionHandler(RateLimitExceededException.class)
@@ -29,6 +35,7 @@ public class GlobalExceptionHandler {
         ErrorCode code = e.getErrorCode();
 
         log.info("요청 횟수 제한 code={} retryAfter={}s", code.getCode(), e.getRetryAfterSeconds());
+        countError(code);
 
         return ResponseEntity.status(code.getStatus())
                 .headers(headers)
@@ -51,6 +58,7 @@ public class GlobalExceptionHandler {
         } else {
             log.info("비즈니스 예외 code={} message={}", code.getCode(), e.getMessage());
         }
+        countError(code);
 
         return ResponseEntity.status(code.getStatus())
                 .body(ApiResponse.error(code, e.getMessage(), e.getData()));
@@ -71,6 +79,7 @@ public class GlobalExceptionHandler {
                 .orElse("입력값이 올바르지 않습니다");
 
         log.info("입력값 검증 실패 {}", message);
+        countError(ErrorCode.INVALID_INPUT);
 
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT, message));
@@ -85,6 +94,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
         log.info("body값 누락");
+        countError(ErrorCode.INVALID_INPUT);
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
     }
@@ -98,6 +108,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.info("요청 인자 타입 변환 실패: name={}, requiredType={}", e.getName(), e.getRequiredType());
+        countError(ErrorCode.INVALID_INPUT);
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
     }
@@ -112,6 +123,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({RedisConnectionFailureException.class, RedisConnectionException.class, RedisTimeoutException.class})
     public ResponseEntity<ApiResponse<Void>> handleRedisUnavailable(Exception e) {
         log.error("Redis 장애 발생", e);
+        countError(ErrorCode.SERVICE_UNAVAILABLE);
         return ResponseEntity.status(ErrorCode.SERVICE_UNAVAILABLE.getStatus())
                 .body(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE));
     }
@@ -125,7 +137,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("서버 오류 발생", e);
+        countError(ErrorCode.INTERNAL_ERROR);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR));
+    }
+
+    // 서비스 코드 오류마다 지표를 세지 않고 모든 오류 응답을 여기서 센다.
+    private void countError(ErrorCode code) {
+        businessMetrics.count(BusinessMetric.API_ERROR, "code", code.get정Code());
     }
 }

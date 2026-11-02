@@ -45,7 +45,7 @@
 - 성공할 때마다 INFO를 찍어서 세는 방식은 쓰지 않는다. 로그가 폭증한다.
 - **지표 태그에는 종류가 몇 개로 정해진 값만** 넣는다 (`SUCCESS`, `AI_TIMEOUT` 등). `userId`, `orderId`, `roomId`는 넣지 않는다. 값 조합마다 시계열이 생겨 Prometheus가 감당하지 못한다.
 - 카운터는 앱을 재시작하면 0으로 돌아간다. Grafana에서는 `increase()`로 구간 증가량을 본다. 전체 회원 수 같은 절대값은 DB에서 센다.
-- 처음 나타난 시계열은 `increase()`가 **첫 증가를 놓친다.** 오류 코드별 지표(`zelo.api.error`)는 `ApiErrorMetricsInitializer`가 앱 시작 때 모든 `ErrorCode`를 0으로 미리 등록해 이를 막는다. 그 밖의 지표(`CHAT_FALLBACK` 등)는 태그 조합이 많아 미리 등록하지 않으므로, 드문 이벤트의 첫 발생은 그래프에서 빠질 수 있다.
+- 처음 나타난 시계열은 `increase()`가 **첫 증가를 놓칠 수 있다.** 오류 코드별 지표(`zelo.api.error`)는 `ApiErrorMetricsInitializer`가 앱 시작 때 모든 `ErrorCode`를 0으로 미리 등록해, Prometheus가 첫 오류 전에 0을 scrape한 경우 이 누락을 줄인다. 그 밖의 지표(`CHAT_FALLBACK` 등)는 태그 조합이 많아 미리 등록하지 않으므로, 드문 이벤트의 첫 발생은 그래프에서 빠질 수 있다.
 
 | 상황 | 지표 | 로그 |
 |---|---|---|

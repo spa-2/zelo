@@ -10,7 +10,9 @@ import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOneCancellation;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
 import com.server.zelo.domain.refund.entity.RefundItem;
@@ -51,19 +53,30 @@ public class RefundCommandService {
 
     // 같은 취소 키로 다시 요청하면 포트원은 새로 취소하지 않고 이전 결과를 돌려준다
     private RefundStatus cancelAndApply(Long orderId, RefundTarget target, String reason) {
+        PortOneCancellationStatus cancellation;
         try {
-            portOneClient.cancelPaymentWithAmount(target.portoneId(),String.format("%s%012d", CANCEL_KEY_PREFIX, target.refundId()),
+            cancellation = portOneClient.cancelPaymentWithAmount(target.portoneId(),String.format("%s%012d", CANCEL_KEY_PREFIX, target.refundId()),
                     target.amount(), target.cancellableAmount(), reason);
         } catch (BusinessException e) {
             if (!isRejected(e)) {
                 log.warn("환불 결과 불명확 refundId={}, errorCode={}", target.refundId(), e.getErrorCode());
                 return RefundStatus.REQUESTED;
             }
-            transactionOperations.executeWithoutResult(status -> {
-                refundService.fail(target.refundId());
-                deliveryService.releaseHold(orderId);
-            });
+            failRefund(orderId, target.refundId());
             return RefundStatus.FAILED;
+        }
+        return applyCancellation(orderId, target, cancellation);
+    }
+
+    private RefundStatus applyCancellation(Long orderId, RefundTarget target, PortOneCancellationStatus cancellation) {
+        if (cancellation == PortOneCancellationStatus.FAILED) {
+            failRefund(orderId, target.refundId());
+            return RefundStatus.FAILED;
+        }
+        // 취소가 확정되기 전에 완료하면 돈은 그대로인데 주문과 재고만 취소되므로 요청됨으로 둔다
+        if (cancellation != PortOneCancellationStatus.SUCCEEDED) {
+            log.warn("포트원 취소 처리 중 refundId={}, status={}", target.refundId(), cancellation);
+            return RefundStatus.REQUESTED;
         }
 
         transactionOperations.executeWithoutResult(status -> {
@@ -78,6 +91,13 @@ public class RefundCommandService {
             }
         });
         return RefundStatus.COMPLETED;
+    }
+
+    private void failRefund(Long orderId, Long refundId) {
+        transactionOperations.executeWithoutResult(status -> {
+            refundService.fail(refundId);
+            deliveryService.releaseHold(orderId);
+        });
     }
 
     private RefundTarget requestRefund(Long userId, Long orderId, String reason, Map<Long, Integer> requested) {
@@ -134,7 +154,7 @@ public class RefundCommandService {
             return;
         }
         if (pgPayment.isPartiallyCancelled()) {
-            retryRequestedRefund(orderId, portoneId);
+            syncRequestedRefund(orderId, pgPayment);
             return;
         }
         if (!pgPayment.isCancelled()) {
@@ -172,15 +192,22 @@ public class RefundCommandService {
                 || errorCode == ErrorCode.INVALID_INPUT;
     }
 
-    // 부분 취소는 이전 환불 때문일 수도 있어, 금액 대신 같은 취소 키로 다시 요청해 이번 환불 결과를 확인한다
-    private void retryRequestedRefund(Long orderId, String portoneId) {
+    // 같은 키 재요청은 처음 응답만 돌려주고 3시간이 지나면 새 취소가 되므로, 포트원 취소 내역으로 먼저 판단한다
+    private void syncRequestedRefund(Long orderId, PortOnePayment pgPayment) {
         Optional<RefundRetry> retry = Objects.requireNonNull(
-                transactionOperations.execute(status -> findRequestedRefundTarget(portoneId)));
+                transactionOperations.execute(status -> findRequestedRefundTarget(pgPayment.portoneId())));
         if (retry.isEmpty()) {
-            log.warn("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={}, portoneId={}", orderId, portoneId);
+            log.warn("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={}, portoneId={}", orderId, pgPayment.portoneId());
             return;
         }
-        cancelAndApply(orderId, retry.get().target(), retry.get().reason());
+        RefundTarget target = retry.get().target();
+        Optional<PortOneCancellation> cancellation = pgPayment.findCancellation(target.amount(), retry.get().requestedAt());
+        if (cancellation.isPresent()) {
+            applyCancellation(orderId, target, cancellation.get().status());
+            return;
+        }
+        // 취소 내역에 없으면 포트원에 닿지 않은 요청이라 다시 보내도 두 번 취소되지 않는다
+        cancelAndApply(orderId, target, retry.get().reason());
     }
 
     // 처음 요청과 같은 금액으로 보내야 하므로 같은 방식으로 다시 계산한다
@@ -194,11 +221,11 @@ public class RefundCommandService {
             RefundTarget target = new RefundTarget(refund.getId(), portoneId,
                     cancelsAll ? cancellableAmount : refund.getItemsAmount(), cancellableAmount,
                     payment.getPgAmount(), cancelQuantities, cancelsAll);
-            return new RefundRetry(target, refund.getReason());
+            return new RefundRetry(target, refund.getReason(), refund.getCreatedAt());
         });
     }
 
-    private record RefundRetry(RefundTarget target, String reason) {
+    private record RefundRetry(RefundTarget target, String reason, LocalDateTime requestedAt) {
     }
 
     private void failRequestedRefund(Long orderId, String portoneId) {

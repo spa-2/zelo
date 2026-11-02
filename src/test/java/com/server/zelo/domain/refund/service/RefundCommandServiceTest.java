@@ -10,7 +10,9 @@ import com.server.zelo.domain.order.service.OrderService;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.service.PaymentService;
 import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.domain.portone.dto.response.PortOneCancellation;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import com.server.zelo.domain.refund.dto.response.CreateRefundResponse;
 import com.server.zelo.domain.refund.entity.Refund;
@@ -45,6 +47,7 @@ class RefundCommandServiceTest {
     private static final Long REFUND_ID = 10L;
     private static final String PORTONE_ID = "payment-1";
     private static final String REASON = "단순 변심";
+    private static final LocalDateTime REFUND_REQUESTED_AT = LocalDateTime.of(2026, 11, 2, 12, 0);
 
     @Mock
     private OrderService orderService;
@@ -110,6 +113,41 @@ class RefundCommandServiceTest {
         assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
         then(refundService).should(never()).fail(any());
         then(deliveryService).should(never()).releaseHold(any());
+    }
+
+    @Test
+    void 포트원_취소가_처리_중이면_환불_요청과_배송_보류를_유지한다() {
+        // given
+        givenRefundable();
+        given(portOneClient.cancelPaymentWithAmount(any(), any(), any(), any(), any()))
+                .willReturn(PortOneCancellationStatus.REQUESTED);
+
+        // when
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
+
+        // then
+        assertThat(response.status()).isEqualTo(RefundStatus.REQUESTED);
+        then(refundService).should(never()).complete(any(), any());
+        then(refundService).should(never()).fail(any());
+        then(deliveryService).should(never()).releaseHold(any());
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 포트원_취소_결과가_실패면_환불_실패로_두고_배송_보류를_푼다() {
+        // given
+        givenRefundable();
+        given(portOneClient.cancelPaymentWithAmount(any(), any(), any(), any(), any()))
+                .willReturn(PortOneCancellationStatus.FAILED);
+
+        // when
+        CreateRefundResponse response = refundCommandService.createRefund(USER_ID, ORDER_ID, REASON, Map.of());
+
+        // then
+        assertThat(response.status()).isEqualTo(RefundStatus.FAILED);
+        then(refundService).should().fail(REFUND_ID);
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(orderCommandService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -361,6 +399,70 @@ class RefundCommandServiceTest {
     }
 
     @Test
+    void 취소_내역에_이번_환불의_취소가_성공으로_있으면_다시_요청하지_않고_완료한다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund(cancellation(PortOneCancellationStatus.SUCCEEDED, 5_000L, 1));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+        then(refundService).should().complete(eq(REFUND_ID), any());
+        then(orderCommandService).should().cancelItems(ORDER_ID, Map.of(1L, 1));
+        then(deliveryService).should().releaseHold(ORDER_ID);
+    }
+
+    @Test
+    void 취소_내역에_이번_환불의_취소가_처리_중이면_요청됨을_유지한다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund(cancellation(PortOneCancellationStatus.REQUESTED, 5_000L, 1));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+        then(refundService).should(never()).complete(any(), any());
+        then(refundService).should(never()).fail(any());
+        then(deliveryService).should(never()).releaseHold(any());
+    }
+
+    @Test
+    void 취소_내역에_이번_환불의_취소가_실패로_있으면_환불을_실패로_두고_배송_보류를_푼다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund(cancellation(PortOneCancellationStatus.FAILED, 5_000L, 1));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+        then(refundService).should().fail(REFUND_ID);
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 환불_요청_전의_취소만_있으면_이번_환불은_같은_취소_키로_다시_요청한다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund(cancellation(PortOneCancellationStatus.SUCCEEDED, 5_000L, -10));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should().cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000010", 5_000L, 10_000L, REASON);
+        then(refundService).should().complete(eq(REFUND_ID), any());
+    }
+
+    // 환불 요청 시각 기준으로 minutesAfter분 뒤에 들어온 포트원 취소
+    private PortOneCancellation cancellation(PortOneCancellationStatus status, Long amount, int minutesAfter) {
+        return new PortOneCancellation("cancel-1", status, amount, REFUND_REQUESTED_AT.plusMinutes(minutesAfter));
+    }
+
+    @Test
     void 일부_수량만_환불하면_그만큼만_취소하고_배송_보류를_푼다() {
         // given
         givenRefundable();
@@ -433,7 +535,14 @@ class RefundCommandServiceTest {
             ReflectionTestUtils.setField(refund, "id", REFUND_ID);
             return refund;
         });
+        givenCancellationSucceeded();
         return orderItem;
+    }
+
+    // 거절·지연 테스트는 이 응답을 willThrow로 덮어쓰므로 쓰이지 않아도 실패하지 않게 lenient로 둔다
+    private void givenCancellationSucceeded() {
+        lenient().when(portOneClient.cancelPaymentWithAmount(any(), any(), any(), any(), any()))
+                .thenReturn(PortOneCancellationStatus.SUCCEEDED);
     }
 
     // 포트원에서 직접 취소된 주문의 남은 상품 (5,000원 × 2개)
@@ -448,9 +557,9 @@ class RefundCommandServiceTest {
     }
 
     // 5,000원 × 2개 중 1개를 부분 환불 요청했는데 포트원 응답을 못 받아 요청됨으로 남은 상태
-    private void givenPartiallyCancelledWithRequestedRefund() {
-        given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
+    private void givenPartiallyCancelledWithRequestedRefund(PortOneCancellation... cancellations) {
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
+                PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null, null, null, List.of(cancellations)));
         given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
         OrderItem orderItem = mock(OrderItem.class);
         given(orderItem.getId()).willReturn(1L);
@@ -459,7 +568,9 @@ class RefundCommandServiceTest {
         Refund refund = Refund.of(1L, RefundType.PARTIAL, REASON);
         refund.addRefundItem(RefundItem.of(orderItem, 1));
         ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        ReflectionTestUtils.setField(refund, "createdAt", REFUND_REQUESTED_AT);
         given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        givenCancellationSucceeded();
     }
 
     private Payment paidPayment() {

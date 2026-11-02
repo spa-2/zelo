@@ -8,6 +8,7 @@ import com.server.zelo.domain.portone.dto.response.PortOneBillingKey;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.payment.entity.Payment;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,10 +38,11 @@ public class MockPortOneClient implements PortOneClient {
     }
 
     @Override
-    public void cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
-                                        Long currentCancellableAmount, String reason) {
+    public PortOneCancellationStatus cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
+                                                             Long currentCancellableAmount, String reason) {
         log.info("[FAKE] 포트원 결제 금액 지정 취소 portoneId={}, cancelKey={}, amount={}, cancellable={}, reason={}",
                 portoneId, cancelKey, amount, currentCancellableAmount, reason);
+        return PortOneCancellationStatus.SUCCEEDED;
     }
 
     // 가짜 모드에는 결제창이 없어 빌링키를 발급받을 수 없으므로, 빌링키 끝에 붙인 사용자 ID를 발급 고객으로 본다 (예: fake-billing-key-1)

@@ -3,8 +3,10 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.payment.entity.PaymentMethodType;
 import com.server.zelo.domain.portone.dto.response.PortOneBillingKey;
+import com.server.zelo.domain.portone.dto.response.PortOneCancellation;
 import com.server.zelo.domain.portone.dto.response.PortOnePayment;
 import com.server.zelo.domain.portone.config.PortOneProperties;
+import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,6 +76,25 @@ class HttpPortOneClientTest {
         assertThat(payment.paidAt()).isEqualTo(LocalDateTime.of(2026, 10, 20, 10, 0));
         assertThat(payment.methodName()).isEqualTo("신한카드");
         server.verify();
+    }
+
+    @Test
+    void 부분_취소된_결제는_취소_내역을_상태_금액_서울_시간으로_반환한다() {
+        // given
+        server.expect(requestTo(PAYMENT_URL))
+                .andRespond(withSuccess("""
+                        {"id":"payment-1","status":"PARTIAL_CANCELLED","amount":{"total":15000},
+                         "cancellations":[{"status":"SUCCEEDED","id":"cancel-1","totalAmount":5000,
+                                           "requestedAt":"2026-10-20T02:00:00Z"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        // when
+        PortOnePayment payment = portOneClient.getPayment(PORTONE_ID);
+
+        // then
+        assertThat(payment.isPartiallyCancelled()).isTrue();
+        assertThat(payment.cancellations()).containsExactly(new PortOneCancellation(
+                "cancel-1", PortOneCancellationStatus.SUCCEEDED, 5000L, LocalDateTime.of(2026, 10, 20, 11, 0)));
     }
 
     @Test
@@ -245,13 +266,33 @@ class HttpPortOneClientTest {
                 .andExpect(jsonPath("$.reason").value(CANCEL_REASON))
                 .andExpect(jsonPath("$.amount").value(3_000))
                 .andExpect(jsonPath("$.currentCancellableAmount").value(10_000))
-                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {"cancellation":{"status":"SUCCEEDED"}}
+                        """, MediaType.APPLICATION_JSON));
 
-        // when // then
-        assertThatCode(() -> portOneClient.cancelPaymentWithAmount(
-                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON))
-                .doesNotThrowAnyException();
+        // when
+        PortOneCancellationStatus result = portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON);
+
+        // then
+        assertThat(result).isEqualTo(PortOneCancellationStatus.SUCCEEDED);
         server.verify();
+    }
+
+    @Test
+    void 금액을_지정한_취소가_접수만_되면_처리_중_상태를_반환한다() {
+        // given
+        server.expect(requestTo(CANCEL_URL))
+                .andRespond(withSuccess("""
+                        {"cancellation":{"status":"REQUESTED"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        // when
+        PortOneCancellationStatus result = portOneClient.cancelPaymentWithAmount(
+                PORTONE_ID, "refund-7", 3_000L, 10_000L, CANCEL_REASON);
+
+        // then
+        assertThat(result).isEqualTo(PortOneCancellationStatus.REQUESTED);
     }
 
     @Test

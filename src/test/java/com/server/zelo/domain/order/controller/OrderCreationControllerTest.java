@@ -117,6 +117,9 @@ class OrderCreationControllerTest {
                 "{\"quoteId\":\"\",\"confirmationId\":\"ok\"}",
                 "{\"quoteId\":\"   \",\"confirmationId\":\"ok\"}",
                 "{\"quoteId\":\"" + "Q".repeat(101) + "\",\"confirmationId\":\"ok\"}",
+                // JSON 이스케이프로 보낸 줄바꿈·NUL 문자
+                "{\"quoteId\":\"QUOTE\\n161\",\"confirmationId\":\"ok\"}",
+                "{\"quoteId\":\"QUOTE\\u0000161\",\"confirmationId\":\"ok\"}",
                 "{\"quoteId\":\"ok\"}", "{\"quoteId\":\"ok\",\"confirmationId\":null}",
                 "{\"quoteId\":\"ok\",\"confirmationId\":\"\"}",
                 "{\"quoteId\":\"ok\",\"confirmationId\":\"   \"}", "{", "");

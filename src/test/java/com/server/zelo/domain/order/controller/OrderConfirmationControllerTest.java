@@ -243,6 +243,9 @@ class OrderConfirmationControllerTest {
                 "{\"roomId\":10,\"quoteId\":\"\"}",
                 "{\"roomId\":10,\"quoteId\":\"   \"}",
                 "{\"roomId\":10,\"quoteId\":\"" + "Q".repeat(101) + "\"}",
+                // JSON 이스케이프로 보낸 줄바꿈·NUL 문자
+                "{\"roomId\":10,\"quoteId\":\"QUOTE\\n114\"}",
+                "{\"roomId\":10,\"quoteId\":\"QUOTE\\u0000114\"}",
                 "{\"roomId\":\"abc\",\"quoteId\":\"QUOTE-114\"}"
         );
     }

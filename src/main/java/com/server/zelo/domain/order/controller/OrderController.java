@@ -71,10 +71,10 @@ public class OrderController {
     public ResponseEntity<ApiResponse<CancelOrderResponse>> cancelOrder(
             @Auth AuthUser authUser,
             @PathVariable("orderId") Long orderId,
-            // 취소 사유는 저장하지 않지만, 요청에서 필수 입력과 1~50자 조건을 검증
+            // 취소 사유는 주문 감사 로그에 남김
             @Valid @RequestBody CancelOrderRequest request
     ) {
-        CancelOrderResponse response = orderFacade.cancelBeforePayment(authUser.id(), orderId);
+        CancelOrderResponse response = orderFacade.cancelBeforePayment(authUser.id(), orderId, request.reason());
 
         return ResponseEntity.ok(ApiResponse.ok(response));
     }

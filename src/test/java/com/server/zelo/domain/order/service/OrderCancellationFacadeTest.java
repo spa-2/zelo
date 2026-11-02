@@ -30,6 +30,7 @@ class OrderCancellationFacadeTest {
 
     private static final Long USER_ID = 7L;
     private static final Long ORDER_ID = 101L;
+    private static final String REASON = "고객 요청";
     private static final String PORTONE_ID = "payment-cancel-170";
     private static final CancelOrderResponse RESPONSE = new CancelOrderResponse(ORDER_ID, OrderStatus.CANCELED);
 
@@ -63,19 +64,19 @@ class OrderCancellationFacadeTest {
                         locked.set(false);
                     }
                 });
-        given(command.cancelBeforePayment(USER_ID, ORDER_ID)).willAnswer(invocation -> {
+        given(command.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).willAnswer(invocation -> {
             assertThat(locked).isTrue();
             return RESPONSE;
         });
 
         // when
-        CancelOrderResponse result = facade.cancelBeforePayment(USER_ID, ORDER_ID);
+        CancelOrderResponse result = facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON);
 
         // then
         assertThat(result).isSameAs(RESPONSE);
         assertThat(locked).isFalse();
         then(command).should().findPaymentIdForCancellation(USER_ID, ORDER_ID);
-        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID);
+        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID, REASON);
         then(lockService).should().execute(eq(LockKey.confirmPayment(PORTONE_ID)),
                 org.mockito.ArgumentMatchers.<Supplier<CancelOrderResponse>>any());
     }
@@ -84,14 +85,14 @@ class OrderCancellationFacadeTest {
     void 결제정보가_없는_기존_주문은_Command의_주문잠금으로_취소한다() {
         // given
         given(command.findPaymentIdForCancellation(USER_ID, ORDER_ID)).willReturn(Optional.empty());
-        given(command.cancelBeforePayment(USER_ID, ORDER_ID)).willReturn(RESPONSE);
+        given(command.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).willReturn(RESPONSE);
 
         // when
-        CancelOrderResponse result = facade.cancelBeforePayment(USER_ID, ORDER_ID);
+        CancelOrderResponse result = facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON);
 
         // then
         assertThat(result).isSameAs(RESPONSE);
-        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID);
+        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID, REASON);
         verifyNoInteractions(lockService);
     }
 
@@ -103,9 +104,9 @@ class OrderCancellationFacadeTest {
 
         // when
         // then
-        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID)).isSameAs(failure);
+        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).isSameAs(failure);
         verifyNoInteractions(lockService);
-        then(command).should(never()).cancelBeforePayment(any(), any());
+        then(command).should(never()).cancelBeforePayment(any(), any(), any());
     }
 
     @Test
@@ -118,8 +119,8 @@ class OrderCancellationFacadeTest {
 
         // when
         // then
-        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID)).isSameAs(failure);
-        then(command).should(never()).cancelBeforePayment(any(), any());
+        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).isSameAs(failure);
+        then(command).should(never()).cancelBeforePayment(any(), any(), any());
     }
 
     @Test
@@ -133,11 +134,11 @@ class OrderCancellationFacadeTest {
                     return work.get();
                 });
         BusinessException failure = new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
-        given(command.cancelBeforePayment(USER_ID, ORDER_ID)).willThrow(failure);
+        given(command.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).willThrow(failure);
 
         // when
         // then
-        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID)).isSameAs(failure);
-        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID);
+        assertThatThrownBy(() -> facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).isSameAs(failure);
+        then(command).should().cancelBeforePayment(USER_ID, ORDER_ID, REASON);
     }
 }

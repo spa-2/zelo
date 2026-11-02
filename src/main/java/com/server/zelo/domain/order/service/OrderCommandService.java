@@ -232,7 +232,7 @@ public class OrderCommandService {
      * 본인의 결제 전 주문을 취소하고 선점 재고를 해제한다.
      * 결제 확인과의 동시 실행을 막는 Facade의 공통 락 안에서 호출한다.
      */
-    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId) {
+    public CancelOrderResponse cancelBeforePayment(Long userId, Long orderId, String reason) {
         // 상태 검증부터 재고 해제까지 주문 행 잠금을 유지
         Order order = orderService.getOrderWithItemsForUpdate(orderId);
 
@@ -255,7 +255,7 @@ public class OrderCommandService {
         });
 
         // 기존 주문 취소와 품목별 재고 처리 로직을 재사용
-        cancel(orderId, ActorType.USER, userId, null);
+        cancel(orderId, ActorType.USER, userId, reason);
 
         return CancelOrderResponse.from(order);
     }

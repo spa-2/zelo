@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
 import com.server.zelo.common.api.PageResponse;
 import com.server.zelo.common.exception.BusinessException;
@@ -20,6 +21,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.ProductStatus;
 import com.server.zelo.domain.product.service.ProductCommandService;
 import com.server.zelo.domain.product.dto.response.GetPopularProductResponse;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +48,7 @@ class ProductControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(productController)
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

@@ -1,5 +1,6 @@
 package com.server.zelo.domain.chat.controller;
 
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.entity.UserRole;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -29,6 +30,7 @@ import com.server.zelo.domain.chat.dto.response.StartChatResponse;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.chat.service.ChatMessageCommandService;
 import com.server.zelo.domain.chat.service.ChatQuoteFacade;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -66,7 +68,7 @@ class ChatMessageControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(chatMessageController)
                 .setCustomArgumentResolvers(new AuthArgumentResolver())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(new BusinessMetrics(new SimpleMeterRegistry())))
                 .build();
     }
 

@@ -32,17 +32,11 @@ public record PortOnePayment(
                 response.methodName(), response.failureReason());
     }
 
-    public boolean isPaid() {
-        return status == PortOnePaymentStatus.PAID;
-    }
+    public boolean isPaid() {return status == PortOnePaymentStatus.PAID;}
 
-    public boolean isFailed() {
-        return status == PortOnePaymentStatus.FAILED;
-    }
+    public boolean isFailed() {return status == PortOnePaymentStatus.FAILED;}
 
-    public boolean isCancelled() {
-        return status == PortOnePaymentStatus.CANCELLED;
-    }
+    public boolean isCancelled() {return status == PortOnePaymentStatus.CANCELLED;}
 
-
+    public boolean isPartiallyCancelled() {return status == PortOnePaymentStatus.PARTIAL_CANCELLED;}
 }

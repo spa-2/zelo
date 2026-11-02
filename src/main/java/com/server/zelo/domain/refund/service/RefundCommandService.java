@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionOperations;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,20 +46,24 @@ public class RefundCommandService {
                                              Map<Long, Integer> cancelQuantities) {
         RefundTarget target = Objects.requireNonNull(transactionOperations.execute(
                 status -> requestRefund(userId, orderId, reason, cancelQuantities)));
+        return CreateRefundResponse.of(target.refundId(), cancelAndApply(orderId, target, reason));
+    }
 
+    // 같은 취소 키로 다시 요청하면 포트원은 새로 취소하지 않고 이전 결과를 돌려준다
+    private RefundStatus cancelAndApply(Long orderId, RefundTarget target, String reason) {
         try {
             portOneClient.cancelPaymentWithAmount(target.portoneId(),String.format("%s%012d", CANCEL_KEY_PREFIX, target.refundId()),
                     target.amount(), target.cancellableAmount(), reason);
         } catch (BusinessException e) {
             if (!isRejected(e)) {
                 log.warn("환불 결과 불명확 refundId={}, errorCode={}", target.refundId(), e.getErrorCode());
-                return CreateRefundResponse.of(target.refundId(), RefundStatus.REQUESTED);
+                return RefundStatus.REQUESTED;
             }
             transactionOperations.executeWithoutResult(status -> {
                 refundService.fail(target.refundId());
                 deliveryService.releaseHold(orderId);
             });
-            return CreateRefundResponse.of(target.refundId(), RefundStatus.FAILED);
+            return RefundStatus.FAILED;
         }
 
         transactionOperations.executeWithoutResult(status -> {
@@ -72,7 +77,7 @@ public class RefundCommandService {
                 deliveryService.releaseHold(orderId);
             }
         });
-        return CreateRefundResponse.of(target.refundId(), RefundStatus.COMPLETED);
+        return RefundStatus.COMPLETED;
     }
 
     private RefundTarget requestRefund(Long userId, Long orderId, String reason, Map<Long, Integer> requested) {
@@ -128,6 +133,10 @@ public class RefundCommandService {
             failRequestedRefund(orderId, portoneId);
             return;
         }
+        if (pgPayment.isPartiallyCancelled()) {
+            retryRequestedRefund(orderId, portoneId);
+            return;
+        }
         if (!pgPayment.isCancelled()) {
             log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={}, status={}", portoneId, pgPayment.status());
             return;
@@ -161,6 +170,35 @@ public class RefundCommandService {
         return errorCode == ErrorCode.PG_REQUEST_REJECTED
                 || errorCode == ErrorCode.PAYMENT_NOT_FOUND
                 || errorCode == ErrorCode.INVALID_INPUT;
+    }
+
+    // 부분 취소는 이전 환불 때문일 수도 있어, 금액 대신 같은 취소 키로 다시 요청해 이번 환불 결과를 확인한다
+    private void retryRequestedRefund(Long orderId, String portoneId) {
+        Optional<RefundRetry> retry = Objects.requireNonNull(
+                transactionOperations.execute(status -> findRequestedRefundTarget(portoneId)));
+        if (retry.isEmpty()) {
+            log.warn("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={}, portoneId={}", orderId, portoneId);
+            return;
+        }
+        cancelAndApply(orderId, retry.get().target(), retry.get().reason());
+    }
+
+    // 처음 요청과 같은 금액으로 보내야 하므로 같은 방식으로 다시 계산한다
+    private Optional<RefundRetry> findRequestedRefundTarget(String portoneId) {
+        Payment payment = paymentService.getPayment(portoneId);
+        return refundService.findRequestedRefund(payment.getId()).map(refund -> {
+            long cancellableAmount = payment.getPgAmount() - refundService.calculateRefundedAmount(payment.getId());
+            boolean cancelsAll = refund.getRefundType() == RefundType.FULL;
+            Map<Long, Integer> cancelQuantities = refund.getRefundItems().stream()
+                    .collect(Collectors.toMap(item -> item.getOrderItem().getId(), RefundItem::getQuantity));
+            RefundTarget target = new RefundTarget(refund.getId(), portoneId,
+                    cancelsAll ? cancellableAmount : refund.getItemsAmount(), cancellableAmount,
+                    payment.getPgAmount(), cancelQuantities, cancelsAll);
+            return new RefundRetry(target, refund.getReason());
+        });
+    }
+
+    private record RefundRetry(RefundTarget target, String reason) {
     }
 
     private void failRequestedRefund(Long orderId, String portoneId) {

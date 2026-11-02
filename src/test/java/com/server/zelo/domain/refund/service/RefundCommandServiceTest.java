@@ -293,6 +293,74 @@ class RefundCommandServiceTest {
     }
 
     @Test
+    void 부분_취소된_결제의_요청됨_환불은_같은_취소_키로_다시_요청해_완료한다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund();
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should().cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000010", 5_000L, 10_000L, REASON);
+        then(refundService).should().complete(eq(REFUND_ID), any());
+        then(orderCommandService).should().cancelItems(ORDER_ID, Map.of(1L, 1));
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(paymentService).should(never()).cancel(any(), any());
+    }
+
+    @Test
+    void 부분_취소_재요청이_거절되면_환불을_실패로_두고_배송_보류를_푼다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund();
+        willThrow(new BusinessException(ErrorCode.PG_REQUEST_REJECTED))
+                .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should().fail(REFUND_ID);
+        then(deliveryService).should().releaseHold(ORDER_ID);
+        then(refundService).should(never()).complete(any(), any());
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 부분_취소_재요청_결과를_모르면_환불_요청과_배송_보류를_유지한다() {
+        // given
+        givenPartiallyCancelledWithRequestedRefund();
+        willThrow(new BusinessException(ErrorCode.PG_TIMEOUT))
+                .given(portOneClient).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(refundService).should(never()).complete(any(), any());
+        then(refundService).should(never()).fail(any());
+        then(deliveryService).should(never()).releaseHold(any());
+        then(orderCommandService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 환불_요청_없이_부분_취소된_결제는_포트원에_다시_요청하지_않는다() {
+        // given
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.empty());
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+        then(orderCommandService).shouldHaveNoInteractions();
+        then(deliveryService).shouldHaveNoInteractions();
+    }
+
+    @Test
     void 일부_수량만_환불하면_그만큼만_취소하고_배송_보류를_푼다() {
         // given
         givenRefundable();
@@ -377,6 +445,21 @@ class RefundCommandServiceTest {
         Order order = mock(Order.class);
         given(order.getOrderItems()).willReturn(List.of(orderItem));
         given(orderService.getOrderWithItems(ORDER_ID)).willReturn(order);
+    }
+
+    // 5,000원 × 2개 중 1개를 부분 환불 요청했는데 포트원 응답을 못 받아 요청됨으로 남은 상태
+    private void givenPartiallyCancelledWithRequestedRefund() {
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PARTIAL_CANCELLED, 10_000L, null));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        OrderItem orderItem = mock(OrderItem.class);
+        given(orderItem.getId()).willReturn(1L);
+        given(orderItem.getQuantity()).willReturn(2);
+        given(orderItem.getUnitPrice()).willReturn(5_000L);
+        Refund refund = Refund.of(1L, RefundType.PARTIAL, REASON);
+        refund.addRefundItem(RefundItem.of(orderItem, 1));
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
     }
 
     private Payment paidPayment() {

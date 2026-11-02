@@ -11,6 +11,7 @@ import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.order.dto.response.CancelOrderResponse;
 import com.server.zelo.domain.order.entity.ActorType;
 import com.server.zelo.domain.order.entity.Order;
+import com.server.zelo.domain.order.entity.OrderAuditAction;
 import com.server.zelo.domain.order.entity.OrderItem;
 import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.entity.ShippingAddress;
@@ -56,8 +57,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @ExtendWith(MockitoExtension.class)
 class OrderCancellationCommandServiceTest {
 
+    @Mock private OrderAuditService orderAuditService;
+
     private static final Long USER_ID = 7L;
     private static final Long ORDER_ID = 101L;
+    private static final String REASON = "고객 요청";
     private static final String PORTONE_ID = "payment-cancel-170";
 
     @Mock private User user;
@@ -99,7 +103,7 @@ class OrderCancellationCommandServiceTest {
                 deliveryService,
                 new InventoryService(inventoryRepository),
                 userAddressService,
-                transactionTemplate);
+                transactionTemplate, orderAuditService);
     }
 
     @ParameterizedTest
@@ -130,6 +134,9 @@ class OrderCancellationCommandServiceTest {
         inventoryCalls.verify(inventoryRepository).findInventoryByProduct_Id(20L);
         then(paymentRepository).should(never()).save(any());
         assertThat(transactionManager.events).containsExactly("begin", "commit");
+        // 사용자가 직접 취소했으므로 요청한 회원과 적은 사유를 기록
+        then(orderAuditService).should().recordStateChange(fixture.order(), OrderAuditAction.CANCELED,
+                OrderStatus.PAYMENT_PENDING, ActorType.USER, USER_ID, REASON);
     }
 
     @ParameterizedTest
@@ -356,12 +363,12 @@ class OrderCancellationCommandServiceTest {
         if (preflight) {
             command.findPaymentIdForCancellation(userId, ORDER_ID);
         } else {
-            transactionTemplate.executeWithoutResult(status -> command.cancelBeforePayment(userId, ORDER_ID));
+            transactionTemplate.executeWithoutResult(status -> command.cancelBeforePayment(userId, ORDER_ID, REASON));
         }
     }
 
     private CancelOrderResponse cancel() {
-        return transactionTemplate.execute(status -> command.cancelBeforePayment(USER_ID, ORDER_ID));
+        return transactionTemplate.execute(status -> command.cancelBeforePayment(USER_ID, ORDER_ID, REASON));
     }
 
     private void assertError(ErrorCode expected, Runnable action) {

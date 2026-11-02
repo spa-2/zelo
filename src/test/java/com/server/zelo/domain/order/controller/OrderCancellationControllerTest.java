@@ -42,7 +42,8 @@ class OrderCancellationControllerTest {
     private static final Long USER_ID = 7L;
     private static final Long ORDER_ID = 101L;
     private static final String URL = "/api/orders/101/cancellations";
-    private static final String JSON = "{\"reason\":\"고객 요청\"}";
+    private static final String REASON = "고객 요청";
+    private static final String JSON = "{\"reason\":\"" + REASON + "\"}";
 
     @Mock private OrderFacade facade;
     @Mock private OrderCommandService command;
@@ -67,7 +68,7 @@ class OrderCancellationControllerTest {
     void 인증된_사용자의_주문을_취소하고_200과_주문상태를_반환한다() throws Exception {
         // given
         authenticate();
-        given(facade.cancelBeforePayment(USER_ID, ORDER_ID))
+        given(facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON))
                 .willReturn(new CancelOrderResponse(ORDER_ID, OrderStatus.CANCELED));
 
         // when
@@ -80,7 +81,7 @@ class OrderCancellationControllerTest {
                 .andExpect(jsonPath("$.data.orderStatus").value("CANCELED"))
                 .andExpect(jsonPath("$.data.refundId").doesNotExist())
                 .andExpect(jsonPath("$.data.refundStatus").doesNotExist());
-        then(facade).should().cancelBeforePayment(USER_ID, ORDER_ID);
+        then(facade).should().cancelBeforePayment(USER_ID, ORDER_ID, REASON);
         verifyNoInteractions(command);
     }
 
@@ -89,15 +90,16 @@ class OrderCancellationControllerTest {
     void 취소_사유의_길이_경계값을_허용한다(int length) throws Exception {
         // given
         authenticate();
-        given(facade.cancelBeforePayment(USER_ID, ORDER_ID))
+        String reason = "가".repeat(length);
+        given(facade.cancelBeforePayment(USER_ID, ORDER_ID, reason))
                 .willReturn(new CancelOrderResponse(ORDER_ID, OrderStatus.CANCELED));
 
         // when
         // then
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"" + "가".repeat(length) + "\"}"))
+                        .content("{\"reason\":\"" + reason + "\"}"))
                 .andExpect(status().isOk());
-        then(facade).should().cancelBeforePayment(USER_ID, ORDER_ID);
+        then(facade).should().cancelBeforePayment(USER_ID, ORDER_ID, reason);
     }
 
     @ParameterizedTest
@@ -152,7 +154,7 @@ class OrderCancellationControllerTest {
     void 취소_실패는_해당_HTTP_상태와_코드로_응답한다(ErrorCode code) throws Exception {
         // given
         authenticate();
-        given(facade.cancelBeforePayment(USER_ID, ORDER_ID)).willThrow(new BusinessException(code));
+        given(facade.cancelBeforePayment(USER_ID, ORDER_ID, REASON)).willThrow(new BusinessException(code));
 
         // when
         // then

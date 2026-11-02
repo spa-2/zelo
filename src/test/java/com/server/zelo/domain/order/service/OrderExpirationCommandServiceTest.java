@@ -57,6 +57,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @ExtendWith(MockitoExtension.class)
 class OrderExpirationCommandServiceTest {
 
+    @Mock private OrderAuditService orderAuditService;
+
     private static final Long ORDER_ID = 101L;
     private static final String PORTONE_ID = "payment-expiration-214";
     private static final LocalDateTime CUTOFF = LocalDateTime.of(2030, 1, 2, 12, 0);
@@ -88,7 +90,7 @@ class OrderExpirationCommandServiceTest {
                 userService, new OrderService(orderRepository, confirmationRepository),
                 quoteService, refundService, productService, new PaymentService(paymentRepository),
                 chatRoomService, deliveryService, new InventoryService(inventoryRepository),
-                userAddressService, new TransactionTemplate(manager));
+                userAddressService, new TransactionTemplate(manager), orderAuditService);
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(manager);
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());

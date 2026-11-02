@@ -52,11 +52,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderCreationCommandServiceTest {
+
+    @Mock private OrderAuditService orderAuditService;
 
     private static final Long USER_ID = 7L;
     private static final Long ROOM_ID = 10L;
@@ -100,7 +104,7 @@ class OrderCreationCommandServiceTest {
                 deliveryService,
                 inventoryService,
                 userAddressService,
-                new TransactionTemplate(transactionManager));
+                new TransactionTemplate(transactionManager), orderAuditService);
     }
 
     @Test
@@ -156,6 +160,8 @@ class OrderCreationCommandServiceTest {
         calls.verify(orderService).deleteConfirmationAfterCommit(CONFIRMATION_ID);
         then(paymentService).should(never()).getLatestPayment(any());
         assertThat(transactionManager.events).containsExactly("begin", "commit");
+        then(orderAuditService).should().recordStateChange(any(Order.class), eq(OrderAuditAction.CREATED),
+                isNull(), eq(ActorType.USER), eq(USER_ID), isNull());
     }
 
     @Test
@@ -532,7 +538,7 @@ class OrderCreationCommandServiceTest {
                 deliveryService,
                 inventoryService,
                 userAddressService,
-                new TransactionTemplate(transactionManager));
+                new TransactionTemplate(transactionManager), orderAuditService);
         given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
             return invocation.getArgument(0);

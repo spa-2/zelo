@@ -11,8 +11,8 @@ class PaymentConfirmResponseTest {
     @ParameterizedTest
     @CsvSource({
             "PAID, 결제가 완료됐습니다.",
-            "FAILED, 결제에 실패했어요. 주문을 다시 진행해 주시길 바랍니다.",
-            "CANCELED, 결제 금액이 주문 금액과 달라 결제를 취소했어요.",
+            "FAILED, 결제에 실패했어요. 결제 수단을 다시 골라 주세요.",
+            "CANCELED, 결제가 취소됐어요.",
             "READY, 결제를 확인하고 있어요.",
             "CONFIRM_PENDING, 결제를 확인하고 있어요."
     })

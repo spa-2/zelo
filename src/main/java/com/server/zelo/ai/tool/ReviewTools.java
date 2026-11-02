@@ -4,6 +4,8 @@ import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.service.ReviewService;
@@ -14,12 +16,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 // 조회 질문에 답하는 LLM이 리뷰를 물을 때 부르는 조회 도구. 조회만 하므로 재시도로 두 번 불려도 결과가 같다.
-// 상품(이름 검색)과 리뷰(집계·원문) 두 도메인을 엮으므로 각 Service를 부르기만 하고, 엔티티 대신 record로 돌려준다(open-in-view가 꺼져 있음)
+// 상품(이름 검색)·리뷰(집계·원문)·견적(카드에 담긴 상품) 도메인을 엮으므로 각 Service를 부르기만 하고,
+// 엔티티 대신 record로 돌려준다(open-in-view가 꺼져 있음)
 @Component
 @RequiredArgsConstructor
 public class ReviewTools {
@@ -27,7 +31,10 @@ public class ReviewTools {
     // "김치"처럼 짧은 이름은 포기김치·백김치·김치만두가 함께 걸린다. 리뷰가 있는 상품이 판매량 순위에서 밀려 빠지지 않을 만큼 넉넉히 본다
     private static final int MAX_PRODUCTS = 10;
     private static final int MAX_RECENT_REVIEWS = 10;
+    // 방 번호는 LLM이 정하지 않고 서버가 toolContext로 넣는다. 그래서 다른 방의 견적은 읽을 수 없다
+    public static final String ROOM_ID = "roomId";
 
+    private final QuoteService quoteService;
     private final ReviewService reviewService;
     private final ProductService productService;
 
@@ -56,6 +63,28 @@ public class ReviewTools {
         return reviewService.findRecentReviews(productId, limit).stream()
                 .map(RecentReview::from)
                 .toList();
+    }
+
+    // 대화 기록에는 견적 안내 문장만 있고 카드에 담긴 상품 목록은 없어서, "여기 담긴 김치"가 어느 상품인지 이 도구로 확인한다
+    @Tool(description = "지금 채팅방의 견적 카드에 담긴 상품의 productId, 이름, 단위, 수량을 돌려준다. "
+            + "\"여기 담긴 김치\", \"이거\"처럼 견적에 담긴 상품을 가리켜 물을 때 먼저 쓴다. 견적이 없거나 만료됐으면 빈 목록이다.")
+    public List<CurrentQuoteItem> getCurrentQuoteItems(ToolContext toolContext) {
+        Long roomId = (Long) toolContext.getContext().get(ROOM_ID);
+        return quoteService.findQuote(roomId)
+                .map(quote -> quote.items().stream().map(CurrentQuoteItem::from).toList())
+                .orElse(List.of());
+    }
+
+    public record CurrentQuoteItem(
+            Long productId,
+            String productName,
+            String productUnit,
+            Integer quantity
+    ) {
+
+        public static CurrentQuoteItem from(QuoteItem item) {
+            return new CurrentQuoteItem(item.productId(), item.productName(), item.productUnit(), item.quantity());
+        }
     }
 
     public record ReviewOverview(

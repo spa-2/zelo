@@ -8,12 +8,16 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
+import com.server.zelo.ai.tool.ReviewTools.CurrentQuoteItem;
 import com.server.zelo.ai.tool.ReviewTools.RecentReview;
 import com.server.zelo.ai.tool.ReviewTools.ReviewOverview;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.entity.Product;
 import com.server.zelo.domain.product.service.ProductService;
+import com.server.zelo.domain.quote.model.Quote;
+import com.server.zelo.domain.quote.model.QuoteItem;
+import com.server.zelo.domain.quote.service.QuoteService;
 import com.server.zelo.domain.review.dto.response.ProductReviewEvidence;
 import com.server.zelo.domain.review.entity.Review;
 import com.server.zelo.domain.review.service.ReviewService;
@@ -24,12 +28,14 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.data.domain.PageImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +43,9 @@ class ReviewToolsTest {
 
     private static final Long BAEK_ID = 1035L;
     private static final Long MANDU_ID = 1061L;
+
+    @Mock
+    private QuoteService quoteService;
 
     @Mock
     private ReviewService reviewService;
@@ -127,6 +136,36 @@ class ReviewToolsTest {
         then(reviewService).should().findRecentReviews(BAEK_ID, 10);
         then(reviewService).should().findRecentReviews(BAEK_ID, 1);
         then(reviewService).should().findRecentReviews(BAEK_ID, 5);
+    }
+
+    @Test
+    void 서버가_넣은_방_번호의_견적에_담긴_상품을_돌려준다() {
+        // given
+        Quote quote = mock(Quote.class);
+        given(quote.items()).willReturn(List.of(
+                new QuoteItem(BAEK_ID, "SID-0008", "백김치 1kg", "1kg", 12_000L, 1, 12_000L),
+                new QuoteItem(1039L, "SID-0020", "부침두부 300g", "300g", 2_500L, 2, 5_000L)));
+        given(quoteService.findQuote(4701L)).willReturn(Optional.of(quote));
+
+        // when
+        List<CurrentQuoteItem> items = reviewTools.getCurrentQuoteItems(new ToolContext(Map.of(ReviewTools.ROOM_ID, 4701L)));
+
+        // then
+        assertThat(items).containsExactly(
+                new CurrentQuoteItem(BAEK_ID, "백김치 1kg", "1kg", 1),
+                new CurrentQuoteItem(1039L, "부침두부 300g", "300g", 2));
+    }
+
+    @Test
+    void 견적이_없거나_만료됐으면_빈_목록을_돌려준다() {
+        // given
+        given(quoteService.findQuote(4701L)).willReturn(Optional.empty());
+
+        // when
+        List<CurrentQuoteItem> items = reviewTools.getCurrentQuoteItems(new ToolContext(Map.of(ReviewTools.ROOM_ID, 4701L)));
+
+        // then
+        assertThat(items).isEmpty();
     }
 
     private static Product product(Long id, String brand, String name) {

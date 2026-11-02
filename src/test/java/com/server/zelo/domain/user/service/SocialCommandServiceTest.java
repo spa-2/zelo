@@ -4,6 +4,8 @@ import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.dto.request.CreateSocialUserRequest;
 import com.server.zelo.domain.user.dto.response.LoginResult;
 import com.server.zelo.domain.user.entity.SocialProvider;
@@ -73,14 +75,17 @@ class SocialCommandServiceTest {
     @Mock
     private SocialLoginClient socialLoginClient;
 
+    @Mock
+    private BusinessMetrics businessMetrics;
+
     private User socialUser;
     private UserAddress userAddress;
 
     @BeforeEach
     void setUp() {
         // 제공자별 클라이언트 목록(List)은 @InjectMocks로 넣을 수 없어서 직접 만듦
-        socialCommandService = new SocialCommandService(jwtUtil, userService, userAddressService, refreshTokenService,
-                socialAccountService, List.of(socialLoginClient), socialSignupTicketService);
+        socialCommandService = new SocialCommandService(jwtUtil, userService, businessMetrics, userAddressService,
+                refreshTokenService, socialAccountService, List.of(socialLoginClient), socialSignupTicketService);
         socialUser = User.ofSocial("jieun@gmail.com", "지은", "010-1234-5678");
         ReflectionTestUtils.setField(socialUser, "id", 1L);
         userAddress = UserAddress.of(socialUser, "집", "지은", "010-1234-5678", "12345", "서울 강남구", true);
@@ -197,6 +202,19 @@ class SocialCommandServiceTest {
         // 가입에 실패했는데 토큰이 발급되거나 저장되면 안 됨
         then(jwtUtil).shouldHaveNoInteractions();
         then(refreshTokenService).shouldHaveNoInteractions();
+        then(businessMetrics).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 가입하면_가입_지표를_제공자별로_센다() {
+        // given
+        givenSignupSucceeds();
+
+        // when
+        socialCommandService.signup(REQUEST, PROFILE);
+
+        // then
+        then(businessMetrics).should().count(BusinessMetric.USER_CREATED, "method", "GOOGLE");
     }
 
     private void givenSignupSucceeds() {
@@ -303,6 +321,38 @@ class SocialCommandServiceTest {
     }
 
     @Test
+    void 이미_가입한_소셜_계정으로_로그인하면_로그인_지표를_제공자별로_센다() {
+        // given
+        givenProfileFromGoogle(PROFILE);
+        givenSocialAccountExists(99L);
+        given(jwtUtil.createAccessToken(1L, UserRole.BASIC)).willReturn("accessToken");
+        given(jwtUtil.createRefreshToken(1L, UserRole.BASIC)).willReturn("refreshToken");
+
+        // when
+        socialCommandService.login("google", LOGIN_REQUEST);
+
+        // then
+        then(businessMetrics).should().count(BusinessMetric.USER_LOGIN, "method", "GOOGLE");
+    }
+
+    @Test
+    void 처음_온_사람이면_가입_화면_진입_지표만_세고_로그인_지표는_세지_않는다() {
+        // given
+        givenProfileFromGoogle(PROFILE);
+        given(socialAccountService.findByProviderAndProviderId(SocialProvider.GOOGLE, "1234567890"))
+                .willReturn(Optional.empty());
+        given(userService.existsByEmail("jieun@gmail.com")).willReturn(false);
+        given(socialSignupTicketService.issue(PROFILE)).willReturn("ticket");
+
+        // when
+        socialCommandService.login("google", LOGIN_REQUEST);
+
+        // then 가입 전환율의 분모라서 로그인 성공으로 세면 안 됨
+        then(businessMetrics).should().count(BusinessMetric.SOCIAL_SIGNUP_PENDING, "method", "GOOGLE");
+        then(businessMetrics).shouldHaveNoMoreInteractions();
+    }
+
+    @Test
     void 처음_온_사람의_이메일이_없으면_예외가_발생하고_번호표를_발급하지_않는다() {
         // given
         givenProfileFromGoogle(SocialProfile.of(SocialProvider.GOOGLE, "1234567890", null, false, "지은"));
@@ -361,6 +411,8 @@ class SocialCommandServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.SOCIAL_EMAIL_CONFLICT);
         then(socialSignupTicketService).shouldHaveNoInteractions();
+        // 실패는 GlobalExceptionHandler가 zelo.api.error로 세므로 여기서 또 세면 중복 집계가 됨
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @ParameterizedTest
@@ -402,7 +454,7 @@ class SocialCommandServiceTest {
     @Test
     void 제공자는_있지만_구현된_클라이언트가_없으면_예외가_발생한다() {
         // given
-        SocialCommandService withoutClients = new SocialCommandService(jwtUtil, userService, userAddressService,
+        SocialCommandService withoutClients = new SocialCommandService(jwtUtil, userService, businessMetrics, userAddressService,
                 refreshTokenService, socialAccountService, List.of(), socialSignupTicketService);
 
         // when & then

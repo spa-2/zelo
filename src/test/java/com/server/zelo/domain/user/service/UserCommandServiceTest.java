@@ -4,6 +4,8 @@ import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
@@ -49,6 +51,9 @@ class UserCommandServiceTest {
     private UserService userService;
 
     @Mock
+    private BusinessMetrics businessMetrics;
+
+    @Mock
     private UserAddressService userAddressService;
 
     @Mock
@@ -79,6 +84,18 @@ class UserCommandServiceTest {
         assertThat(response.email()).isEqualTo("jieun@example.com");
         then(emailVerificationService).should()
                 .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.SIGNUP);
+        then(businessMetrics).should().count(BusinessMetric.USER_CREATED, "method", "EMAIL");
+    }
+
+    @Test
+    void 가입에_실패하면_가입_지표를_세지_않는다() {
+        // given
+        CreateUserRequest request = createUserRequest("Password1!", "Different1!");
+
+        // when & then
+        assertThatThrownBy(() -> userCommandService.createUserWithAddress(request))
+                .isInstanceOf(BusinessException.class);
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @Test
@@ -142,6 +159,7 @@ class UserCommandServiceTest {
         assertThat(result.accessToken()).isEqualTo("accessToken");
         assertThat(result.refreshToken()).isEqualTo("refreshToken");
         then(refreshTokenService).should().saveRefreshToken(1L, "refreshToken");
+        then(businessMetrics).should().count(BusinessMetric.USER_LOGIN, "method", "EMAIL");
     }
 
     @Test
@@ -157,6 +175,8 @@ class UserCommandServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
         then(refreshTokenService).should(never()).saveRefreshToken(anyLong(), anyString());
+        // 실패는 GlobalExceptionHandler가 zelo.api.error로 세므로 로그인 성공 지표를 올리면 안 됨
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @Test
@@ -246,6 +266,7 @@ class UserCommandServiceTest {
         assertThat(result.refreshToken()).isEqualTo("newRefreshToken");
         // 새 토큰이 아니라 사용자가 보낸 토큰으로 일치 여부를 확인해야 함
         then(refreshTokenService).should().rotateToken(1L, "oldRefreshToken", "newRefreshToken");
+        then(businessMetrics).should().count(BusinessMetric.TOKEN_REISSUED);
     }
 
     @Test
@@ -312,6 +333,7 @@ class UserCommandServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.TOKEN_REUSED);
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @Test
@@ -378,6 +400,7 @@ class UserCommandServiceTest {
                 .consumeTicket("jieun@example.com", TICKET, EmailVerificationPurpose.PASSWORD_RESET);
         inOrder.verify(userService).resetPassword(user, "NewPass1!");
         inOrder.verify(refreshTokenService).deleteRefreshToken(1L);
+        then(businessMetrics).should().count(BusinessMetric.USER_PASSWORD_RESET);
     }
 
     @Test
@@ -449,6 +472,8 @@ class UserCommandServiceTest {
         assertThatThrownBy(() -> userCommandService.validateResetPassword(resetPasswordRequest("NewPass1!", "NewPass1!")))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.TOKEN_REVOKE_FAILED));
+        // 롤백될 변경을 완료로 세면 안 됨
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     private CreateUserRequest createUserRequest(String password, String passwordConfirm) {

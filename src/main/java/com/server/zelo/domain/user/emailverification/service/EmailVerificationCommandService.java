@@ -4,6 +4,8 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.mail.EmailSender;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.emailverification.dto.CodeValidationResult;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
@@ -43,6 +45,7 @@ public class EmailVerificationCommandService {
 
     private final EmailSender emailSender;
     private final SecureRandom secureRandom;
+    private final BusinessMetrics businessMetrics;
     private final EmailVerificationRepository emailVerificationRepository;
 
     public void sendEmail(String email, EmailVerificationPurpose purpose, String remoteAddr) {
@@ -78,6 +81,8 @@ public class EmailVerificationCommandService {
             emailVerificationRepository.rollbackSend(email, purpose);
             throw e;
         }
+
+        businessMetrics.count(BusinessMetric.EMAIL_VERIFICATION_SENT, "purpose", purpose.name());
     }
 
     public ValidateEmailResponse validateEmail(String email, EmailVerificationPurpose purpose, String code) {
@@ -86,7 +91,11 @@ public class EmailVerificationCommandService {
 
         return switch (result) {
             // 검증에 성공하면 가입 요청에서 쓸 티켓을 발급
-            case SUCCESS -> new ValidateEmailResponse(issueTicket(email, purpose));
+            case SUCCESS -> {
+                ValidateEmailResponse response = new ValidateEmailResponse(issueTicket(email, purpose));
+                businessMetrics.count(BusinessMetric.EMAIL_VERIFICATION_CONFIRMED, "purpose", purpose.name());
+                yield response;
+            }
             case EXPIRED -> throw new BusinessException(ErrorCode.EXPIRED_EMAIL_CODE);
             case MISMATCH -> throw new BusinessException(ErrorCode.INVALID_EMAIL_CODE);
             case TOO_MANY_FAILURES -> throw new BusinessException(ErrorCode.TOO_MANY_EMAIL_CODE_FAILURES);

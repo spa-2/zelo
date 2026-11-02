@@ -11,6 +11,19 @@ public enum BusinessMetric {
 
     //TODO 이름만 미리 만들어 둔거니 각자 가져가서 붙히시면 됩니다~!
 
+    // 공통. GlobalExceptionHandler가 오류 응답을 만들 때마다 센다 (code는 ErrorCode 값)
+    API_ERROR("zelo.api.error", "오류 응답 수 (code)"),
+
+    // 유저·인증. 실패는 GlobalExceptionHandler가 zelo.api.error로 세므로 여기에는 성공만 둔다
+    USER_CREATED("zelo.user.created", "가입 완료 수 (method)"),
+    USER_LOGIN("zelo.user.login", "로그인 성공 수 (method)"),
+    USER_PASSWORD_RESET("zelo.user.password.reset", "비밀번호 재설정 완료 수"),
+    SOCIAL_SIGNUP_PENDING("zelo.user.social.signup.pending", "소셜 로그인 후 가입 화면으로 보낸 수, 가입 전환율의 분모 (method)"),
+    TOKEN_REISSUED("zelo.auth.reissue", "토큰 재발급 성공 수"),
+    EMAIL_VERIFICATION_SENT("zelo.auth.email.sent", "인증 메일 발송 성공 수 (purpose)"),
+    EMAIL_VERIFICATION_CONFIRMED("zelo.auth.email.confirmed", "이메일 인증 성공 수 (purpose)"),
+    SOCIAL_API_CALL("zelo.user.social.call", "소셜 인증 호출 시간(provider, operation, outcome)"),
+
     // 견적
     QUOTE_CREATED("zelo.quote.created", "견적 발급 수"),
     QUOTE_EXCLUDED("zelo.quote.excluded", "견적에서 빠진 품목 수 (reason)"),

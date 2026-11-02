@@ -144,6 +144,6 @@ public class GlobalExceptionHandler {
 
     // 서비스 코드 오류마다 지표를 세지 않고 모든 오류 응답을 여기서 센다.
     private void countError(ErrorCode code) {
-        businessMetrics.count(BusinessMetric.API_ERROR, "code", code.get정Code());
+        businessMetrics.count(BusinessMetric.API_ERROR, "code", code.getCode());
     }
 }

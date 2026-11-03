@@ -36,9 +36,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class QuoteCommandService {
@@ -70,6 +72,12 @@ public class QuoteCommandService {
         });
         businessMetrics.count(BusinessMetric.QUOTE_CREATED);
         quote.excludedItems().forEach(item -> businessMetrics.count(BusinessMetric.QUOTE_EXCLUDED, "reason", item.reason()));
+        log.info("견적 발급 quoteId={} itemCount={} totalAmount={}", quote.quoteId(), quote.items().size(), quote.totalAmount());
+        if (!quote.excludedItems().isEmpty()) {
+            log.warn("견적 품목 제외 quoteId={} excluded={}", quote.quoteId(), quote.excludedItems().stream()
+                    .map(item -> item.name() + ":" + item.reason())
+                    .toList());
+        }
         return quote;
     }
 
@@ -77,8 +85,8 @@ public class QuoteCommandService {
         Quote quote = getQuote(userId, roomId);
         QuoteItem target = getItem(quote, productId);
         List<QuoteItem> items = quote.items().stream().filter(item -> item != target).toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
-                quote.budget(), keepOptions(quote, items));
+        return edited(save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(),
+                quote.substitutes(), quote.budget(), keepOptions(quote, items)), "REMOVE_ITEM");
     }
 
     @Transactional(readOnly = true)
@@ -94,8 +102,8 @@ public class QuoteCommandService {
         List<QuoteItem> items = quote.items().stream()
                 .map(item -> item == target ? withQuantity(item, quantity) : item)
                 .toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
-                quote.budget(), keepOptions(quote, items));
+        return edited(save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(),
+                quote.substitutes(), quote.budget(), keepOptions(quote, items)), "CHANGE_QUANTITY");
     }
 
     // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
@@ -140,8 +148,8 @@ public class QuoteCommandService {
         substitutes.addAll(selection.substitutes());
         List<BudgetOption> budgetOptions = new ArrayList<>(keepOptions(quote, items));
         budgetOptions.addAll(addedOptions);
-        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes,
-                quote.budget(), budgetOptions);
+        return edited(save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), substitutes,
+                quote.budget(), budgetOptions), "ADD_ITEM");
     }
 
     // 계산만 하고 견적은 안 바꿈. 사용자가 담기를 누르면 addItem으로 담음
@@ -171,8 +179,8 @@ public class QuoteCommandService {
         } else {
             items.set(items.indexOf(same), withQuantity(same, quantity));
         }
-        return save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(), without(quote, target),
-                quote.budget(), keepOptions(quote, items));
+        return edited(save(userId, roomId, quote.menuName(), items, excludedItems, quote.conditions(),
+                without(quote, target), quote.budget(), keepOptions(quote, items)), "ACCEPT_SUBSTITUTE");
     }
 
     public Quote rejectSubstitute(Long userId, Long roomId, String name) {
@@ -181,8 +189,8 @@ public class QuoteCommandService {
         List<ExcludedItem> excludedItems = new ArrayList<>(quote.excludedItems());
         // 사용자가 뺀 거라 재고 부족과 구분함. 채팅 쪽도 같은 이름으로 처리함
         excludedItems.add(new ExcludedItem(name, "REJECTED_BY_USER"));
-        return save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
-                without(quote, target), quote.budget(), quote.budgetOptions());
+        return edited(save(userId, roomId, quote.menuName(), quote.items(), excludedItems, quote.conditions(),
+                without(quote, target), quote.budget(), quote.budgetOptions()), "REJECT_SUBSTITUTE");
     }
 
     // 고른 상품 하나만 더 싼 걸로 바꿈. 나머지 상품 후보는 그대로 둠
@@ -202,8 +210,8 @@ public class QuoteCommandService {
         List<QuoteItem> items = quote.items().stream()
                 .map(item -> item == replaced ? cheaper : item)
                 .toList();
-        return save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(), quote.substitutes(),
-                quote.budget(), keepOptions(quote, items));
+        return edited(save(userId, roomId, quote.menuName(), items, quote.excludedItems(), quote.conditions(),
+                quote.substitutes(), quote.budget(), keepOptions(quote, items)), "APPLY_BUDGET_OPTION");
     }
 
     private Selection select(List<MenuPlanIngredient> requested, Set<Keyword> conditions, Set<Long> blockedCategoryIds) {
@@ -311,6 +319,12 @@ public class QuoteCommandService {
         Quote quote = new Quote(UUID.randomUUID().toString(), userId, roomId, menuName, items, excludedItems,
                 totalAmount, now, now.plus(QuoteRepository.QUOTE_TTL), conditions, substitutes, budget, options);
         quoteRepository.save(quote);
+        return quote;
+    }
+
+    // 수정하면 새 견적 ID로 다시 저장해서, 어떤 수정으로 생긴 견적인지 남김
+    private Quote edited(Quote quote, String action) {
+        log.info("견적 수정 quoteId={} action={}", quote.quoteId(), action);
         return quote;
     }
 

@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
-// 결제·환불 시드가 같이 쓰는 주문 넣기·지우기. 주문 API를 거치지 않으므로 선점·차감 재고도 여기서 같이 맞춘다
+// 주문·결제·환불 시드가 같이 쓰는 주문 넣기·지우기. 주문 API를 거치지 않으므로 선점·차감 재고도 여기서 같이 맞춘다
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "zelo.seed.load-test.enabled", havingValue = "true")
@@ -71,13 +71,13 @@ public class LoadTestOrderSeedSupport {
 
     public List<SeedProduct> readProducts() {
         return jdbcTemplate.query("""
-                        select p.id, p.name, p.price, p.content_amount, p.unit_label
+                        select p.id, p.product_code, p.name, p.price, p.content_amount, p.unit_label
                         from products p
                         join inventories i on i.product_id = p.id
                         where p.product_code like 'LT-%' and p.status = 'ON_SALE' and i.available_quantity >= 10
                         order by p.id""",
-                (rs, rowNum) -> new SeedProduct(rs.getLong("id"), rs.getString("name"), rs.getLong("price"),
-                        rs.getInt("content_amount") + rs.getString("unit_label")));
+                (rs, rowNum) -> new SeedProduct(rs.getLong("id"), rs.getString("product_code"), rs.getString("name"),
+                        rs.getLong("price"), rs.getInt("content_amount") + rs.getString("unit_label")));
     }
 
     // 주문 배송지는 사용자 시드의 기본 배송지를 그대로 복사한다
@@ -186,7 +186,7 @@ public class LoadTestOrderSeedSupport {
         }
     }
 
-    record SeedProduct(long id, String name, long price, String unit) {
+    record SeedProduct(long id, String code, String name, long price, String unit) {
     }
 
     record SeedAddress(String recipientName, String recipientPhone, String zipCode, String address) {

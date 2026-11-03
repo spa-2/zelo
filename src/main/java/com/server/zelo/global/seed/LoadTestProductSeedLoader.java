@@ -68,7 +68,7 @@ public class LoadTestProductSeedLoader {
             transactionTemplate.executeWithoutResult(status -> saveChunk(chunk, keywords));
         }
         List.of("products", "inventories", "product_keywords").forEach(table -> jdbcTemplate.execute("analyze " + table));
-        log.info("부하 테스트 상품 시드 저장 완료 추가 상품={}", last - existing);
+        log.info("부하 테스트 상품 시드 저장 완료 added={}", last - existing);
     }
 
     private List<SourceProduct> readSources() {

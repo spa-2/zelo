@@ -7,6 +7,7 @@ import com.server.zelo.domain.delivery.entity.DeliveryStatus;
 import com.server.zelo.domain.delivery.repository.DeliveryRepository;
 import com.server.zelo.domain.order.entity.ShippingAddress;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -28,8 +30,10 @@ public class DeliveryService {
     // 배송지는 결제 완료 시점의 기본 배송지를 복사해 둔다. 이후 사용자가 배송지를 바꾸거나 지워도 이미 접수된 배송은 바뀌지 않는다
     // 주문할 때 복사해 둔 배송지로 배송을 만든다. 주문 후 사용자가 기본 배송지를 바꾸거나 지워도 주문 때 주소로 배송된다
     public Delivery createDelivery(Long orderId, ShippingAddress address) {
-        return deliveryRepository.save(Delivery.of(orderId, address.getRecipientName(),
+        Delivery delivery = deliveryRepository.save(Delivery.of(orderId, address.getRecipientName(),
                 address.getRecipientPhone(), address.getZipCode(), address.getAddress(), null));
+        log.info("배송 접수 orderId={}, deliveryId={}", orderId, delivery.getId());
+        return delivery;
     }
 
     // 배송 준비가 일정 시간 지난 배송을 출고 처리한다. 변경은 변경 감지로 반영된다
@@ -61,6 +65,7 @@ public class DeliveryService {
         Delivery delivery = getDelivery(orderId);
         delivery.release();
         delivery.cancel(LocalDateTime.now());
+        log.info("전액 환불로 배송 취소 orderId={}", orderId);
     }
 
     public Optional<Delivery> findDelivery(Long orderId) {
@@ -92,6 +97,7 @@ public class DeliveryService {
             delivery.release();
         }
         delivery.cancel(LocalDateTime.now());
+        log.info("포트원 취소 반영으로 배송 취소 orderId={}", orderId);
         return true;
     }
 }

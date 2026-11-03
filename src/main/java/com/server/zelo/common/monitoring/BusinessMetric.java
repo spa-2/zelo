@@ -26,6 +26,10 @@ public enum BusinessMetric {
     // 결제
     PAYMENT_RESULT("zelo.payment.result", "결제 결과 수 (status)"),
 
+    // 배송. status는 스케줄러가 넘기려던 다음 상태(SHIPPING, DELIVERED)
+    DELIVERY_PROGRESSED("zelo.delivery.progressed", "스케줄러가 다음 단계로 넘긴 배송 수 (status)"),
+    DELIVERY_SCHEDULER_FAILED("zelo.delivery.scheduler.failed", "배송 자동 진행 실패 수 (status)"),
+
     // LLM. outcome은 SUCCESS 또는 실패 코드(AI_xxx)
     LLM_CALL("zelo.llm.call", "LLM 호출 1건 시간, 재시도 포함 (operation, outcome)"),
     LLM_ATTEMPT("zelo.llm.attempt", "LLM 시도 1번 시간 (operation, outcome)"),

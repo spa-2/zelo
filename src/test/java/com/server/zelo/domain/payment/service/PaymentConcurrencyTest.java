@@ -1,44 +1,46 @@
 package com.server.zelo.domain.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
-import com.server.zelo.domain.order.entity.ActorType;
-import com.server.zelo.domain.order.entity.Order;
-import com.server.zelo.domain.order.entity.ShippingAddress;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
+import com.server.zelo.domain.delivery.entity.Delivery;
+import com.server.zelo.domain.delivery.repository.DeliveryRepository;
+import com.server.zelo.domain.inventory.entity.Inventory;
+import com.server.zelo.domain.inventory.repository.InventoryRepository;
+import com.server.zelo.domain.order.entity.OrderStatus;
 import com.server.zelo.domain.order.repository.OrderRepository;
-import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
 import com.server.zelo.domain.payment.entity.Payment;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
 import com.server.zelo.domain.payment.repository.PaymentRepository;
-import com.server.zelo.domain.user.entity.User;
-import com.server.zelo.domain.user.repository.UserRepository;
+import com.server.zelo.domain.portone.client.PortOneClient;
+import com.server.zelo.support.Concurrency;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import com.server.zelo.support.Concurrency.Result;
 
-// 여러 스레드가 커밋된 데이터를 함께 봐야 해서 @Transactional 대신 테스트가 만든 데이터를 직접 지운다
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(Concurrency.class)
 class PaymentConcurrencyTest {
 
     private static final int THREAD_COUNT = 10;
+
+    @MockitoSpyBean
+    private PortOneClient portOneClient;
 
     @Autowired
     private PaymentFacade paymentFacade;
 
     @Autowired
-    private UserRepository userRepository;
+    private Concurrency fixture;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -47,90 +49,67 @@ class PaymentConcurrencyTest {
     private PaymentRepository paymentRepository;
 
     @Autowired
-    private TransactionTemplate transactionTemplate;
+    private DeliveryRepository deliveryRepository;
 
-    private Long userId;
-    private Long orderId;
+    @Autowired
+    private InventoryRepository inventoryRepository;
+
+    private Concurrency.SavedOrder savedOrder;
 
     @AfterEach
     void tearDown() {
-        paymentRepository.deleteAll(findPayments(orderId));
-        orderRepository.deleteById(orderId);
-        userRepository.deleteById(userId);
+        fixture.delete(savedOrder);
     }
 
     @Test
     void 같은_주문에_재결제를_동시에_요청해도_새_결제는_하나만_생긴다() throws InterruptedException {
         // given
-        saveFailedOrder();
+        savedOrder = fixture.saveOrderWithFailedPayment();
         Set<String> portoneIds = ConcurrentHashMap.newKeySet();
-        AtomicInteger failCount = new AtomicInteger();
 
         // when
-        runConcurrently(() -> {
-            try {
-                RetryPaymentResponse response = paymentFacade.retryPayment(userId, orderId);
-                portoneIds.add(response.portoneId());
-            } catch (RuntimeException e) {
-                failCount.incrementAndGet();
-            }
-        });
+        Result result = fixture.runConcurrently(THREAD_COUNT, () -> portoneIds.add(
+                paymentFacade.retryPayment(savedOrder.userId(), savedOrder.orderId()).portoneId()));
 
         // then
-        List<Payment> payments = findPayments(orderId);
-        assertThat(failCount).hasValue(0);
+        List<Payment> payments = findPayments();
         assertThat(payments).hasSize(2);
         assertThat(payments).filteredOn(Payment::isReady).hasSize(1);
         assertThat(portoneIds).hasSize(1);
+        assertThat(result.failures()).isEmpty();
     }
 
-    // 결제창에서 실패한 주문: 주문은 결제 대기로 남고 결제 하나가 FAILED
-    private void saveFailedOrder() {
-        transactionTemplate.executeWithoutResult(status -> {
-            User user = userRepository.save(
-                    User.of("concurrency-" + token() + "@test.dev", "test-password", "동시성 테스트", "01012345678"));
-            Order order = orderRepository.save(Order.of(user, "CONCURRENCY-" + token(), "동시성 테스트 주문",
-                    ActorType.USER, null, 3_000L, ShippingAddress.of("홍길동", "01012345678", "12345", "테스트 주소")));
-            Payment failed = Payment.of(order.getId(), "payment-concurrency-" + token(), 3_000L);
-            failed.fail("테스트 결제 실패");
-            paymentRepository.save(failed);
-            userId = user.getId();
-            orderId = order.getId();
-        });
+    // 프론트 확인·웹훅·대사 스케줄러가 같은 결제를 동시에 확인하는 상황
+    @Test
+    void 같은_결제를_동시에_확인해도_포트원_조회와_재고_차감은_한_번만_일어난다() throws InterruptedException {
+        // given
+        savedOrder = fixture.saveOrderWithReadyPayment();
+        Set<PaymentStatus> results = ConcurrentHashMap.newKeySet();
+
+        // when
+        Result result = fixture.runConcurrently(THREAD_COUNT,
+                () -> results.add(paymentFacade.confirmPayment(savedOrder.portoneId())));
+
+        // then
+        Inventory inventory = inventoryRepository.findById(savedOrder.stock().inventoryId()).orElseThrow();
+        assertThat(results).containsExactly(PaymentStatus.PAID);
+        then(portOneClient).should(times(1)).getPayment(savedOrder.portoneId());
+        assertThat(orderRepository.findById(savedOrder.orderId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(inventory.getStockQuantity()).isEqualTo(9);
+        assertThat(inventory.getReservedQuantity()).isZero();
+        assertThat(findDeliveries()).hasSize(1);
+        assertThat(result.failures()).isEmpty();
     }
 
-    // 모든 스레드를 준비시킨 뒤 같은 순간에 출발시켜 요청이 최대한 겹치게 한다
-    private void runConcurrently(Runnable task) throws InterruptedException {
-        ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
-        CountDownLatch ready = new CountDownLatch(THREAD_COUNT);
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(THREAD_COUNT);
-        for (int i = 0; i < THREAD_COUNT; i++) {
-            executor.submit(() -> {
-                ready.countDown();
-                try {
-                    start.await();
-                    task.run();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
-        ready.await();
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
-    }
-
-    private List<Payment> findPayments(Long orderId) {
+    private List<Payment> findPayments() {
         return paymentRepository.findAll().stream()
-                .filter(payment -> payment.getOrderId().equals(orderId))
+                .filter(payment -> payment.getOrderId().equals(savedOrder.orderId()))
                 .toList();
     }
 
-    private static String token() {
-        return UUID.randomUUID().toString().substring(0, 8);
+    private List<Delivery> findDeliveries() {
+        return deliveryRepository.findAll().stream()
+                .filter(delivery -> delivery.getOrderId().equals(savedOrder.orderId()))
+                .toList();
     }
 }

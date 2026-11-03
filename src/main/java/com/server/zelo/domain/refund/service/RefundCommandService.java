@@ -2,6 +2,8 @@ package com.server.zelo.domain.refund.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
@@ -37,6 +39,7 @@ public class RefundCommandService {
     private final PortOneClient portOneClient;
     private final RefundService refundService;
     private final PaymentService paymentService;
+    private final BusinessMetrics businessMetrics;
     private final DeliveryService deliveryService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
@@ -59,7 +62,8 @@ public class RefundCommandService {
                     target.amount(), target.cancellableAmount(), reason);
         } catch (BusinessException e) {
             if (!isRejected(e)) {
-                log.warn("환불 결과 불명확 refundId={}, errorCode={}", target.refundId(), e.getErrorCode());
+                log.warn("환불 결과 불명확 refundId={} code={}", target.refundId(), e.getErrorCode().getCode());
+                countResult(RefundStatus.REQUESTED);
                 return RefundStatus.REQUESTED;
             }
             failRefund(orderId, target.refundId());
@@ -75,7 +79,8 @@ public class RefundCommandService {
         }
         // 취소가 확정되기 전에 완료하면 돈은 그대로인데 주문과 재고만 취소되므로 요청됨으로 둔다
         if (cancellation != PortOneCancellationStatus.SUCCEEDED) {
-            log.warn("포트원 취소 처리 중 refundId={}, status={}", target.refundId(), cancellation);
+            log.warn("포트원 취소 처리 중 refundId={} status={}", target.refundId(), cancellation);
+            countResult(RefundStatus.REQUESTED);
             return RefundStatus.REQUESTED;
         }
 
@@ -90,14 +95,20 @@ public class RefundCommandService {
                 deliveryService.releaseHold(orderId);
             }
         });
+        log.info("환불 완료 refundId={} orderId={} amount={} cancelsAll={}",
+                target.refundId(), orderId, target.amount(), target.cancelsAll());
+        countResult(RefundStatus.COMPLETED);
         return RefundStatus.COMPLETED;
     }
 
+    // 실패 원인은 포트원 클라이언트가 남기므로 여기서는 결과만 남긴다
     private void failRefund(Long orderId, Long refundId) {
         transactionOperations.executeWithoutResult(status -> {
             refundService.fail(refundId);
             deliveryService.releaseHold(orderId);
         });
+        log.warn("환불 실패 refundId={} orderId={}", refundId, orderId);
+        countResult(RefundStatus.FAILED);
     }
 
     private RefundTarget requestRefund(Long userId, Long orderId, String reason, Map<Long, Integer> requested) {
@@ -158,7 +169,7 @@ public class RefundCommandService {
             return;
         }
         if (!pgPayment.isCancelled()) {
-            log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={}, status={}", portoneId, pgPayment.status());
+            log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={} status={}", portoneId, pgPayment.status());
             return;
         }
 
@@ -169,14 +180,17 @@ public class RefundCommandService {
                 return;
             }
             refundService.findRequestedRefund(payment.getId()).ifPresentOrElse(
-                    refund -> refundService.complete(refund.getId(), LocalDateTime.now()),
+                    refund -> {
+                        refundService.complete(refund.getId(), LocalDateTime.now());
+                        countResult(RefundStatus.COMPLETED);
+                    },
                     () -> recordCancellation(orderId, payment.getId()));
             paymentService.cancel(portoneId, payment.getPgAmount());
             // 이미 출고된 주문은 상품을 회수하기 전이라 주문 취소와 재고 복원을 하지 않고 운영 회수 절차에 맡긴다
             if (deliveryService.cancelDeliveryIfPossible(orderId)) {
                 orderCommandService.cancelIfPossible(orderId);
             } else {
-                log.warn("출고 후 포트원에서 취소된 주문이라 회수가 필요함 orderId={}", orderId);
+                log.error("출고 후 포트원에서 취소된 주문이라 회수가 필요함 orderId={}", orderId);
             }
         });
     }
@@ -197,7 +211,8 @@ public class RefundCommandService {
         Optional<RefundRetry> retry = Objects.requireNonNull(
                 transactionOperations.execute(status -> findRequestedRefundTarget(pgPayment.portoneId())));
         if (retry.isEmpty()) {
-            log.warn("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={}, portoneId={}", orderId, pgPayment.portoneId());
+            // DB에 반영하지 않고 끝나므로 사람이 맞춰야 한다
+            log.error("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={} portoneId={}", orderId, pgPayment.portoneId());
             return;
         }
         RefundTarget target = retry.get().target();
@@ -234,13 +249,15 @@ public class RefundCommandService {
             refundService.findRequestedRefund(payment.getId()).ifPresent(refund -> {
                 refundService.fail(refund.getId());
                 deliveryService.releaseHold(orderId);
+                log.warn("포트원에서 취소되지 않아 환불 실패 처리 refundId={} orderId={}", refund.getId(), orderId);
+                countResult(RefundStatus.FAILED);
             });
         });
     }
 
     // 주문 내역의 결제 금액이 맞도록 남은 상품 전부를 환불한 기록을 완료 상태로 남긴다
     private void recordCancellation(Long orderId, Long paymentId) {
-        log.warn("환불 요청 없이 포트원에서 취소된 결제 orderId={}, paymentId={}", orderId, paymentId);
+        log.warn("환불 요청 없이 포트원에서 취소된 결제 orderId={} paymentId={}", orderId, paymentId);
         Order order = orderService.getOrderWithItems(orderId);
         Refund refund = Refund.of(paymentId, RefundType.FULL, EXTERNAL_CANCEL_REASON);
         order.getOrderItems().stream()
@@ -251,6 +268,10 @@ public class RefundCommandService {
         }
         refund.complete(LocalDateTime.now());
         refundService.createRefund(refund);
+        businessMetrics.count(BusinessMetric.REFUND_RESULT, "status", "EXTERNAL_CANCELED");
     }
 
+    private void countResult(RefundStatus status) {
+        businessMetrics.count(BusinessMetric.REFUND_RESULT, "status", status.name());
+    }
 }

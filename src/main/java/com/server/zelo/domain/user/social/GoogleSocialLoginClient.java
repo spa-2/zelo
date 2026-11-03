@@ -22,6 +22,7 @@ import org.springframework.web.client.*;
 @ConditionalOnProperty(name = "zelo.social.mode", havingValue = "real")
 public class GoogleSocialLoginClient implements SocialLoginClient {
 
+    private final SocialApiMetrics socialApiMetrics;
     private final RestClient googleSocialRestClient;
     private final GoogleOAuthProperties googleOAuthProperties;
 
@@ -32,11 +33,14 @@ public class GoogleSocialLoginClient implements SocialLoginClient {
 
     @Override
     public SocialProfile getProfile(String code, String redirectUri, String codeVerifier) {
+
         // 1. 구글로부터 Access Token 받아오기
-        SocialTokenResponse tokenResponse = fetchGoogleToken(code, redirectUri, codeVerifier);
+        SocialTokenResponse tokenResponse = socialApiMetrics.measure(
+                getProvider(),"TOKEN", () -> fetchGoogleToken(code, redirectUri, codeVerifier));
 
         // 2. Access Token을 이용해 구글 사용자 정보 가져오기
-        GoogleUserInfoResponse userInfoResponse = getUserInfo(tokenResponse.accessToken());
+        GoogleUserInfoResponse userInfoResponse = socialApiMetrics.measure(
+                getProvider(),"USER_INFO", () -> getUserInfo(tokenResponse.accessToken()));
 
         // 이메일 검증 여부가 null이면 false를 반환
         return SocialProfile.of(
@@ -93,7 +97,7 @@ public class GoogleSocialLoginClient implements SocialLoginClient {
                 throw new BusinessException(ErrorCode.SOCIAL_PROVIDER_UNAVAILABLE);
             }
 
-            log.error("구글 토큰 교환 실패 (4xx), 상태코드: {}, 응답: {}", e.getStatusCode(), responseBody);
+            log.warn("구글 토큰 교환 실패 (4xx), 상태코드: {}, 응답: {}", e.getStatusCode(), responseBody);
             throw new BusinessException(ErrorCode.SOCIAL_AUTH_FAILED);
         } catch (RestClientException e) {
             // 응답 본문을 해석하지 못한 경우 등 (그대로 두면 500)

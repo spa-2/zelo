@@ -3,6 +3,8 @@ package com.server.zelo.domain.user.service;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.dto.request.CreateSocialUserRequest;
 import com.server.zelo.domain.user.dto.request.SocialLoginRequest;
 import com.server.zelo.domain.user.dto.response.ExistingMemberResult;
@@ -16,6 +18,7 @@ import com.server.zelo.domain.user.entity.UserRole;
 import com.server.zelo.domain.user.social.SocialLoginClient;
 import com.server.zelo.domain.user.social.SocialProfile;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,12 +26,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SocialCommandService {
 
     private final JwtUtil jwtUtil;
     private final UserService userService;
+    private final BusinessMetrics businessMetrics;
     private final UserAddressService userAddressService;
     private final RefreshTokenService refreshTokenService;
     private final SocialAccountService socialAccountService;
@@ -50,6 +55,9 @@ public class SocialCommandService {
                 socialUser, request.place(), socialUser.getName(), socialUser.getPhoneNumber(),
                 request.zipCode(), request.addresses(), true);
 
+        businessMetrics.count(BusinessMetric.USER_CREATED, "method", profile.provider().name());
+        log.info("회원 가입 완료 userId={} method={}", socialUser.getId(), profile.provider().name());
+
         return loginWithSocial(socialUser.getId(), socialUser.getRole());
     }
 
@@ -70,6 +78,10 @@ public class SocialCommandService {
         Optional<SocialAccount> socialAccount = socialAccountService.findByProviderAndProviderId(profile.provider(), profile.providerId());
         if (socialAccount.isPresent()){
             LoginResult result = loginWithSocial(socialAccount.get().getUser().getId(), socialAccount.get().getUser().getRole());
+
+            businessMetrics.count(BusinessMetric.USER_LOGIN, "method", profile.provider().name());
+            log.info("로그인 성공 userId={} method={}", socialAccount.get().getUser().getId(), profile.provider().name());
+
             return new ExistingMemberResult(result.accessToken(), result.refreshToken());
         }
 
@@ -83,6 +95,10 @@ public class SocialCommandService {
 
         // 회원가입 시 사용할 정보를 30분 저장
         String signupTicket = socialSignupTicketService.issue(profile);
+
+        // 가입률 비교를 위해 남김
+        businessMetrics.count(BusinessMetric.SOCIAL_SIGNUP_PENDING, "method", profile.provider().name());
+
         // 가입 화면에 미리 채워 주는 이름과 실제로 저장되는 이름이 같도록 같은 값을 씀
         return new NewMemberResult(signupTicket, profile.email(), profile.displayName());
     }

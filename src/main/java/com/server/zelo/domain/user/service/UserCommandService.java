@@ -3,6 +3,8 @@ package com.server.zelo.domain.user.service;
 import com.server.zelo.common.auth.JwtUtil;
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.dto.request.ResetPasswordRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserAddressRequest;
 import com.server.zelo.domain.user.dto.request.CreateUserRequest;
@@ -16,15 +18,18 @@ import com.server.zelo.domain.user.entity.User;
 import com.server.zelo.domain.user.entity.UserAddress;
 import com.server.zelo.domain.user.entity.UserRole;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserCommandService {
 
     private final JwtUtil jwtUtil;
     private final UserService userService;
+    private final BusinessMetrics businessMetrics;
     private final UserAddressService userAddressService;
     private final RefreshTokenService refreshTokenService;
     private final LoginAttemptService loginAttemptService;
@@ -46,6 +51,9 @@ public class UserCommandService {
                 user, request.place(), user.getName(), user.getPhoneNumber(),
                 request.zipCode(), request.addresses(), true);
 
+        businessMetrics.count(BusinessMetric.USER_CREATED, "method", "EMAIL");
+        log.info("회원 가입 완료 userId={} method={}", user.getId(), "EMAIL");
+
         return CreateUserResponse.of(user.getId(), user.getEmail(), user.getName(), userAddress.getPlace(),
                 userAddress.getAddress(), userAddress.getZipCode(), user.getCreatedAt());
     }
@@ -64,6 +72,9 @@ public class UserCommandService {
         String accessToken = jwtUtil.createAccessToken(user.getId(), user.getRole());
         String refreshToken = jwtUtil.createRefreshToken(user.getId(), user.getRole());
         refreshTokenService.saveRefreshToken(user.getId(), refreshToken);
+
+        businessMetrics.count(BusinessMetric.USER_LOGIN, "method", "EMAIL");
+        log.info("로그인 성공 userId={} method={}", user.getId(), "EMAIL");
 
         return LoginResult.of(accessToken, refreshToken);
     }
@@ -94,6 +105,10 @@ public class UserCommandService {
         String newRefreshToken = jwtUtil.createRefreshToken(userId, role);
         // 리프레스 토큰이 유효할때만 새로운 토큰으로 응답
         refreshTokenService.rotateToken(userId, refreshToken, newRefreshToken);
+
+        // 로그인이 유지되는 동안 주기적으로 일어나서 로그는 남기지 않음 (재사용 감지 WARN은 RefreshTokenService가 남김)
+        businessMetrics.count(BusinessMetric.TOKEN_REISSUED);
+
         return LoginResult.of(newAccessToken, newRefreshToken);
     }
 
@@ -116,6 +131,9 @@ public class UserCommandService {
 
         // 리프레시 토큰 폐기
         refreshTokenService.deleteRefreshToken(user.getId());
+
+        businessMetrics.count(BusinessMetric.USER_PASSWORD_RESET);
+        log.info("비밀번호 재설정 완료 userId={}", user.getId());
     }
 
     private void validatePassword(String password, String passwordConfirm) {

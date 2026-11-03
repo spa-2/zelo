@@ -4,6 +4,8 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.RateLimitExceededException;
 import com.server.zelo.common.mail.EmailSender;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.user.emailverification.dto.CodeValidationResult;
 import com.server.zelo.domain.user.emailverification.dto.ValidateEmailResponse;
 import com.server.zelo.domain.user.emailverification.entity.EmailVerificationPurpose;
@@ -52,6 +54,9 @@ class EmailVerificationCommandServiceTest {
     private SecureRandom secureRandom;
 
     @Mock
+    private BusinessMetrics businessMetrics;
+
+    @Mock
     private EmailVerificationRepository emailVerificationRepository;
 
     @Test
@@ -69,6 +74,7 @@ class EmailVerificationCommandServiceTest {
         InOrder inOrder = inOrder(emailVerificationRepository, emailSender);
         inOrder.verify(emailVerificationRepository).saveCode(EMAIL, PURPOSE, "123456", CODE_TTL);
         inOrder.verify(emailSender).send(anyString(), anyString(), anyString());
+        then(businessMetrics).should().count(BusinessMetric.EMAIL_VERIFICATION_SENT, "purpose", "SIGNUP");
     }
 
     @Test
@@ -87,6 +93,8 @@ class EmailVerificationCommandServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.EMAIL_SEND_FAILED);
         then(emailVerificationRepository).should().rollbackSend(EMAIL, PURPOSE);
+        // 보내지 못한 메일을 발송 성공으로 세면 안 됨
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @Test
@@ -214,6 +222,7 @@ class EmailVerificationCommandServiceTest {
         assertThat(response.emailVerificationTicket()).isEqualTo("A".repeat(43));
         then(emailVerificationRepository).should()
                 .saveTicket(response.emailVerificationTicket(), PURPOSE, EMAIL, Duration.ofMinutes(30));
+        then(businessMetrics).should().count(BusinessMetric.EMAIL_VERIFICATION_CONFIRMED, "purpose", "SIGNUP");
     }
 
     @ParameterizedTest
@@ -233,6 +242,7 @@ class EmailVerificationCommandServiceTest {
                 .isEqualTo(expected);
 
         then(emailVerificationRepository).should(never()).saveTicket(anyString(), any(), anyString(), any());
+        then(businessMetrics).shouldHaveNoInteractions();
     }
 
     @ParameterizedTest

@@ -11,13 +11,16 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.dto.response.GetPopularKeywordResponse;
 import com.server.zelo.domain.product.repository.PopularKeywordRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
@@ -27,6 +30,11 @@ class PopularKeywordServiceTest {
 
     @Mock
     private PopularKeywordRepository popularKeywordRepository;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
 
     @InjectMocks
     private PopularKeywordService popularKeywordService;
@@ -58,6 +66,8 @@ class PopularKeywordServiceTest {
 
         // when, then
         assertThatCode(() -> popularKeywordService.record("김치")).doesNotThrowAnyException();
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_KEYWORD").tag("operation", "WRITE")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -84,5 +94,7 @@ class PopularKeywordServiceTest {
 
         // then
         assertThat(result).isEmpty();
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_KEYWORD").tag("operation", "READ")
+                .counter().count()).isEqualTo(1);
     }
 }

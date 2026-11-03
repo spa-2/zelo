@@ -10,8 +10,10 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.repository.PopularProductRepository;
 import com.server.zelo.domain.product.repository.ProductSalesQueryRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
@@ -34,6 +37,11 @@ class PopularProductServiceTest {
 
     @Mock
     private ProductSalesQueryRepository productSalesQueryRepository;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
 
     @InjectMocks
     private PopularProductService popularProductService;
@@ -80,6 +88,8 @@ class PopularProductServiceTest {
 
         // when & then
         assertThatCode(() -> popularProductService.record(1L, 3)).doesNotThrowAnyException();
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_PRODUCT").tag("operation", "WRITE")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -94,6 +104,8 @@ class PopularProductServiceTest {
 
         // then
         assertThat(top).containsExactly(Map.entry(9L, 5L));
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_PRODUCT").tag("operation", "READ")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test

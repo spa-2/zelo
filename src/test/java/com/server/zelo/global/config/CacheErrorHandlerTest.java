@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
 
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.dto.response.GetCategoryResponse;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
@@ -18,6 +19,7 @@ import com.server.zelo.domain.product.repository.ProductRepository;
 import com.server.zelo.domain.product.service.CategoryService;
 import com.server.zelo.domain.product.service.ProductService;
 import com.server.zelo.domain.product.service.PopularProductService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -32,7 +34,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 // 아무것도 안 떠 있는 포트에 붙여서 Redis가 죽었을 때도 DB로 처리되는지 확인
-@SpringJUnitConfig({CacheConfig.class, CategoryService.class, ProductService.class, CacheErrorHandlerTest.BrokenRedisConfig.class})
+@SpringJUnitConfig({CacheConfig.class, CategoryService.class, ProductService.class, BusinessMetrics.class,
+        CacheErrorHandlerTest.BrokenRedisConfig.class})
 class CacheErrorHandlerTest {
 
     @Autowired
@@ -40,6 +43,9 @@ class CacheErrorHandlerTest {
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private SimpleMeterRegistry meterRegistry;
 
     @MockitoBean
     private CategoryRepository categoryRepository;
@@ -69,6 +75,8 @@ class CacheErrorHandlerTest {
         // then
         assertThat(result).extracting(GetCategoryResponse::name).containsExactly("국·반찬");
         then(categoryRepository).should(times(1)).findAllByOrderByIdAsc();
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "CACHE").tag("operation", "READ")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -97,6 +105,11 @@ class CacheErrorHandlerTest {
         @Bean
         JsonMapper jsonMapper() {
             return JsonMapper.builder().build();
+        }
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
         }
     }
 }

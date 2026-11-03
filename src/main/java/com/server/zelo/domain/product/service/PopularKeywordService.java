@@ -1,5 +1,7 @@
 package com.server.zelo.domain.product.service;
 
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.dto.response.GetPopularKeywordResponse;
 import com.server.zelo.domain.product.repository.PopularKeywordRepository;
 import java.time.LocalDateTime;
@@ -20,6 +22,7 @@ public class PopularKeywordService {
 
     private static final int LIMIT = 10;
 
+    private final BusinessMetrics businessMetrics;
     private final PopularKeywordRepository popularKeywordRepository;
 
     public void record(String keyword) {
@@ -31,6 +34,7 @@ public class PopularKeywordService {
             popularKeywordRepository.increase(normalized, LocalDateTime.now());
         } catch (DataAccessException e) {
             log.warn("인기 검색어 기록 실패 error={}", e.getMessage());
+            businessMetrics.count(BusinessMetric.REDIS_FALLBACK, "target", "POPULAR_KEYWORD", "operation", "WRITE");
         }
     }
 
@@ -42,6 +46,7 @@ public class PopularKeywordService {
                     .toList();
         } catch (DataAccessException e) {
             log.warn("인기 검색어 조회 실패 error={}", e.getMessage());
+            businessMetrics.count(BusinessMetric.REDIS_FALLBACK, "target", "POPULAR_KEYWORD", "operation", "READ");
             return List.of();
         }
     }

@@ -29,6 +29,9 @@ public enum BusinessMetric {
     QUOTE_EXCLUDED("zelo.quote.excluded", "견적에서 빠진 품목 수 (reason)"),
     QUOTE_CREATE_TIME("zelo.quote.create.time", "견적 발급 시간"),
 
+    // 상품·캐시. Redis가 안 돼서 건너뛰거나 DB로 대체한 수. target은 POPULAR_PRODUCT, POPULAR_KEYWORD, CACHE
+    REDIS_FALLBACK("zelo.redis.fallback", "Redis 실패로 건너뛰거나 DB로 대체한 수 (target, operation)"),
+
     // 주문
     ORDER_CREATED("zelo.order.created", "주문 생성 수"),
     ORDER_REJECTED("zelo.order.rejected", "주문 거부 수 (reason)"),

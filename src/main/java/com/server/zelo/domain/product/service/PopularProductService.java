@@ -1,5 +1,7 @@
 package com.server.zelo.domain.product.service;
 
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.repository.PopularProductRepository;
 import com.server.zelo.domain.product.repository.ProductSalesQueryRepository;
 import java.time.LocalDate;
@@ -20,6 +22,7 @@ public class PopularProductService {
 
     private static final int WINDOW_DAYS = 7;
 
+    private final BusinessMetrics businessMetrics;
     private final PopularProductRepository popularProductRepository;
     private final ProductSalesQueryRepository productSalesQueryRepository;
 
@@ -46,6 +49,7 @@ public class PopularProductService {
             return top;
         } catch (DataAccessException e) {
             log.warn("인기 상품 Redis 조회 실패, DB로 계산함 error={}", e.getMessage());
+            businessMetrics.count(BusinessMetric.REDIS_FALLBACK, "target", "POPULAR_PRODUCT", "operation", "READ");
             return productSalesQueryRepository.findTopSince(LocalDate.now().minusDays(WINDOW_DAYS - 1L).atStartOfDay(), limit);
         }
     }
@@ -54,7 +58,8 @@ public class PopularProductService {
         try {
             popularProductRepository.increase(productId, quantity, LocalDate.now());
         } catch (DataAccessException e) {
-            log.warn("인기 상품 기록 실패 productId={}, error={}", productId, e.getMessage());
+            log.warn("인기 상품 기록 실패 productId={} error={}", productId, e.getMessage());
+            businessMetrics.count(BusinessMetric.REDIS_FALLBACK, "target", "POPULAR_PRODUCT", "operation", "WRITE");
         }
     }
 }

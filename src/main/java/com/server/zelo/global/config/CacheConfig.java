@@ -1,12 +1,16 @@
 package com.server.zelo.global.config;
 
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import com.server.zelo.domain.product.dto.response.GetCategoryResponse;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.model.ProductDetail;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.Cache;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -28,6 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 // 캐시를 트랜잭션 바깥에서 처리해서 관리자 수정이 커밋된 뒤에 상세 캐시를 지움 (커밋 전에 지우면 옛 값이 다시 캐시될 수 있음)
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 @EnableCaching(order = Ordered.HIGHEST_PRECEDENCE)
 @ConditionalOnProperty(name = "zelo.cache.enabled", havingValue = "true", matchIfMissing = true)
 public class CacheConfig implements CachingConfigurer {
@@ -42,6 +47,9 @@ public class CacheConfig implements CachingConfigurer {
 
     // 락 잡은 서버가 죽어도 이 시간 뒤엔 풀리게 함
     private static final Duration LOCK_TIMEOUT = Duration.ofSeconds(10);
+
+    // 캐시 설정은 앱이 뜰 때 일찍 만들어져서, 지표 빈은 캐시 오류가 났을 때 꺼내 씀
+    private final ObjectProvider<BusinessMetrics> businessMetrics;
 
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory redisConnectionFactory, JsonMapper jsonMapper) {
@@ -71,17 +79,19 @@ public class CacheConfig implements CachingConfigurer {
 
             @Override
             public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
-                log.warn("캐시 조회 실패 cache={}, error={}", cache.getName(), exception.getMessage());
+                log.warn("캐시 조회 실패 cache={} error={}", cache.getName(), exception.getMessage());
+                businessMetrics.getObject().count(BusinessMetric.REDIS_FALLBACK, "target", "CACHE", "operation", "READ");
             }
 
             @Override
             public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
-                log.warn("캐시 저장 실패 cache={}, error={}", cache.getName(), exception.getMessage());
+                log.warn("캐시 저장 실패 cache={} error={}", cache.getName(), exception.getMessage());
+                businessMetrics.getObject().count(BusinessMetric.REDIS_FALLBACK, "target", "CACHE", "operation", "WRITE");
             }
 
             @Override
             public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
-                log.error("캐시 삭제 실패 cache={}, key={}", cache.getName(), key, exception);
+                log.error("캐시 삭제 실패 cache={} key={}", cache.getName(), key, exception);
             }
 
             @Override

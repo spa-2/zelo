@@ -57,7 +57,7 @@ public class SeedDataLoader implements ApplicationRunner {
         Map<String, Category> categories = saveCategories();
         Map<String, Ingredient> ingredients = saveIngredients(categories);
         int productCount = saveProducts(ingredients);
-        log.info("시드 데이터 저장 완료 카테고리={}, 재료={}, 상품={}", categories.size(), ingredients.size(), productCount);
+        log.info("시드 데이터 저장 완료 categories={} ingredients={} products={}", categories.size(), ingredients.size(), productCount);
     }
 
     // 대분류가 소분류보다 위에 있어야 해서 파일 순서대로 저장함

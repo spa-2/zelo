@@ -2,6 +2,10 @@ package com.server.zelo.common.mail;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,13 +27,15 @@ class SesEmailSenderTest {
 
     private static final MailSenderProperties PROPERTIES = new MailSenderProperties("no-reply@zelo.com");
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     @Mock
     private SesClient sesClient;
 
     @Test
     void 발신자_수신자_제목_본문을_담아_발송한다() {
         // given
-        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, PROPERTIES);
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
 
         // when
         sesEmailSender.send("jieun@example.com", "[zelo] 이메일 검증 요청", "검증 코드는 123456 입니다.");
@@ -45,7 +51,7 @@ class SesEmailSenderTest {
     @Test
     void 제목과_본문의_문자_집합을_UTF_8로_지정한다() {
         // given
-        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, PROPERTIES);
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
 
         // when
         sesEmailSender.send("jieun@example.com", "한글 제목", "한글 본문");
@@ -59,7 +65,7 @@ class SesEmailSenderTest {
     @Test
     void SES가_거절하면_메일_발송_실패_예외로_바꾼다() {
         // given
-        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, PROPERTIES);
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
         willThrow(SesException.builder().message("rejected").build()).given(sesClient).sendEmail(any(SendEmailRequest.class));
 
         // when & then
@@ -72,7 +78,7 @@ class SesEmailSenderTest {
     @Test
     void 네트워크_오류나_타임아웃도_메일_발송_실패_예외로_바꾼다() {
         // given
-        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, PROPERTIES);
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
         willThrow(SdkClientException.create("timeout")).given(sesClient).sendEmail(any(SendEmailRequest.class));
 
         // when & then
@@ -80,6 +86,39 @@ class SesEmailSenderTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.EMAIL_SEND_FAILED);
+    }
+
+    @Test
+    void 발송에_성공하면_성공_결과로_호출_시간을_기록한다() {
+        // given
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
+
+        // when
+        sesEmailSender.send("jieun@example.com", "제목", "본문");
+
+        // then
+        assertThat(emailCallCount("SUCCESS")).isEqualTo(1);
+        assertThat(emailCallCount("FAILURE")).isZero();
+    }
+
+    @Test
+    void 발송에_실패하면_실패_결과로_호출_시간을_기록한다() {
+        // given
+        SesEmailSender sesEmailSender = new SesEmailSender(sesClient, new BusinessMetrics(meterRegistry), PROPERTIES);
+        willThrow(SesException.builder().message("rejected").build()).given(sesClient).sendEmail(any(SendEmailRequest.class));
+
+        // when
+        assertThatThrownBy(() -> sesEmailSender.send("jieun@example.com", "제목", "본문"))
+                .isInstanceOf(BusinessException.class);
+
+        // then
+        assertThat(emailCallCount("FAILURE")).isEqualTo(1);
+        assertThat(emailCallCount("SUCCESS")).isZero();
+    }
+
+    private long emailCallCount(String outcome) {
+        Timer timer = meterRegistry.find(BusinessMetric.EMAIL_API_CALL.getKey()).tag("outcome", outcome).timer();
+        return timer == null ? 0 : timer.count();
     }
 
     private SendEmailRequest captureRequest() {

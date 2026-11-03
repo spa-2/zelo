@@ -2,6 +2,8 @@ package com.server.zelo.domain.refund.service;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.server.zelo.domain.delivery.service.DeliveryService;
 import com.server.zelo.domain.order.entity.Order;
 import com.server.zelo.domain.order.entity.OrderItem;
@@ -62,7 +64,8 @@ class RefundCommandServiceTest {
     @BeforeEach
     void setUp() {
         refundCommandService = new RefundCommandService(orderService, portOneClient, refundService, paymentService,
-                deliveryService, orderCommandService, TransactionOperations.withoutTransaction());
+                new BusinessMetrics(new SimpleMeterRegistry()), deliveryService, orderCommandService,
+                TransactionOperations.withoutTransaction());
     }
 
     @Test

@@ -189,6 +189,28 @@ class OrderCreationCommandServiceTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = OrderStatus.class, names = {"CANCELED", "PAYMENT_FAILED"})
+    void 이미_끝난_주문의_견적으로_다시_주문하면_기존_주문을_돌려주지_않고_거부한다(OrderStatus status) {
+        // given
+        Order existing = existingOrder();
+        if (status == OrderStatus.CANCELED) {
+            existing.cancel();
+        } else {
+            existing.failPayment();
+        }
+        given(orderService.findOwnedOrderByQuoteId(USER_ID, QUOTE_ID)).willReturn(Optional.of(existing));
+
+        // when
+        // then
+        assertError(ErrorCode.ORDER_ALREADY_CLOSED);
+        then(paymentService).should(never()).getLatestPayment(any());
+        then(paymentService).should(never()).createPayment(any(), any());
+        then(orderService).should(never()).createOrder(any());
+        verifyNoInteractions(quoteService, chatRoomService, productService, userService,
+                userAddressService, inventoryService);
+    }
+
+    @ParameterizedTest
     @EnumSource(value = ErrorCode.class, names = {"INVALID_INPUT", "NO_AUTHORITY"})
     void 확인정보_검증에_실패하면_후속_처리를_하지_않는다(ErrorCode code) {
         // given

@@ -157,6 +157,10 @@ public class OrderCommandService {
         // 견적 조회·검증 (Mock)
         Quote quote = quoteService.validateForOrder(request.roomId(), userId, request.quoteId());
 
+        // 취소된 주문의 견적은 주문 단계에서 어차피 거부되므로 확인 정보를 발급하기 전에 막음
+        orderService.findOwnedOrderByQuoteId(userId, request.quoteId())
+                .ifPresent(this::validateNotClosed);
+
         // 기본 배송지 조회
         GetUserAddressResponse defaultAddress = userAddressService.getUserAddresses(userId).stream()
                 .filter(GetUserAddressResponse::isDefault)
@@ -597,6 +601,8 @@ public class OrderCommandService {
     }
 
     private CreateOrderResult toExistingOrderResult(Order order) {
+        validateNotClosed(order);
+
         // 재요청마다 결제를 새로 만들지 않고 이미 발급된 결제 번호를 반환한다.
         Payment payment = paymentService.getLatestPayment(order.getId());
 
@@ -608,5 +614,12 @@ public class OrderCommandService {
                 ),
                 false
         );
+    }
+
+    // quote_id가 유니크라 끝난 주문의 견적으로는 새 주문을 만들 수 없음. 끝난 주문을 그대로 돌려주면 결제가 실패하므로 새 견적을 받게 함
+    private void validateNotClosed(Order order) {
+        if (order.getStatus() == OrderStatus.CANCELED || order.getStatus() == OrderStatus.PAYMENT_FAILED) {
+            throw new BusinessException(ErrorCode.ORDER_ALREADY_CLOSED);
+        }
     }
 }

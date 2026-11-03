@@ -31,7 +31,7 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private String phoneNumber;
 
-    // 회원가입 시 기본 역할인 Basic이고 Admin은 시드(LoadTestUserSeedLoader)로 넣는다.
+    // 회원가입 시 기본 역할인 Basic이고 Admin은 시드(AdminSeedLoader)로 넣는다.
     @Enumerated(EnumType.STRING)
     @Column(nullable = false,length = 20)
     private UserRole role;

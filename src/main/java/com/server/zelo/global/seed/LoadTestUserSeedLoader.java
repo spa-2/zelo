@@ -1,14 +1,12 @@
 package com.server.zelo.global.seed;
 
 import com.server.zelo.common.bean.PasswordEncoder;
-import com.server.zelo.domain.user.entity.User;
-import com.server.zelo.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +21,9 @@ import java.util.stream.IntStream;
 // 부하 테스트용 더미 사용자 데이터. 사용자 3만 명(id 1~30000)과 소셜 계정, 배송지를 JdbcTemplate 배치로 넣음
 // 기존 시드(zelo.seed.enabled)가 운영 배포에서 켜질 수 있어서 별도 속성(ZELO_SEED_LOAD_TEST_ENABLED=true)일 때만 돌게 분리함
 // 사용자 id를 직접 지정하므로 끝나면 시퀀스를 맞춰 줌. 안 맞추면 이후 실제 가입에서 PK가 중복됨
-// 관리자는 가입 API가 없어서 이 시드로 만들고, 더미 사용자 뒤(id 30001)에 하나만 생성함
-// 관리자 이메일·비번은 코드에 안 남기려고 ZELO_SEED_ADMIN_EMAIL, ZELO_SEED_ADMIN_PASSWORD 환경변수로 받음
+// 관리자 시드(AdminSeedLoader)보다 먼저 돌아야 더미 사용자가 id 1부터 들어가고, 관리자는 id 30001이 됨 (순서 지정이 없는 러너는 가장 마지막에 돎)
 @Slf4j
+@Order(1)
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "zelo.seed.load-test.enabled", havingValue = "true")
@@ -39,28 +37,12 @@ public class LoadTestUserSeedLoader implements ApplicationRunner {
     private static final String COMMON_PASSWORD = "Zelo1234!";
     private static final String[] ADDRESS_PLACES = {"집", "회사", "기타"};
 
-    private static final String ADMIN_NAME = "관리자";
-    private static final String ADMIN_PHONE_NUMBER = "010-0000-0000";
-
     private final JdbcTemplate jdbcTemplate;
-    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-
-    @Value("${zelo.seed.admin.email:}")
-    private String adminEmail;
-
-    @Value("${zelo.seed.admin.password:}")
-    private String adminPassword;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        insertLoadTestData();
-        // 더미 사용자가 들어가 시퀀스가 맞춰진 뒤에 만들어야 id가 30001부터 이어짐
-        createAdmin();
-    }
-
-    private void insertLoadTestData() {
         Integer existingCount = jdbcTemplate.queryForObject(
                 "select count(*) from users where id between 1 and ?", Integer.class, USER_COUNT);
         if (existingCount != null && existingCount > 0) {
@@ -78,21 +60,6 @@ public class LoadTestUserSeedLoader implements ApplicationRunner {
         jdbcTemplate.execute("analyze social_accounts");
         jdbcTemplate.execute("analyze user_addresses");
         log.info("부하 테스트 더미 데이터 생성 완료 (사용자 {}명)", USER_COUNT);
-    }
-
-    private void createAdmin() {
-        if (adminEmail.isBlank() || adminPassword.isBlank()) {
-            log.info("관리자 이메일·비번 환경변수가 없어서 관리자 시드 건너뜀");
-            return;
-        }
-        String normalizedEmail = User.normalizeEmail(adminEmail);
-        if (userRepository.existsByEmail(normalizedEmail)) {
-            log.info("같은 이메일 계정이 이미 있어서 관리자 시드 건너뜀");
-            return;
-        }
-        userRepository.save(User.ofAdmin(normalizedEmail, passwordEncoder.encode(adminPassword),
-                ADMIN_NAME, ADMIN_PHONE_NUMBER));
-        log.info("관리자 계정 생성 완료");
     }
 
     private void insertUsers(String encodedPassword, Timestamp now) {

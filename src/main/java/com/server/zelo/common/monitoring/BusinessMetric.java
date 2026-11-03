@@ -24,7 +24,7 @@ public enum BusinessMetric {
     ORDER_REJECTED("zelo.order.rejected", "주문 거부 수 (reason)"),
 
     // 결제
-    PAYMENT_RESULT("zelo.payment.result", "결제 결과 수 (status)"),
+    PAYMENT_RESULT("zelo.payment.result", "결제 결과 수 (status, reason)"),
 
     // LLM. outcome은 SUCCESS 또는 실패 코드(AI_xxx)
     LLM_CALL("zelo.llm.call", "LLM 호출 1건 시간, 재시도 포함 (operation, outcome)"),

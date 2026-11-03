@@ -53,7 +53,7 @@ public class HttpPortOneClient implements PortOneClient {
         } catch (HttpClientErrorException.NotFound e) {
             throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
         } catch (RestClientResponseException e) {
-            log.error("포트원 결제 조회 실패 portoneId={}, status={}, body={}",
+            log.warn("포트원 결제 조회 실패 portoneId={} status={} body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
@@ -89,7 +89,7 @@ public class HttpPortOneClient implements PortOneClient {
         } catch (HttpClientErrorException.NotFound e) {
             throw new BusinessException(ErrorCode.INVALID_BILLING_KEY);
         } catch (RestClientResponseException e) {
-            log.error("포트원 빌링키 조회 실패 status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.warn("포트원 빌링키 조회 실패 status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
             log.warn("포트원 빌링키 조회 응답 없음 cause={}", e.getMostSpecificCause().getClass().getSimpleName());
@@ -114,10 +114,10 @@ public class HttpPortOneClient implements PortOneClient {
             if (e.getStatusCode().value() == 404 || isBillingKeyAlreadyDeleted(e)) {
                 return;
             }
-            log.error("포트원 빌링키 삭제 거절 status={}", e.getStatusCode());
+            log.warn("포트원 빌링키 삭제 거절 status={}", e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
         } catch (RestClientResponseException e) {
-            log.error("포트원 빌링키 삭제 실패 status={}", e.getStatusCode());
+            log.warn("포트원 빌링키 삭제 실패 status={}", e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
             // 예외 메시지에 요청 URI(빌링키 포함)가 들어가므로 예외 객체 대신 원인 종류만 남긴다
@@ -144,20 +144,20 @@ public class HttpPortOneClient implements PortOneClient {
                 log.info("포트원 빌링키 결제 이미 완료 portoneId={}", portoneId);
                 return;
             }
-            log.warn("포트원 빌링키 결제 거절 portoneId={}, status={}", portoneId, e.getStatusCode());
+            log.warn("포트원 빌링키 결제 거절 portoneId={} status={}", portoneId, e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
                     ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
         } catch (RestClientResponseException e) {
             // 포트원은 PG사가 결제를 거절하면 502(PG_PROVIDER)로 응답한다. 결제되지 않은 게 확인된 거절이라 사유와 함께 거절로 넘긴다
             if (e.getStatusCode().value() == 502 && isErrorType(e, PG_PROVIDER)) {
-                log.warn("포트원 빌링키 결제 PG 거절 portoneId={}", portoneId);
+                log.info("포트원 빌링키 결제 PG 거절 portoneId={}", portoneId);
                 throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
                         ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
             }
-            log.error("포트원 빌링키 결제 실패 portoneId={}, status={}", portoneId, e.getStatusCode());
+            log.warn("포트원 빌링키 결제 실패 portoneId={} status={}", portoneId, e.getStatusCode());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
-            log.warn("포트원 빌링키 결제 응답 없음 portoneId={}, cause={}",
+            log.warn("포트원 빌링키 결제 응답 없음 portoneId={} cause={}",
                     portoneId, e.getMostSpecificCause().getClass().getSimpleName());
             if (e.contains(SocketTimeoutException.class)) {
                 throw new BusinessException(ErrorCode.PG_TIMEOUT);
@@ -206,11 +206,11 @@ public class HttpPortOneClient implements PortOneClient {
                 log.warn("포트원 결제 취소 처리 중 portoneId={}", portoneId);
                 throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
             }
-            log.error("포트원 결제 취소 거절 portoneId={}, status={}, body={}",
+            log.error("포트원 결제 취소 거절 portoneId={} status={} body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED);
         } catch (RestClientResponseException e) {
-            log.error("포트원 결제 취소 실패 portoneId={}, status={}, body={}",
+            log.warn("포트원 결제 취소 실패 portoneId={} status={} body={}",
                     portoneId, e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         } catch (ResourceAccessException e) {
@@ -233,7 +233,7 @@ public class HttpPortOneClient implements PortOneClient {
             log.warn("포트원 결제 {} 타임아웃 portoneId={}", action, portoneId, e);
             return new BusinessException(ErrorCode.PG_TIMEOUT);
         }
-        log.error("포트원 결제 {} 연결 실패 portoneId={}", action, portoneId, e);
+        log.warn("포트원 결제 {} 연결 실패 portoneId={}", action, portoneId, e);
         return new BusinessException(ErrorCode.PG_REQUEST_FAILED);
     }
 

@@ -47,6 +47,9 @@ class ChatObservabilityIntegrationTest {
     private ChatRateLimitService chatRateLimitService;
 
     @Autowired
+    private javax.sql.DataSource dataSource;
+
+    @Autowired
     private Tracer tracer;
 
     @Autowired
@@ -80,6 +83,19 @@ class ChatObservabilityIntegrationTest {
         fakeLlmGateway.changeMode(FakeLlmGateway.Mode.NORMAL);
         llmCircuitBreaker.reset();
         MDC.clear();
+    }
+
+    @Test
+    void 실제_데이터소스의_커넥션_점유와_대기_지표가_등록된다() throws Exception {
+        // given
+        try (var connection = dataSource.getConnection()) {
+            // when
+            assertThat(connection.isValid(2)).isTrue();
+            // then
+            assertThat(meterRegistry.get("hikaricp.connections.active").gauge().value()).isGreaterThanOrEqualTo(1);
+            assertThat(meterRegistry.get("hikaricp.connections.pending").gauge().value()).isGreaterThanOrEqualTo(0);
+            assertThat(meterRegistry.get("hikaricp.connections.acquire").timer().count()).isPositive();
+        }
     }
 
     @Test

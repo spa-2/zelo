@@ -84,6 +84,10 @@ public class ResilientLlmGateway implements LlmGateway {
         this.llmTimeBudget = llmTimeBudget;
         this.executorService = executorService;
         this.quoteExplainPrompt = quoteExplainPrompt;
+        for (LlmOperation operation : LlmOperation.values()) {
+            businessMetrics.register(BusinessMetric.LLM_EXECUTION_STARTED, "operation", operation.name());
+            businessMetrics.registerActive("zelo.llm.inflight", "operation", operation.name());
+        }
     }
 
     @Override
@@ -140,7 +144,10 @@ public class ResilientLlmGateway implements LlmGateway {
 
             // (가) 시도 1번 = 다른 스레드에서 실행하고, 정한 시간만 기다린다.
             Callable<LlmResult<T>> attempt = () -> limitTime(operation, attemptTimeout,
-                    () -> executorService.submit(() -> request.get()));
+                    () -> executorService.submit(() -> businessMetrics.track("zelo.llm.inflight", () -> {
+                        businessMetrics.count(BusinessMetric.LLM_EXECUTION_STARTED, "operation", operation.name());
+                        return request.get();
+                    }, "operation", operation.name())));
 
             // (나) 그 시도를 서킷 브레이커로 감싼다.
             Callable<LlmResult<T>> guarded = CircuitBreaker.decorateCallable(circuitBreaker, attempt);

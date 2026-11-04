@@ -78,6 +78,17 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  dynamic "ingress" {
+    for_each = var.metrics_collector_security_group_id == null ? [] : [var.metrics_collector_security_group_id]
+    content {
+      description     = "Prometheus scrape from collector"
+      from_port       = var.management_port
+      to_port         = var.management_port
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   ingress {
     description     = "SSH from bastion"
     from_port       = 22

@@ -53,6 +53,9 @@ public class ChatReplyCommandService {
     private static final String PARTIAL = "PARTIAL";
     private static final String BUSY = "BUSY";
 
+    // 요청 스레드 안에서만 사용한다. 중첩 호출과 스레드 재사용에 대비해 finally에서 복원한다.
+    private final ThreadLocal<String> replyResult = new ThreadLocal<>();
+
     private final ChatPrompt chatPrompt;
     private final LlmGateway llmGateway;
     private final ReviewTools reviewTools;
@@ -83,6 +86,8 @@ public class ChatReplyCommandService {
         long start = System.nanoTime();
         String intent = "UNKNOWN";
         String outcome = SUCCESS;
+        String previous = replyResult.get();
+        replyResult.set("NORMAL");
         try {
             // 재료 목록은 요청마다 재료 테이블에서 읽어, 프롬프트와 답의 단위 검증이 같은 목록을 쓰게 한다
             Map<String, BaseUnit> ingredientUnits = productService.findIngredientUnits();
@@ -115,8 +120,14 @@ public class ChatReplyCommandService {
             outcome = ErrorCode.INTERNAL_ERROR.getCode();
             throw e;
         } finally {
+            String result = SUCCESS.equals(outcome) ? replyResult.get() : "FAILED";
+            if (previous == null) {
+                replyResult.remove();
+            } else {
+                replyResult.set(previous);
+            }
             businessMetrics.record(BusinessMetric.CHAT_REPLY, Duration.ofNanos(System.nanoTime() - start),
-                    "intent", intent, "outcome", outcome);
+                    "intent", intent, "outcome", outcome, "result", result);
         }
     }
 
@@ -175,6 +186,7 @@ public class ChatReplyCommandService {
                         toResponse);
             }
             case PartiallyEdited partial -> {
+                replyResult.set("PARTIAL");
                 countEdit(PARTIAL);
                 yield replyWithQuoteCard(roomId, userId, partial.quote(),
                         quoteExplainPrompt.editedText(quote, partial.quote(), partial.appliedEdits(),
@@ -205,6 +217,7 @@ public class ChatReplyCommandService {
             if (e.getErrorCode() != ErrorCode.TIMEOUT_EXCEPTION) {
                 throw e;
             }
+            replyResult.set("BUSY");
             businessMetrics.count(BusinessMetric.CHAT_QUOTE_BUSY);
             return Optional.empty();
         }
@@ -213,6 +226,7 @@ public class ChatReplyCommandService {
     private <T> ChatMessageResponse replyWithQuoteCard(Long roomId, Long userId, Quote quote, String quoteText,
                                                        Function<ChatMessageResponse, T> toResponse) {
         if (!QuoteCardPayload.isShowable(quote)) {
+            replyResult.set("NO_QUOTE");
             // 담은 상품도 고를 후보도 없으면 카드 없이 빠진 이유만 안내한다. 후보만 있으면 고를 수 있게 카드를 저장한다
             String reason = explain(roomId, userId, quoteExplainPrompt.systemPrompt(), List.of(), quoteText, toResponse).text();
             return replyText(roomId, userId, reason);
@@ -226,6 +240,7 @@ public class ChatReplyCommandService {
         try {
             return llmGateway.explain(quoteExplainPrompt.systemPrompt(), List.of(), quoteText).text();
         } catch (BusinessException e) {
+            replyResult.set("PARTIAL".equals(replyResult.get()) ? "PARTIAL_DEGRADED" : "DEGRADED");
             businessMetrics.count(BusinessMetric.CHAT_EXPLAIN_DEGRADED, "code", e.getErrorCode().getCode());
             return QUOTE_READY;
         }
@@ -269,6 +284,7 @@ public class ChatReplyCommandService {
 
     // 말로 고치지 못한 이유를 세고, 정해진 문장(또는 LLM이 되물은 문장)으로 답한다
     private ChatMessageResponse rejectEdit(Long roomId, Long userId, String result, String text) {
+        replyResult.set(BUSY.equals(result) ? "BUSY" : "NOT_APPLIED");
         countEdit(result);
         return replyText(roomId, userId, text);
     }

@@ -106,6 +106,50 @@ class ResilientLlmGatewayTest {
     }
 
     @Test
+    void 서킷이_열리면_실제_실행_횟수는_증가하지_않는다() {
+        // given
+        circuitBreaker.transitionToOpenState();
+        // when
+        assertThatThrownBy(() -> resilientLlmGateway.explain("system", List.of(), "질문"))
+                .isInstanceOf(BusinessException.class);
+        // then
+        assertThat(meterRegistry.get("zelo.llm.execution.started").tag("operation", "CHAT_ANSWER").counter().count()).isZero();
+        assertThat(meterRegistry.get("zelo.llm.inflight").tag("operation", "CHAT_ANSWER").gauge().value()).isZero();
+    }
+
+    @Test
+    void 시간초과_후에도_끝나지_않은_작업은_진행수에_남는다() throws Exception {
+        // given
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var finished = new java.util.concurrent.CountDownLatch(2);
+        given(delegate.explain(anyString(), anyList(), anyString())).willAnswer(invocation -> {
+            while (release.getCount() > 0) {
+                try {
+                    release.await();
+                } catch (InterruptedException ignored) {
+                    // 취소 요청을 즉시 따르지 않는 외부 작업을 재현한다.
+                }
+            }
+            finished.countDown();
+            return REPLY;
+        });
+        try {
+            // when
+            assertThatThrownBy(() -> resilientLlmGateway.explain("system", List.of(), "질문"))
+                    .isInstanceOf(BusinessException.class);
+            // then
+            assertThat(meterRegistry.get("zelo.llm.inflight").tag("operation", "CHAT_ANSWER").gauge().value()).isEqualTo(2);
+            assertThat(meterRegistry.get("zelo.llm.execution.started").tag("operation", "CHAT_ANSWER").counter().count()).isEqualTo(2);
+        } finally {
+            release.countDown();
+            assertThat(finished.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            executorService.shutdown();
+            assertThat(executorService.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(meterRegistry.get("zelo.llm.inflight").tag("operation", "CHAT_ANSWER").gauge().value()).isZero();
+    }
+
+    @Test
     void 제때_답하면_한_번만_호출하고_답을_그대로_돌려준다() {
         // given
         given(delegate.explain("system", List.of(), "질문")).willReturn(REPLY);

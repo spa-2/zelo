@@ -85,7 +85,7 @@
       "type": "rate",
       "contains": "default",
       "values": {
-        "rate": 0.000018974972011916284,
+        "rate": 1.8974972011916284e-05,
         "passes": 1,
         "fails": 52700
       },
@@ -199,7 +199,7 @@
       "type": "rate",
       "contains": "default",
       "values": {
-        "rate": 0.000012458420023172662,
+        "rate": 1.2458420023172662e-05,
         "passes": 1,
         "fails": 80266
       }
@@ -253,47 +253,33 @@
       }
     }
   },
-  "setup_data": {
-    "tokens": [
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwianRpIjoiYTY3NTNhN2ItNmI5My00MzI3LWI0OTgtYWNlMGFkMDUxMmExIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.SlQqWX6MkGKrsRTjdgh7Ad0BY1BIozyiD7OVV0GIeaU",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIyIiwianRpIjoiYTc3ZDM0NTgtOWM2Zi00ZjllLTkxYmQtNWIxZmFhMzU3YjQ0Iiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.kRSoiuNUTyHjgRlgQbisMbixWNc61LIi4NRpxzvrYFw",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIzIiwianRpIjoiZmQ1ZDg4NjItN2MwMS00ZjRkLWJhMjctMjRjZWFmNDJhYzA3Iiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.svnl3km7aQ8wcoGP22bxWa7Jdyw_O2lD44tpxurb6dA",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0IiwianRpIjoiMTY4NzQwOGItMWZhOC00MDFjLTgzZjktNjkwN2VjODIxOTAyIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.vPXnERVfJ-NQEon5DVtCoVqbCLCTkiS74PC2wceJW2k",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1IiwianRpIjoiMzQ5YzZjYzAtNDEwNS00NjNhLTk4MmYtZGIzM2EwOGI1NGJjIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.AXMrw5CppRnvTzjlDzJuGtlm8kuB4Y0dk-BntT5kxF0",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2IiwianRpIjoiZDM5NmY3NWEtOWUwMy00ZDEzLWIwZTMtMTY4OWMwMjQ3YTNlIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.9HjYOfS2_e8YFCTvRDkQS29gbHE9L8bkskqpkzdzV_g",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI3IiwianRpIjoiOTVmNGFkYmYtZTU0Yi00MjcxLWFkNGUtYmIwNmQ0MTkyYzFmIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.CnNvLDEYqAgHUMTHx_jLNmdkVeP9oQ85iCMedy-K_JE",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4IiwianRpIjoiYmFkODUwY2QtMGY4MC00ZDJhLThhZDMtZTU2NDZjODYzYjdjIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.0iwfjeHr-TY8CVdwueb_ePabL6YHpfG2mstbodS5Lec",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI5IiwianRpIjoiOWE4Y2MzOTYtMTk2Zi00MTMyLTk5ZjgtNWNiY2U3Mjc1NDcyIiwicm9sZSI6IkJBU0lDIiwidHlwZSI6InJlZnJlc2giLCJleHAiOjE3OTQ5ODgxNDQsImlhdCI6MTc5Mzc3ODU0NH0.eI_1mebZmHBbPg2c7-EWWQvszvBo3FowimA3_3hYi6w",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMCIsImp0aSI6IjFhYzhlMmFhLTBhZDQtNGVkOC05NmUwLTVlYzkxYjk1MTI4MSIsInJvbGUiOiJCQVNJQyIsInR5cGUiOiJyZWZyZXNoIiwiZXhwIjoxNzk0OTg4MTQ0LCJpYXQiOjE3OTM3Nzg1NDR9.cwSMEJQFgGlQLEHseap4rQF8awIp790cZvxy-Ulw-Oc"
-    ]
-  },
   "root_group": {
     "path": "",
     "id": "d41d8cd98f00b204e9800998ecf8427e",
     "groups": [],
     "checks": [
-        {
-          "name": "상태 코드 200",
-          "path": "::상태 코드 200",
-          "id": "634c91b7ab24fd73c312d180a4112742",
-          "passes": 80256,
-          "fails": 1
-        },
-        {
-          "passes": 80256,
-          "fails": 1,
-          "name": "새 액세스 토큰 있음",
-          "path": "::새 액세스 토큰 있음",
-          "id": "5d3c05684a0a36194291218a08695355"
-        },
-        {
-          "name": "새 리프레시 토큰 받음",
-          "path": "::새 리프레시 토큰 받음",
-          "id": "d8f16a3b2ce20167f000d671f893a61f",
-          "passes": 80256,
-          "fails": 1
-        }
-      ],
+      {
+        "name": "상태 코드 200",
+        "path": "::상태 코드 200",
+        "id": "634c91b7ab24fd73c312d180a4112742",
+        "passes": 80256,
+        "fails": 1
+      },
+      {
+        "passes": 80256,
+        "fails": 1,
+        "name": "새 액세스 토큰 있음",
+        "path": "::새 액세스 토큰 있음",
+        "id": "5d3c05684a0a36194291218a08695355"
+      },
+      {
+        "name": "새 리프레시 토큰 받음",
+        "path": "::새 리프레시 토큰 받음",
+        "id": "d8f16a3b2ce20167f000d671f893a61f",
+        "passes": 80256,
+        "fails": 1
+      }
+    ],
     "name": ""
   },
   "options": {

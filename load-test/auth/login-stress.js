@@ -34,6 +34,8 @@ const MONITOR_INTERVAL_SECONDS = Number(__ENV.MONITOR_INTERVAL || 2);
 const RESULT_DIR = __ENV.RESULT_DIR || 'docs/load-test/results/auth';
 const COMMIT = __ENV.COMMIT || '(미입력)';
 const NOTE = __ENV.NOTE || '';
+// 목표 요청 수의 이 비율 미만만 보냈으면 "미달"로 본다 (VU가 모자라 k6가 요청을 못 보낸 경우)
+const REACH_LIMIT = 0.9;
 
 const STEP_MS = STEP_SECONDS * 1000;
 const WARMUP_MS = WARMUP_SECONDS * 1000;
@@ -109,11 +111,14 @@ function warmupScenario() {
 
 function buildThresholds() {
     const thresholds = {};
-    STEPS.forEach((step) => {
+    STEPS.forEach((step, index) => {
         const tag = `{step:${step.label}}`;
-        // 기준을 넘으면 abortOnFail로 테스트를 멈춘다. 단계 시작 직후 표본이 적을 때를 피하려고 평가를 5초 늦춘다
-        thresholds[`http_req_duration${tag}`] = [{ threshold: `p(95)<${P95_LIMIT_MS}`, abortOnFail: true, delayAbortEval: '5s' }];
-        thresholds[`http_req_failed${tag}`] = [{ threshold: `rate<${ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: '5s' }];
+        // 기준을 넘으면 abortOnFail로 테스트를 멈춘다. delayAbortEval은 테스트 시작부터 잰 시간이라, 이 단계가 시작되는 시각에 5초를 더해서 단계 시작 직후 표본이 적을 때를 피한다
+        const delay = `${WARMUP_SECONDS + index * STEP_SECONDS + 5}s`;
+        thresholds[`http_req_duration${tag}`] = [{ threshold: `p(95)<${P95_LIMIT_MS}`, abortOnFail: true, delayAbortEval: delay }];
+        thresholds[`http_req_failed${tag}`] = [{ threshold: `rate<${ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: delay }];
+        // 200이어도 응답 내용 검사(check)가 실패하면 단계 실패로 본다
+        thresholds[`checks${tag}`] = [{ threshold: `rate>${1 - ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: delay }];
         // 아래는 기준이 아니라 단계별 값을 따로 집계해 결과 표에 쓰려는 장치다 (항상 통과하는 값)
         thresholds[`http_reqs${tag}`] = ['count>=0'];
         SERVER_METRICS.forEach((metric) => {
@@ -143,7 +148,7 @@ export default function () {
     check(res, {
         '상태 코드 200': (r) => r.status === 200,
         '액세스 토큰 있음': hasAccessToken,
-    });
+   }, { step: currentStep() });
 }
 
 // 서버 지표를 읽어서 현재 단계 이름표를 붙여 저장한다
@@ -227,16 +232,18 @@ function buildReport(data) {
     const percent = (v) => (v === null ? '-' : `${(v * 100).toFixed(1)}%`);
     const num = (v, digits) => (v === null ? '-' : v.toFixed(digits));
 
-    const rows = STEPS.map((step) => {
+    const rows = STEPS.map((step, index) => {
         const tag = `{step:${step.label}}`;
         const count = value(`http_reqs${tag}`, 'count');
         const executed = count !== null && count > 0;
-        const passed = thresholdOk(`http_req_duration${tag}`) !== false && thresholdOk(`http_req_failed${tag}`) !== false;
+        const passed = thresholdOk(`http_req_duration${tag}`) !== false && thresholdOk(`http_req_failed${tag}`) !== false && thresholdOk(`checks${tag}`) !== false;
         return {
             step,
             executed,
-            status: !executed ? '미실행' : passed ? '통과' : '실패',
+            status: !executed ? '미실행' : !passed ? '실패' : count / expectedCount(index) < REACH_LIMIT ? '미달' : '통과',
             count: executed ? count : 0,
+            // 목표 속도로 보냈다면 이 단계에서 나가야 할 요청 수 (이전 단계에서 올라오는 구간 포함)와 실제 요청 수의 비율
+            reach: executed ? count / expectedCount(index) : null,
             p95: executed ? value(`http_req_duration${tag}`, 'p(95)') : null,
             p99: executed ? value(`http_req_duration${tag}`, 'p(99)') : null,
             failed: executed ? value(`http_req_failed${tag}`, 'rate') : null,
@@ -267,7 +274,7 @@ function buildReport(data) {
         '',
         `- 단계(RPS): ${RATES.join(' → ')}`,
         `- 한 단계 ${STEP_SECONDS}초(속도 올리는 구간 ${RAMP_SECONDS}초 포함), 시작 전 워밍업 ${WARMUP_SECONDS}초(결과 제외)`,
-        `- 멈추는 기준: 단계별 p95 ${P95_LIMIT_MS}ms 초과 또는 실패율 ${(ERROR_LIMIT * 100).toFixed(1)}% 초과`,
+        `- 멈추는 기준: 단계별 p95 ${P95_LIMIT_MS}ms 초과, 실패율 ${(ERROR_LIMIT * 100).toFixed(1)}% 초과, 또는 응답 검사(check) 통과율 ${((1 - ERROR_LIMIT) * 100).toFixed(1)}% 이하`,
         `- 사용자: load1@test.com ~ load${USER_COUNT}@test.com 을 순서대로 로그인, 비밀번호는 공통`,
         '- 외부 서비스 호출 없음',
         '',
@@ -276,13 +283,14 @@ function buildReport(data) {
         `- 마지막으로 통과한 단계: ${lastPass ? `${lastPass.step.rate} RPS` : '없음'}`,
         `- 처음 실패한 단계: ${firstFail ? `${firstFail.step.rate} RPS` : '없음 (모든 단계 통과, 한계는 마지막 단계보다 높다)'}`,
         ...(firstFail ? hintLines(firstFail, P95_LIMIT_MS, ERROR_LIMIT) : []),
+        `- 목표 속도에 못 미친 단계(도달률 ${REACH_LIMIT * 100}% 미만): ${rows.filter((row) => row.status === '미달').map((row) => `${row.step.rate} RPS`).join(', ') || '없음'}`,
         `- k6가 못 보낸 요청(dropped_iterations): ${dropped} / 사용한 최대 VU: ${vusMax === null ? '-' : vusMax}`,
         '',
         '## 단계별 결과',
         '',
-        '| 단계 | 목표 RPS | 요청 수 | p95(ms) | p99(ms) | 실패율 | 앱 CPU 최대 | 전체 CPU 최대 | Tomcat 스레드 최대 | Hikari 사용 최대 | Hikari 대기 최대 | 판정 |',
-        '| -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |',
-        ...rows.map((row) => `| ${row.step.label} | ${row.step.rate} | ${row.count} | ${ms(row.p95)} | ${ms(row.p99)} | ${percent(row.failed)} | ${percent(row.cpu)} | ${percent(row.sysCpu)} | ${num(row.busy, 0)} | ${num(row.active, 0)} | ${num(row.pending, 0)} | ${row.status} |`),
+        '| 단계 | 목표 RPS | 요청 수 | 도달률 | p95(ms) | p99(ms) | 실패율 | 앱 CPU 최대 | 전체 CPU 최대 | Tomcat 스레드 최대 | Hikari 사용 최대 | Hikari 대기 최대 | 판정 |',
+        '| -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |',
+        ...rows.map((row) => `| ${row.step.label} | ${row.step.rate} | ${row.count} | ${row.reach === null ? '-' : `${(row.reach * 100).toFixed(0)}%`} | ${ms(row.p95)} | ${ms(row.p99)} | ${percent(row.failed)} | ${percent(row.cpu)} | ${percent(row.sysCpu)} | ${num(row.busy, 0)} | ${num(row.active, 0)} | ${num(row.pending, 0)} | ${row.status} |`),
         '',
         '- 앱 CPU는 컴퓨터 전체 코어 대비 앱 프로세스의 사용 비율이다 (8코어에서 12.5%가 코어 1개). 전체 CPU는 앱, DB, Redis, k6를 모두 합친 컴퓨터 전체 사용 비율이다',
         '- 각 지표의 최대는 2초마다 찍은 값 중 최대라서, 서로 다른 순간의 값일 수 있다',
@@ -305,6 +313,13 @@ function buildReport(data) {
 }
 
 // 처음 실패한 단계의 서버 지표로 원인을 짐작하는 참고 문장 (확정이 아니라 단서다)
+// 한 단계에서 목표 속도를 지켰다면 나갔어야 할 요청 수. 속도를 올리는 구간은 이전 단계와 이번 단계의 평균 속도로 계산한다
+function expectedCount(index) {
+    const rate = STEPS[index].rate;
+    const previous = index === 0 ? rate : STEPS[index - 1].rate;
+    return ((previous + rate) / 2) * RAMP_SECONDS + rate * (STEP_SECONDS - RAMP_SECONDS);
+}
+
 function hintLines(row, p95Limit, errorLimit) {
     const hints = [];
     if (row.p95 !== null && row.p95 > p95Limit) {

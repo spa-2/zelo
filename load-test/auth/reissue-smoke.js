@@ -136,7 +136,8 @@ export function handleSummary(data) {
         // 사람이 읽는 결과 문서
         [`${filePrefix}.md`]: buildReport(data),
         // k6 원본 데이터 (나중에 다시 분석할 때 쓰고, 필요 없으면 지워도 된다)
-        [`${filePrefix}.json`]: JSON.stringify(data, null, 2),
+        // setup_data에는 로그인으로 받은 실제 리프레시 토큰이 들어 있어서 파일에 남기지 않는다
+        [`${filePrefix}.json`]: JSON.stringify(withoutSetupData(data), null, 2),
     };
 }
 
@@ -179,7 +180,7 @@ function buildReport(data) {
         '',
         `- 가상 사용자(VU) 1명, 워밍업 ${WARMUP}(측정 제외) 후 ${DURATION} 동안 측정`,
         `- 준비: 시작 전에 load1@test.com ~ load${SETUP_USERS}@test.com 을 로그인해서 리프레시 토큰을 모음 (측정 제외)`,
-        '- 재발급 때마다 서버가 토큰을 새로 바꾸므로, 응답으로 받은 새 토큰으로 다음 재발급을 보낸다',,
+        '- 재발급 때마다 서버가 토큰을 새로 바꾸므로, 응답으로 받은 새 토큰으로 다음 재발급을 보낸다',
         '- 외부 서비스 호출 없음',
         '',
         '## 결과 (측정 구간만)',
@@ -244,4 +245,9 @@ function toSeconds(text) {
         match = pattern.exec(text);
     }
     return total || 1;
+}
+
+function withoutSetupData(data) {
+    const { setup_data: removed, ...rest } = data;
+    return rest;
 }

@@ -31,6 +31,7 @@ const failures = new Counter('reissue_failures');
 const recovered = new Counter('reissue_recovered');
 // 응답을 못 받은(상태 0) 실패에서 같은 토큰으로 다시 보낸 결과: 성공이면 서버가 처음 요청을 처리하지 않은 것이고, 이미 교체된 토큰이라는 응답이면 서버는 처리했는데 응답이 유실된 것이다
 const retryProcessed = new Counter('reissue_retry_already_processed');
+const retryUnknown = new Counter('reissue_retry_unknown');
 const retryNotProcessed = new Counter('reissue_retry_not_processed');
 const FAILURE_STATUSES = ['0', '400', '401', '404', '409', '429', '500', '502', '503'];
 // 올려 갈 초당 요청 수. 첫 값 5는 재발급 목표 RPS다
@@ -127,11 +128,14 @@ function warmupScenario() {
 
 function buildThresholds() {
     const thresholds = {};
-    STEPS.forEach((step) => {
+    STEPS.forEach((step, index) => {
         const tag = `{step:${step.label}}`;
-        // 기준을 넘으면 abortOnFail로 테스트를 멈춘다. 단계 시작 직후 표본이 적을 때를 피하려고 평가를 5초 늦춘다
-        thresholds[`http_req_duration${tag}`] = [{ threshold: `p(95)<${P95_LIMIT_MS}`, abortOnFail: true, delayAbortEval: '5s' }];
-        thresholds[`http_req_failed${tag}`] = [{ threshold: `rate<${ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: '5s' }];
+        // 기준을 넘으면 abortOnFail로 테스트를 멈춘다. delayAbortEval은 테스트 시작부터 잰 시간이라, 이 단계가 시작되는 시각에 5초를 더해서 단계 시작 직후 표본이 적을 때를 피한다
+        const delay = `${WARMUP_SECONDS + index * STEP_SECONDS + 5}s`;
+        thresholds[`http_req_duration${tag}`] = [{ threshold: `p(95)<${P95_LIMIT_MS}`, abortOnFail: true, delayAbortEval: delay }];
+        thresholds[`http_req_failed${tag}`] = [{ threshold: `rate<${ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: delay }];
+        // 200이어도 응답 내용 검사(check)가 실패하면 단계 실패로 본다
+        thresholds[`checks${tag}`] = [{ threshold: `rate>${1 - ERROR_LIMIT}`, abortOnFail: true, delayAbortEval: delay }];
         // 아래는 기준이 아니라 단계별 값을 따로 집계해 결과 표에 쓰려는 장치다 (항상 통과하는 값)
         thresholds[`http_reqs${tag}`] = ['count>=0'];
         SERVER_METRICS.forEach((metric) => {
@@ -202,7 +206,7 @@ export default function (data) {
         '상태 코드 200': (r) => r.status === 200,
         '새 액세스 토큰 있음': hasAccessToken,
         '새 리프레시 토큰 받음': () => newToken !== null,
-    });
+   }, { step: currentStep(data) });
     // 성공하면 새 토큰으로 교체한다
     if (res.status !== 200 || newToken === null) {
         // 원인을 알 수 있게 실패한 응답을 남기고 상태 코드별로 센다
@@ -222,7 +226,12 @@ export default function (data) {
                 myToken = retryCookie[0].value;
                 return;
             }
-            retryProcessed.add(1);
+            // 방금 교체된 토큰이라는 409만 "서버가 처음 요청을 처리했다"는 증거다. 연결 오류나 5xx 같은 다른 응답은 알 수 없음으로 센다
+            if (retry.status === 409) {
+                retryProcessed.add(1);
+            } else {
+                retryUnknown.add(1);
+            }
             console.error(`재시도 결과 VU=${__VU} 상태=${retry.status} 응답=${String(retry.body).slice(0, 200)}`);
         }
         // 서버가 이미 토큰을 바꿨을 수 있어 같은 토큰은 다시 쓰지 않고, 로그인으로 새 토큰을 받아 이어간다
@@ -304,7 +313,8 @@ export function handleSummary(data) {
         stdout: `\n${report}\n`,
         [`${filePrefix}.md`]: report,
         // k6 원본 데이터 (나중에 다시 분석할 때 쓰고, 필요 없으면 지워도 된다)
-        [`${filePrefix}.json`]: JSON.stringify(data, null, 2),
+        // setup_data에는 로그인으로 받은 실제 리프레시 토큰이 들어 있어서 파일에 남기지 않는다
+        [`${filePrefix}.json`]: JSON.stringify(withoutSetupData(data), null, 2),
     };
 }
 
@@ -332,7 +342,7 @@ function buildReport(data) {
         const tag = `{step:${step.label}}`;
         const count = value(`http_reqs${tag}`, 'count');
         const executed = count !== null && count > 0;
-        const passed = thresholdOk(`http_req_duration${tag}`) !== false && thresholdOk(`http_req_failed${tag}`) !== false;
+        const passed = thresholdOk(`http_req_duration${tag}`) !== false && thresholdOk(`http_req_failed${tag}`) !== false && thresholdOk(`checks${tag}`) !== false;
         return {
             step,
             executed,
@@ -383,7 +393,7 @@ function buildReport(data) {
         `- k6가 못 보낸 요청(dropped_iterations): ${dropped} / 사용한 최대 VU: ${vusMax === null ? '-' : vusMax}`,
         `- 목표 속도에 못 미친 단계(도달률 ${REACH_LIMIT * 100}% 미만): ${rows.filter((row) => row.status === '미달').map((row) => `${row.step.rate} RPS`).join(', ') || '없음'}`,
         `- 재발급 실패 횟수(상태 코드별): ${FAILURE_STATUSES.map((status) => [status, value(`reissue_failures{status:${status}}`, 'count')]).filter(([, count]) => count).map(([status, count]) => `${status}번 ${count}회`).join(', ') || '없음'} (0번은 응답을 못 받은 연결 오류)`,
-        `- 응답을 못 받은 실패의 재시도 결과: 서버가 처음 요청을 처리하지 않음 ${value('reissue_retry_not_processed', 'count') || 0}회 / 이미 처리했는데 응답이 유실됨(재시도가 실패) ${value('reissue_retry_already_processed', 'count') || 0}회`,
+        `- 응답을 못 받은 실패의 재시도 결과: 서버가 처음 요청을 처리하지 않음 ${value('reissue_retry_not_processed', 'count') || 0}회 / 이미 처리했는데 응답이 유실됨(재시도가 409) ${value('reissue_retry_already_processed', 'count') || 0}회 / 알 수 없음(재시도도 409가 아닌 실패) ${value('reissue_retry_unknown', 'count') || 0}회`,
         `- 실패 뒤 다시 로그인해서 토큰을 되찾은 횟수: ${value('reissue_recovered', 'count') || 0} / 되찾지 못해 요청을 건너뛴 횟수: ${skippedCount}`,
         '',
         '## 단계별 결과',
@@ -469,4 +479,9 @@ function toSeconds(text) {
         match = pattern.exec(text);
     }
     return total;
+}
+
+function withoutSetupData(data) {
+    const { setup_data: removed, ...rest } = data;
+    return rest;
 }

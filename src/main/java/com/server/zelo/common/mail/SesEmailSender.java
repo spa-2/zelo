@@ -2,6 +2,8 @@ package com.server.zelo.common.mail;
 
 import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
+import com.server.zelo.common.monitoring.BusinessMetric;
+import com.server.zelo.common.monitoring.BusinessMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -15,6 +17,8 @@ import software.amazon.awssdk.services.ses.model.Destination;
 import software.amazon.awssdk.services.ses.model.Message;
 import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 
+import java.time.Duration;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -27,10 +31,13 @@ public class SesEmailSender implements EmailSender {
     private static final String CHARSET = "UTF-8";
 
     private final SesClient sesClient;
+    private final BusinessMetrics businessMetrics;
     private final MailSenderProperties mailSenderProperties;
 
     @Override
     public void send(String to, String title, String body) {
+        long start = System.nanoTime();
+        String outcome = "FAILURE";
         SendEmailRequest request = SendEmailRequest.builder()
                 .source(mailSenderProperties.from()) // 발신자
                 .destination(Destination.builder().toAddresses(to).build()) // 수신자
@@ -42,10 +49,16 @@ public class SesEmailSender implements EmailSender {
 
         try {
             sesClient.sendEmail(request);
+            outcome = "SUCCESS";
         } catch (SdkException e) {
             // 원인(타임아웃, SES 거절, 자격증명 등)은 여기서만 알 수 있어서 변환하기 전에 남긴다. 수신자는 개인정보라 남기지 않는다
-            log.error("SES 메일 발송 실패", e);
+            log.warn("SES 메일 발송 실패", e);
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
+        } finally {
+            businessMetrics.record(BusinessMetric.EMAIL_API_CALL,
+                    Duration.ofNanos(System.nanoTime() - start),
+                    "outcome", outcome
+            );
         }
     }
 

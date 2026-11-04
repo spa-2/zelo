@@ -23,6 +23,7 @@ public enum BusinessMetric {
     EMAIL_VERIFICATION_SENT("zelo.auth.email.sent", "인증 메일 발송 성공 수 (purpose)"),
     EMAIL_VERIFICATION_CONFIRMED("zelo.auth.email.confirmed", "이메일 인증 성공 수 (purpose)"),
     SOCIAL_API_CALL("zelo.user.social.call", "소셜 인증 호출 시간(provider, operation, outcome)"),
+    EMAIL_API_CALL("zelo.user.email.call", "메일 전송 호출 시간(outcome)"),
 
     // 견적
     QUOTE_CREATED("zelo.quote.created", "견적 발급 수"),

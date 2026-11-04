@@ -42,3 +42,5 @@ application-local.yaml
 ### Load test ###
 # 결제 부하 테스트 시드 주문 목록 (시드를 넣을 때마다 다시 뽑음)
 load-test/payment/data/
+# 환불 부하 테스트 시드 주문 목록 (시드를 넣을 때마다 다시 뽑음)
+load-test/refund/data/

@@ -97,6 +97,38 @@ class FakeLlmGatewayTest {
     }
 
     @Test
+    void 최대_지연을_두면_최소와_최대_사이만큼_늦게_응답한다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.DELAY);
+        fakeLlmGateway.changeDelay(Duration.ofMillis(100));
+        fakeLlmGateway.changeDelayMax(Duration.ofMillis(200));
+        long start = System.nanoTime();
+
+        // when
+        fakeLlmGateway.explain("system", List.of(), "질문");
+
+        // then: 위쪽은 스레드 깨어나는 시간이 더해져 넉넉하게 본다
+        assertThat(Duration.ofNanos(System.nanoTime() - start))
+                .isGreaterThanOrEqualTo(Duration.ofMillis(100))
+                .isLessThan(Duration.ofSeconds(1));
+    }
+
+    @Test
+    void 최대_지연이_최소보다_작으면_최소_지연으로_고정한다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.DELAY);
+        fakeLlmGateway.changeDelay(Duration.ofMillis(200));
+        fakeLlmGateway.changeDelayMax(Duration.ofMillis(100));
+        long start = System.nanoTime();
+
+        // when
+        fakeLlmGateway.explain("system", List.of(), "질문");
+
+        // then
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(200));
+    }
+
+    @Test
     void 메뉴_계획은_기본으로_일반_질문을_돌려준다() {
         // when: 채팅이 기본으로는 지금처럼 답변만 하도록
         LlmResult<MenuPlan> result = fakeLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);

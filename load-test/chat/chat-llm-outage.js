@@ -10,8 +10,8 @@ import { loginUsers } from './users.js';
 // RECOVER_AFTER초에 fake LLM을 정상 응답 시간(3.5~6초)으로 바꾼다(FakeLlmController). 다음 반쯤 열림에서 시험 3번이 성공하면 서킷이 닫히고 견적 카드가 다시 온다
 //   ./gradlew bootRun --args='--spring.profiles.active=performance --zelo.llm.fake.plan-intent=SHOPPING_REQUEST
 //     --zelo.llm.fake.mode=DELAY --zelo.llm.fake.delay=15s --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true'
-// k6 run --summary-export=$HOME/zelo-load/outage-summary.json --out csv=$HOME/zelo-load/outage.csv load-test/chat-llm-outage.js
-// 같이 볼 서버 지표(load-test/record-metrics.sh): circuit, not_permitted, fallback_timeout, fallback_circuit, tomcat_busy
+// mkdir -p docs/load-test/results/chat && k6 run --summary-export=docs/load-test/results/chat/chat-outage-summary.json --out csv=docs/load-test/results/chat/chat-outage.csv load-test/chat/chat-llm-outage.js
+// 같이 볼 서버 지표(load-test/chat/record-metrics.sh): circuit, not_permitted, fallback_timeout, fallback_circuit, tomcat_busy
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 목표(2.1 RPS)의 약 5배. 서킷이 없다면 초당 10건 × 24.5초 = 동시 245건으로 Tomcat 스레드 200개를 넘는다
 const RATE = Number(__ENV.RATE || 10);

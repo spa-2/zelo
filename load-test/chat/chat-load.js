@@ -4,8 +4,8 @@ import { session, TARGET_SESSIONS_PER_MINUTE } from './chat-session.js';
 //   JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance
 //     --zelo.llm.fake.plan-intent=SHOPPING_REQUEST --zelo.llm.fake.mode=DELAY --zelo.llm.fake.delay=3500ms --zelo.llm.fake.delay-max=6s
 //     --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true --zelo.delivery.scheduler.enabled=false'
-// k6 run --summary-export=$HOME/zelo-load/load-summary.json --out csv=$HOME/zelo-load/load.csv load-test/chat-load.js
-// 서버 지표 기준(load-test/record-metrics.sh): hikari_pending 0, 서버 자체 처리 시간 = 채팅 시간 − LLM 시간
+// mkdir -p docs/load-test/results/chat && k6 run --summary-export=docs/load-test/results/chat/chat-load-summary.json --out csv=docs/load-test/results/chat/chat-load.csv load-test/chat/chat-load.js
+// 서버 지표 기준(load-test/chat/record-metrics.sh): hikari_pending 0, 서버 자체 처리 시간 = 채팅 시간 − LLM 시간
 export const options = {
     scenarios: {
         load: {

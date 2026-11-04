@@ -5,8 +5,8 @@ import { session, TARGET_SESSIONS_PER_MINUTE } from './chat-session.js';
 //   JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance
 //     --zelo.llm.fake.plan-intent=SHOPPING_REQUEST --zelo.llm.fake.mode=DELAY --zelo.llm.fake.delay=3500ms --zelo.llm.fake.delay-max=6s
 //     --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true --zelo.delivery.scheduler.enabled=false'
-// k6 run --summary-export=$HOME/zelo-load/stress-summary.json --out csv=$HOME/zelo-load/stress.csv load-test/chat-stress.js
-// 같이 볼 서버 지표(load-test/record-metrics.sh): tomcat_busy, hikari_active, hikari_pending, chat_inflight
+// mkdir -p docs/load-test/results/chat && k6 run --summary-export=docs/load-test/results/chat/chat-stress-summary.json --out csv=docs/load-test/results/chat/chat-stress.csv load-test/chat/chat-stress.js
+// 같이 볼 서버 지표(load-test/chat/record-metrics.sh): tomcat_busy, hikari_active, hikari_pending, chat_inflight
 const MULTIPLIERS = [1, 3, 6, 9, 12, 15];
 
 export const options = {

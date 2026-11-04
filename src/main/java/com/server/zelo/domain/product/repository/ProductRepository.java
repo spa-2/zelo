@@ -47,6 +47,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             """)
     List<String> findNames(String keyword, ProductStatus status, Limit limit);
 
+    // 같은 쿼리를 5번 넘게 쓰면 PostgreSQL이 검색어를 안 보고 짠 계획을 재사용해서 검색이 20ms → 1.3초로 느려짐
+    // 검색·자동완성 트랜잭션 안에서만 매번 실제 검색어로 계획을 짜게 함. 트랜잭션이 끝나면 원래대로 돌아감
+    @Query(value = "select set_config('plan_cache_mode', 'force_custom_plan', true)", nativeQuery = true)
+    String useCustomPlanInTransaction();
+
     // 인기 상품 목록에 카테고리 이름을 같이 보여줘서 같이 가져옴
     @EntityGraph(attributePaths = {"category"})
     List<Product> findAllByIdInAndStatus(Collection<Long> ids, ProductStatus status);

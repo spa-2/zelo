@@ -48,12 +48,14 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<Product> searchProducts(SearchProductCondition condition) {
+        productRepository.useCustomPlanInTransaction();
         return productRepository.search(escapeLike(condition.keyword()), condition.categoryId(), condition.inStock(),
                 ProductStatus.ON_SALE, PageRequest.of(condition.page(), condition.size(), condition.sort().toSort()));
     }
 
     @Transactional(readOnly = true)
     public List<String> findProductNames(String keyword, int limit) {
+        productRepository.useCustomPlanInTransaction();
         return productRepository.findNames(escapeLike(keyword), ProductStatus.ON_SALE, Limit.of(limit));
     }
 

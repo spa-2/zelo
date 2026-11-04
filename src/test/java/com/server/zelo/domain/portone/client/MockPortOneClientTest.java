@@ -128,4 +128,19 @@ class MockPortOneClientTest {
         // interrupted()는 상태를 지워서 다음 테스트에 남지 않는다
         assertThat(Thread.interrupted()).isTrue();
     }
+
+    @Test
+    void 취소_지연을_설정하면_그만큼_기다린_뒤_취소_성공을_반환한다() {
+        // given
+        ReflectionTestUtils.setField(mockPortOneClient, "fakeCancelDelay", Duration.ofMillis(50));
+        long startedAt = System.nanoTime();
+
+        // when
+        PortOneCancellationStatus status = mockPortOneClient.cancelPaymentWithAmount(
+                "payment-1", "refund-1", 5000L, 15000L, "부분 환불");
+
+        // then
+        assertThat(status).isEqualTo(PortOneCancellationStatus.SUCCEEDED);
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isGreaterThanOrEqualTo(Duration.ofMillis(50));
+    }
 }

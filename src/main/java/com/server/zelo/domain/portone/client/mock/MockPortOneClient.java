@@ -35,6 +35,9 @@ public class MockPortOneClient implements PortOneClient {
     @Value("${zelo.portone.fake-billing-delay:0ms}")
     private Duration fakeBillingDelay = Duration.ZERO;
 
+    @Value("${zelo.portone.fake-cancel-delay:0ms}")
+    private Duration fakeCancelDelay = Duration.ZERO;
+
     @Override
     public PortOnePayment getPayment(String portoneId) {
         delay(fakeDelay);
@@ -45,14 +48,14 @@ public class MockPortOneClient implements PortOneClient {
 
     @Override
     public void cancelPayment(String portoneId, String reason) {
-        delay(fakeDelay);
+        delay(fakeCancelDelay);
         log.info("[FAKE] 포트원 결제 취소 portoneId={}, reason={}", portoneId, reason);
     }
 
     @Override
     public PortOneCancellationStatus cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
                                                              Long currentCancellableAmount, String reason) {
-        delay(fakeDelay);
+        delay(fakeCancelDelay);
         log.info("[FAKE] 포트원 결제 금액 지정 취소 portoneId={}, cancelKey={}, amount={}, cancellable={}, reason={}",
                 portoneId, cancelKey, amount, currentCancellableAmount, reason);
         return PortOneCancellationStatus.SUCCEEDED;

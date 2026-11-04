@@ -4,7 +4,7 @@ import { session } from './chat-session.js';
 //   JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance
 //     --zelo.llm.fake.plan-intent=SHOPPING_REQUEST --zelo.llm.fake.mode=DELAY --zelo.llm.fake.delay=3500ms --zelo.llm.fake.delay-max=6s
 //     --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true --zelo.delivery.scheduler.enabled=false'
-// k6 run --summary-export=$HOME/zelo-load/smoke-summary.json --out csv=$HOME/zelo-load/smoke.csv load-test/chat-smoke.js
+// mkdir -p docs/load-test/results/chat && k6 run --summary-export=docs/load-test/results/chat/chat-smoke-summary.json --out csv=docs/load-test/results/chat/chat-smoke.csv load-test/chat/chat-smoke.js
 export const options = {
     scenarios: {
         smoke: {

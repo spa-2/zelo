@@ -12,8 +12,10 @@ import com.server.zelo.domain.portone.entity.PortOneCancellationStatus;
 import com.server.zelo.domain.portone.entity.PortOnePaymentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 
@@ -25,8 +27,17 @@ public class MockPortOneClient implements PortOneClient {
 
     private final PaymentRepository paymentRepository;
 
+    // 부하 테스트에서 포트원 응답을 기다리는 시간을 흉내 낸다. 기본 0이라 평소 로컬 개발에는 영향이 없다
+    // 조회는 포트원만, 빌링키 결제는 PG사 승인까지 거쳐서 실측 시간이 크게 달라 따로 둔다 (load-test/payment/README.md)
+    @Value("${zelo.portone.fake-delay:0ms}")
+    private Duration fakeDelay = Duration.ZERO;
+
+    @Value("${zelo.portone.fake-billing-delay:0ms}")
+    private Duration fakeBillingDelay = Duration.ZERO;
+
     @Override
     public PortOnePayment getPayment(String portoneId) {
+        delay(fakeDelay);
         Payment payment = paymentRepository.findByPortoneId(portoneId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
         return PortOnePayment.of(portoneId, PortOnePaymentStatus.PAID, payment.getAmount(), LocalDateTime.now(), "TEST_CARD");
@@ -34,12 +45,14 @@ public class MockPortOneClient implements PortOneClient {
 
     @Override
     public void cancelPayment(String portoneId, String reason) {
+        delay(fakeDelay);
         log.info("[FAKE] 포트원 결제 취소 portoneId={}, reason={}", portoneId, reason);
     }
 
     @Override
     public PortOneCancellationStatus cancelPaymentWithAmount(String portoneId, String cancelKey, Long amount,
                                                              Long currentCancellableAmount, String reason) {
+        delay(fakeDelay);
         log.info("[FAKE] 포트원 결제 금액 지정 취소 portoneId={}, cancelKey={}, amount={}, cancellable={}, reason={}",
                 portoneId, cancelKey, amount, currentCancellableAmount, reason);
         return PortOneCancellationStatus.SUCCEEDED;
@@ -48,17 +61,31 @@ public class MockPortOneClient implements PortOneClient {
     // 가짜 모드에는 결제창이 없어 빌링키를 발급받을 수 없으므로, 빌링키 끝에 붙인 사용자 ID를 발급 고객으로 본다 (예: fake-billing-key-1)
     @Override
     public PortOneBillingKey getBillingKey(String billingKey) {
+        delay(fakeDelay);
         String customerId = billingKey.substring(billingKey.lastIndexOf('-') + 1);
         return PortOneBillingKey.of(billingKey, PaymentMethodType.CARD, "테스트카드 1234", customerId);
     }
 
     @Override
     public void deleteBillingKey(String billingKey) {
+        delay(fakeDelay);
         log.info("[FAKE] 포트원 빌링키 삭제");
     }
 
     @Override
     public void payWithBillingKey(String portoneId, String billingKey, String orderName, Long amount) {
+        delay(fakeBillingDelay);
         log.info("[FAKE] 포트원 빌링키 결제 portoneId={}, amount={}", portoneId, amount);
+    }
+
+    private void delay(Duration duration) {
+        if (duration.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

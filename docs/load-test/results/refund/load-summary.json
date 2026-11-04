@@ -1,0 +1,156 @@
+{
+    "metrics": {
+        "http_req_blocked": {
+            "p(95)": 5.5976449999999955,
+            "avg": 1.2279624999999998,
+            "min": 0,
+            "med": 0.21925,
+            "max": 8.3043,
+            "p(90)": 2.8909899999999986
+        },
+        "http_req_duration{kind:refund}": {
+            "p(90)": 1033.09903,
+            "p(95)": 1070.219665,
+            "avg": 915.253925,
+            "min": 845.555,
+            "med": 854.0602,
+            "max": 1107.3403,
+            "thresholds": {
+                "p(95)<1000": true
+            }
+        },
+        "http_req_failed": {
+            "fails": 8,
+            "passes": 0,
+            "value": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 934.11067,
+            "p(95)": 1020.7254849999999,
+            "avg": 493.31771249999997,
+            "min": 7.9761,
+            "med": 551.96345,
+            "max": 1107.3403
+        },
+        "http_req_failed{kind:refund}": {
+            "passes": 0,
+            "fails": 4,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "data_received": {
+            "count": 5976,
+            "rate": 19.863258912539326
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_connecting": {
+            "avg": 0.315575,
+            "min": 0,
+            "med": 0.21925,
+            "max": 1.0052,
+            "p(90)": 0.7012599999999999,
+            "p(95)": 0.8532299999999998
+        },
+        "vus": {
+            "value": 0,
+            "min": 0,
+            "max": 1
+        },
+        "iterations": {
+            "count": 4,
+            "rate": 0.01329535402445738
+        },
+        "http_req_duration": {
+            "avg": 493.31771249999997,
+            "min": 7.9761,
+            "med": 551.96345,
+            "max": 1107.3403,
+            "p(90)": 934.11067,
+            "p(95)": 1020.7254849999999
+        },
+        "checks": {
+            "passes": 8,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        },
+        "http_reqs": {
+            "count": 8,
+            "rate": 0.02659070804891476
+        },
+        "http_req_receiving": {
+            "avg": 0.694325,
+            "min": 0,
+            "med": 0.52485,
+            "max": 2.0746,
+            "p(90)": 1.1786699999999999,
+            "p(95)": 1.6266349999999994
+        },
+        "iteration_duration": {
+            "max": 1386.1496,
+            "p(90)": 1231.22459,
+            "p(95)": 1308.6870949999998,
+            "avg": 992.1246249999999,
+            "min": 855.9504,
+            "med": 863.19925
+        },
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_sending": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_waiting": {
+            "avg": 492.6233875,
+            "min": 7.9761,
+            "med": 551.3081500000001,
+            "max": 1105.2657,
+            "p(90)": 933.12464,
+            "p(95)": 1019.1951699999998
+        },
+        "data_sent": {
+            "count": 2890,
+            "rate": 9.605893282670458
+        }
+    },
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "name": "로그인 200",
+                    "path": "::로그인 200",
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b",
+                    "passes": 4,
+                    "fails": 0
+                },
+                "환불 COMPLETED": {
+                    "name": "환불 COMPLETED",
+                    "path": "::환불 COMPLETED",
+                    "id": "b8bdcbfec95668b7de71e8706b5a20ba",
+                    "passes": 4,
+                    "fails": 0
+                }
+            },
+        "name": ""
+    }
+}

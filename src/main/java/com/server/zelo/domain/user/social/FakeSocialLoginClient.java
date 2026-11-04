@@ -5,8 +5,11 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.user.entity.SocialProvider;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Component
@@ -15,6 +18,18 @@ public class FakeSocialLoginClient implements SocialLoginClient {
 
     // 실제로 존재할 수 있는 도메인(fake.com)이 아니라 예약된 example.com 하위 도메인을 써서 실수로 메일이 나가는 일을 막음
     private static final String FAKE_EMAIL_DOMAIN = "@fake.example.com";
+
+    private final long latencyMillis;
+    private final double latencyJitter;
+
+    // 부하 테스트에서 실제 소셜 서버의 응답 시간(스레드가 대기하는 시간)을 흉내 내기 위한 값이고, 기본값 0이면 지연이 없음
+    // 평균 latencyMillis에서 ±latencyJitter 비율만큼 호출마다 무작위로 달라짐 (0.5면 평균 900ms일 때 450~1350ms)
+    public FakeSocialLoginClient(
+            @Value("${zelo.social.fake-latency-ms:0}") long latencyMillis,
+            @Value("${zelo.social.fake-latency-jitter:0.5}") double latencyJitter) {
+        this.latencyMillis = latencyMillis;
+        this.latencyJitter = latencyJitter;
+    }
 
     // 운영상에서 켜지면 누구나 로그인을 할 수 있어 부팅 시 경고를 남김
     @PostConstruct
@@ -30,6 +45,8 @@ public class FakeSocialLoginClient implements SocialLoginClient {
     @Override
     // code의 값에 따라 결과를 다르게 동작시키고, 원래 code는 1회성 이지만 테스트에서는 code를 통해 유저를 만들어 유저 고유 식별자로 사용
     public SocialProfile getProfile(String code, String redirectUri, String codeVerifier) {
+        // 실제 호출은 성공이든 실패든 시간이 걸리므로 code와 상관없이 먼저 기다림
+        simulateLatency();
 
         // fake- 로 시작하면 정상 프로필 응답, 이름과 이메일, providerId는 code에서 가져와서 사용
         if (code.startsWith("fake-")) {
@@ -73,5 +90,17 @@ public class FakeSocialLoginClient implements SocialLoginClient {
                 throw new BusinessException(ErrorCode.SOCIAL_AUTH_FAILED);
         }
 
+    }
+
+    private void simulateLatency() {
+        if (latencyMillis <= 0) {
+            return;
+        }
+        double factor = 1 + latencyJitter * (ThreadLocalRandom.current().nextDouble() * 2 - 1);
+        try {
+            Thread.sleep(Math.max(0, Math.round(latencyMillis * factor)));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

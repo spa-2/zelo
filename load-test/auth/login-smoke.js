@@ -1,0 +1,193 @@
+import http from 'k6/http';
+import { check } from 'k6';
+import exec from 'k6/execution';
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
+
+// 이메일 로그인 스모크 테스트 (인증 파트)
+// 목적: 가상 사용자 1명이 로그인을 연달아 보내서, 부하가 없을 때의 응답 시간(기준선 p95)을 얻는다.
+//       이 p95로 다음 단계(부하 테스트)의 VU 수를 계산한다.
+// 사용법과 설명은 load-test/README.md 참고. 결과는 docs/load-test/results/ 에 파일로 남는다.
+//
+// 실행 (저장소 루트에서, k6는 도커로 실행):
+//   load-test/run-k6.sh load-test/auth/login-smoke.js -e NOTE="로컬 첫 측정"
+
+// ───────── 1. 설정값: 환경변수(-e 이름=값)로 바꿀 수 있고, 없으면 오른쪽 기본값을 쓴다 ─────────
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+// 더미 데이터에서 이메일 로그인 사용자는 1~21000번이다 (LoadTestUserSeedLoader 참고)
+const USER_COUNT = Number(__ENV.USER_COUNT || 21000);
+const PASSWORD = __ENV.PASSWORD || 'Zelo1234!';
+const WARMUP = __ENV.WARMUP || '20s';
+const DURATION = __ENV.DURATION || '1m';
+const RESULT_DIR = __ENV.RESULT_DIR || 'docs/load-test/results/auth';
+const COMMIT = __ENV.COMMIT || '(미입력)';
+const NOTE = __ENV.NOTE || '';
+
+// ───────── 2. 시나리오: 언제, 누가, 얼마나 요청을 보낼지 ─────────
+export const options = {
+    scenarios: {
+        // JVM과 커넥션 풀이 데워지기 전의 느린 요청이 결과에 섞이지 않게 먼저 돌리는 구간. 측정에는 쓰지 않는다
+        warmup: { executor: 'constant-vus', vus: 1, duration: WARMUP, tags: { phase: 'warmup' } },
+        // 실제로 측정하는 구간. 워밍업이 끝난 시점(startTime)에 시작한다
+        smoke: { executor: 'constant-vus', vus: 1, duration: DURATION, startTime: WARMUP, tags: { phase: 'smoke' } },
+    },
+    // 합격 기준. smoke 구간만 본다. 스모크는 지연을 합격/불합격으로 가르지 않고 기준선을 얻는 것이 목적이다
+    thresholds: {
+        'http_req_failed{phase:smoke}': ['rate<0.01'], // 실패한 요청이 1% 미만
+        'checks{phase:smoke}': ['rate>0.99'], // 아래 check가 99% 이상 통과
+        // 아래 둘은 기준이 아니라 smoke 구간의 값을 따로 집계해 결과 파일에 쓰려는 장치다 (항상 통과하는 값)
+        'http_req_duration{phase:smoke}': ['p(95)<1000000'],
+        'http_reqs{phase:smoke}': ['count>=0'],
+    },
+    // 결과에 보여 줄 통계 항목
+    summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
+};
+
+// ───────── 3. 실제 요청: VU가 반복해서 실행하는 부분 ─────────
+export default function () {
+    // 반복 번호로 사용자를 순서대로 고른다 (0번째 → load1@test.com, 1번째 → load2@test.com ...)
+    const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + 1;
+
+    const res = http.post(
+        `${BASE_URL}/api/users/login`,
+        JSON.stringify({ email: `load${userNumber}@test.com`, password: PASSWORD }),
+        {
+            headers: { 'Content-Type': 'application/json' },
+            // 결과를 API별로 나눠 볼 때 쓰는 이름표
+            tags: { name: 'login' },
+        },
+    );
+
+    // 응답이 정상인지 확인한다. 실패해도 테스트는 계속되고, 통과율만 집계된다
+    check(res, {
+        '상태 코드 200': (r) => r.status === 200,
+        '액세스 토큰 있음': hasAccessToken,
+    });
+}
+
+function hasAccessToken(res) {
+    try {
+        return Boolean(res.json('data.accessToken'));
+    } catch (e) {
+        // 응답이 JSON이 아니면(서버 다운 등) 토큰이 없는 것으로 본다
+        return false;
+    }
+}
+
+// ───────── 4. 결과 저장: 테스트가 끝나면 k6가 호출한다 ─────────
+export function handleSummary(data) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePrefix = `${RESULT_DIR}/auth-login-smoke-${stamp}`;
+    return {
+        // 터미널에 보이는 요약
+        stdout: textSummary(data, { indent: ' ', enableColors: true }),
+        // 사람이 읽는 결과 문서
+        [`${filePrefix}.md`]: buildReport(data),
+        // k6 원본 데이터 (나중에 다시 분석할 때 쓰고, 필요 없으면 지워도 된다)
+        [`${filePrefix}.json`]: JSON.stringify(data, null, 2),
+    };
+}
+
+function buildReport(data) {
+    const value = (metric, key) => {
+        const m = data.metrics[metric];
+        return m && m.values[key] !== undefined ? m.values[key] : null;
+    };
+    const ms = (v) => (v === null ? '-' : `${v.toFixed(1)} ms`);
+    const percent = (v) => (v === null ? '-' : `${(v * 100).toFixed(2)} %`);
+
+    const duration = 'http_req_duration{phase:smoke}';
+    const requests = value('http_reqs{phase:smoke}', 'count');
+    // k6가 계산하는 rate는 워밍업 시간까지 포함한 값이라, 측정 구간 시간으로 직접 나눈다
+    const rps = requests === null ? null : requests / toSeconds(DURATION);
+
+    const thresholdRows = [];
+    Object.keys(data.metrics).forEach((name) => {
+        const thresholds = data.metrics[name].thresholds;
+        if (!thresholds || !name.includes('phase:smoke')) {
+            return;
+        }
+        Object.keys(thresholds).forEach((expression) => {
+            const result = thresholds[expression];
+            // k6 버전에 따라 {ok: true}이거나, 기준을 어겼을 때 true인 값이다
+            const ok = typeof result === 'object' ? result.ok : !result;
+            thresholdRows.push(`| ${name} | ${expression} | ${ok ? '통과' : '실패'} |`);
+        });
+    });
+
+    return [
+        '# 인증 로그인 스모크 테스트 결과',
+        '',
+        `- 실행 시각: ${new Date().toISOString()}`,
+        `- 대상: ${BASE_URL}`,
+        `- 커밋: ${COMMIT}`,
+        `- 메모: ${NOTE || '(없음)'}`,
+        '',
+        '## 조건',
+        '',
+        `- 가상 사용자(VU) 1명, 워밍업 ${WARMUP}(측정 제외) 후 ${DURATION} 동안 측정`,
+        `- 사용자: load1@test.com ~ load${USER_COUNT}@test.com 을 순서대로 로그인, 비밀번호는 공통`,
+        '- 외부 서비스 호출 없음',
+        '',
+        '## 결과 (측정 구간만)',
+        '',
+        '| 항목 | 값 |',
+        '| -- | -- |',
+        `| 총 요청 수 | ${requests === null ? '-' : requests} |`,
+        `| 처리량 (RPS) | ${rps === null ? '-' : rps.toFixed(2)} |`,
+        `| 평균 | ${ms(value(duration, 'avg'))} |`,
+        `| 중앙값 | ${ms(value(duration, 'med'))} |`,
+        `| p90 | ${ms(value(duration, 'p(90)'))} |`,
+        `| p95 | ${ms(value(duration, 'p(95)'))} |`,
+        `| p99 | ${ms(value(duration, 'p(99)'))} |`,
+        `| 최대 | ${ms(value(duration, 'max'))} |`,
+        `| 실패율 | ${percent(value('http_req_failed{phase:smoke}', 'rate'))} |`,
+        `| 체크 통과율 | ${percent(value('checks{phase:smoke}', 'rate'))} |`,
+        '',
+        '## 합격 기준 판정',
+        '',
+        '| 지표 | 기준 | 결과 |',
+        '| -- | -- | -- |',
+        ...thresholdRows,
+        '',
+        '## 다음 단계 계산 (직접 채우기)',
+        '',
+        '- 부하 테스트 VU = 올림(목표 RPS × 위 p95(초)), 최소 1',
+        '- 이 p95(초): (    ) / 목표 RPS: (    ) / 계산한 VU: (    )',
+        '',
+        '## 서버 지표 (직접 채우기, collect-metrics.sh 결과를 보고 적기)',
+        '',
+        '| 항목 | 최대 | 평균 |',
+        '| -- | -- | -- |',
+        '| 프로세스 CPU | | |',
+        '| Tomcat busy 스레드 | | |',
+        '| Hikari 사용 중 커넥션 | | |',
+        '| Hikari 대기(pending) 커넥션 | | |',
+        '| 힙 메모리(MB) | | |',
+        '',
+        '## 환경 (직접 채우기)',
+        '',
+        '- 머신(CPU 코어 / 메모리): ',
+        '- DB, Redis: 로컬 docker compose',
+        '- 더미 데이터: 사용자 30000명',
+        '- 로그 레벨(SQL 로그 끔 여부): ',
+        '- 외부 서비스: 해당 없음',
+        '',
+        '## 해석 메모 (직접 채우기)',
+        '',
+        '- ',
+        '',
+    ].join('\n');
+}
+
+// '1m', '90s', '1m30s' 같은 시간 문자열을 초로 바꾼다
+function toSeconds(text) {
+    const unit = { h: 3600, m: 60, s: 1 };
+    const pattern = /(\d+)([hms])/g;
+    let total = 0;
+    let match = pattern.exec(text);
+    while (match !== null) {
+        total += Number(match[1]) * unit[match[2]];
+        match = pattern.exec(text);
+    }
+    return total || 1;
+}

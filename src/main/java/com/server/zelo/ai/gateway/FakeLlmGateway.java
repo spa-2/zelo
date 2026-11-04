@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Component
@@ -39,8 +40,14 @@ public class FakeLlmGateway implements LlmGateway {
     }
 
     // 테스트 스레드에서 바꾼 모드를 요청 스레드가 바로 보도록 volatile
+    // 앱을 띄워서 느린 OpenAI·장애를 재현하려면(부하 테스트) zelo.llm.fake.mode=DELAY, zelo.llm.fake.delay=15s
+    @Value("${zelo.llm.fake.mode:NORMAL}")
     private volatile Mode mode = Mode.NORMAL;
+    @Value("${zelo.llm.fake.delay:6s}")
     private volatile Duration delay = Duration.ofSeconds(6);
+    // 실제 응답 시간은 호출마다 달라서(메뉴 계획 p50 4.4~5.7초, 답변 p50 3.5초) delay~delay-max 사이에서 고른다. delay보다 크지 않으면 delay로 고정
+    @Value("${zelo.llm.fake.delay-max:0s}")
+    private volatile Duration delayMax = Duration.ZERO;
     // 기본은 일반 질문이라 채팅이 지금처럼 답변만 한다. 견적 흐름을 확인할 때만 테스트에서 바꾼다
     // 앱을 띄워서 견적까지 보려면(부하 테스트 등) zelo.llm.fake.plan-intent=SHOPPING_REQUEST
     @Value("${zelo.llm.fake.plan-intent:GENERAL_QUESTION}")
@@ -113,9 +120,13 @@ public class FakeLlmGateway implements LlmGateway {
         this.delay = delay;
     }
 
+    public void changeDelayMax(Duration delayMax) {
+        this.delayMax = delayMax;
+    }
+
     private void applyMode() {
         switch (mode) {
-            case DELAY -> sleep(delay);
+            case DELAY -> sleep(pickDelay());
             case FAIL -> throw InternalServerException.builder()
                     .statusCode(500)
                     .headers(Headers.builder().build())
@@ -125,6 +136,13 @@ public class FakeLlmGateway implements LlmGateway {
                     .build();
             case NORMAL -> { }
         }
+    }
+
+    private Duration pickDelay() {
+        if (delayMax.compareTo(delay) <= 0) {
+            return delay;
+        }
+        return Duration.ofMillis(ThreadLocalRandom.current().nextLong(delay.toMillis(), delayMax.toMillis() + 1));
     }
 
     private void sleep(Duration duration) {

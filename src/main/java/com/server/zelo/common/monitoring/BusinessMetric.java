@@ -47,6 +47,7 @@ public enum BusinessMetric {
     DELIVERY_SCHEDULER_FAILED("zelo.delivery.scheduler.failed", "배송 자동 진행 실패 수 (status)"),
 
     // LLM. outcome은 SUCCESS 또는 실패 코드(AI_xxx)
+    LLM_EXECUTION_STARTED("zelo.llm.execution.started", "실제로 시작한 delegate 작업 수; HTTP 요청 수와 다름 (operation)"),
     LLM_CALL("zelo.llm.call", "LLM 호출 1건 시간, 재시도 포함 (operation, outcome)"),
     LLM_ATTEMPT("zelo.llm.attempt", "LLM 시도 1번 시간 (operation, outcome)"),
     LLM_TOKENS("zelo.llm.tokens", "LLM 토큰 수 (operation, model, type)"),

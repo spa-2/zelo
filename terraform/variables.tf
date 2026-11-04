@@ -173,3 +173,9 @@ variable "mail_sandbox_recipients" {
   type    = list(string)
   default = []
 }
+
+variable "metrics_collector_security_group_id" {
+  type        = string
+  default     = null
+  description = "동일 VPC의 Prometheus 수집기 보안 그룹. 지정한 경우에만 관리 포트 접근 허용"
+}

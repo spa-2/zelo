@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["APP_PRIVATE_IP_1:9292", "APP_PRIVATE_IP_2:9292"],
+    "labels": {"environment": "performance"}
+  }
+]

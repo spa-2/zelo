@@ -454,6 +454,7 @@ class ChatReplyCommandServiceTest {
         assertThat(counter("zelo.chat.quote.busy")).isEqualTo(1);
         then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
         then(llmGateway).should(never()).explain(any(), any(), any());
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("result", "BUSY").timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -493,6 +494,7 @@ class ChatReplyCommandServiceTest {
         assertThat(response.content()).isEqualTo("견적을 준비했어요. 내용을 확인해 주세요.");
         then(chatMessageService).should(never()).createFallbackMessage(anyLong(), anyLong(), any());
         assertThat(counter("zelo.chat.explain.degraded", "code", "AI_002")).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("result", "DEGRADED").timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -513,6 +515,7 @@ class ChatReplyCommandServiceTest {
         assertThat(response.payload()).isNull();
         assertThat(response.quoteCardStatus()).isNull();
         then(chatMessageService).should(never()).createQuoteCardMessage(anyLong(), anyLong(), anyString(), any());
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("result", "NO_QUOTE").timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -637,6 +640,7 @@ class ChatReplyCommandServiceTest {
         assertThat(response.content()).isEqualTo("포기김치와 백김치 중 어떤 김치를 뺄까요?");
         then(chatQuoteFacade).shouldHaveNoInteractions();
         assertThat(counter("zelo.chat.quote.edit", "source", "CHAT", "result", "ASK_AGAIN")).isEqualTo(1);
+        assertThat(meterRegistry.get("zelo.chat.reply").tag("result", "NOT_APPLIED").timer().count()).isEqualTo(1);
     }
 
     @Test

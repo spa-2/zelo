@@ -31,4 +31,37 @@ class BusinessMetricsTest {
         assertThat(result).isEqualTo("견적");
         assertThat(meterRegistry.get("zelo.quote.create.time").timer().count()).isEqualTo(1);
     }
+    @Test
+    void 동시_작업은_합산하고_예외가_나도_진행수를_복원한다() throws Exception {
+        // given
+        var entered = new java.util.concurrent.CountDownLatch(2);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.function.Supplier<Void> work = () -> {
+            entered.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            throw new IllegalStateException("failure");
+        };
+        try {
+            // when
+            var first = executor.submit(() -> businessMetrics.track("test.inflight", work));
+            var second = executor.submit(() -> businessMetrics.track("test.inflight", work));
+            assertThat(entered.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            // then
+            assertThat(meterRegistry.get("test.inflight").gauge().value()).isEqualTo(2);
+            release.countDown();
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> first.get(3, java.util.concurrent.TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.get(3, java.util.concurrent.TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class);
+            assertThat(meterRegistry.get("test.inflight").gauge().value()).isZero();
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
 }

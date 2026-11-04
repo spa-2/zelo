@@ -1,0 +1,12 @@
+# 부하 측정 전후에 동일한 로그 수준을 사용한다. DB·시크릿 설정은 변경하지 않는다.
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: info
+    org.hibernate.SQL: info
+    org.hibernate.orm.jdbc.bind: info
+management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        hikaricp.connections.acquire: true
+        hikaricp.connections.usage: true

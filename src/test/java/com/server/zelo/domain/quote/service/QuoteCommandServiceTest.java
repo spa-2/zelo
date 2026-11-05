@@ -121,6 +121,21 @@ class QuoteCommandServiceTest {
     }
 
     @Test
+    void 견적_후보는_같은_재료의_양을_합쳐서_조건과_같이_찾는다() {
+        // given
+        Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 100);
+        givenProducts(List.of(pogi), Map.of(1L, 100), Map.of());
+
+        // when
+        quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(
+                MenuPlanIngredient.of("김치", 300, BaseUnit.G),
+                MenuPlanIngredient.of("김치", 200, BaseUnit.G)), List.of(Keyword.NOT_SPICY)));
+
+        // then: 필요량을 알아야 총액이 싼 후보를 고를 수 있다
+        then(productService).should().findQuoteCandidates(Map.of("김치", 500), Set.of(Keyword.NOT_SPICY));
+    }
+
+    @Test
     void 견적을_만들면_발급_수와_빠진_사유를_센다() {
         // given
         Product sojuProduct = product(1L, soju, "소주 360ml", 1900L, 360, 100);
@@ -143,7 +158,7 @@ class QuoteCommandServiceTest {
         // given
         Product pogi = product(1L, kimchi, "포기김치 500g", 5900L, 500, 120);
         Product baek = product(2L, kimchi, "백김치 1kg", 8900L, 1000, 80);
-        given(productService.findOnSaleProducts(anyList())).willReturn(List.of(pogi, baek));
+        given(productService.findQuoteCandidates(anyMap(), anyCollection())).willReturn(List.of(pogi, baek));
         given(inventoryService.findAvailableQuantities(anyCollection())).willReturn(Map.of(1L, 100, 2L, 100));
         given(productService.findKeywords(anyCollection())).willReturn(Map.of(2L, Set.of(Keyword.NOT_SPICY)));
         given(reviewService.findReviewEvidences(anyList(), anySet())).willReturn(Map.of(2L, ProductReviewEvidence.of(
@@ -809,7 +824,7 @@ class QuoteCommandServiceTest {
     }
 
     private void givenProducts(List<Product> products, Map<Long, Integer> stocks, Map<Long, Set<Keyword>> keywords) {
-        given(productService.findOnSaleProducts(anyList())).willReturn(products);
+        given(productService.findQuoteCandidates(anyMap(), anyCollection())).willReturn(products);
         given(inventoryService.findAvailableQuantities(anyCollection())).willReturn(stocks);
         given(productService.findKeywords(anyCollection())).willReturn(keywords);
         given(reviewService.findReviewEvidences(anyList(), anySet())).willReturn(Map.of());

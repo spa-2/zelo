@@ -21,6 +21,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.SQLException;
 import java.util.*;
@@ -30,10 +31,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProductService {
 
+    // 견적이 재료마다 판매량 상위·총액 하위에서 몇 개씩 후보로 볼지 (ProductRepository.findQuoteCandidateIds)
+    private static final int QUOTE_CANDIDATE_LIMIT = 100;
+
     private final ProductRepository productRepository;
     private final IngredientRepository ingredientRepository;
     private final ProductKeywordRepository productKeywordRepository;
     private final PopularProductService popularProductService;
+    private final JsonMapper jsonMapper;
 
     // AI 메뉴 계획이 재료 이름·단위를 이 목록에서만 고르게 한다. 견적이 재료 이름으로 상품을 찾고 단위로 수량을 계산하기 때문.
     // 프롬프트에 매번 같은 순서로 들어가도록 id 순서를 지킨다
@@ -74,9 +79,16 @@ public class ProductService {
         return ProductDetail.from(product, keywords);
     }
 
+    // 견적 후보 상품. 재료 이름 → 필요량(기본 단위)과 견적 조건 키워드를 받는다
     @Transactional(readOnly = true)
-    public List<Product> findOnSaleProducts(Collection<String> ingredientNames) {
-        return productRepository.findAllByIngredient_NameInAndStatus(ingredientNames, ProductStatus.ON_SALE);
+    public List<Product> findQuoteCandidates(Map<String, Integer> requiredAmounts, Collection<Keyword> conditions) {
+        if (requiredAmounts.isEmpty()) {
+            return List.of();
+        }
+        String keywords = conditions.stream().map(Keyword::name).sorted().collect(Collectors.joining(","));
+        List<Long> ids = productRepository.findQuoteCandidateIds(jsonMapper.writeValueAsString(requiredAmounts), keywords,
+                QUOTE_CANDIDATE_LIMIT);
+        return productRepository.findAllWithIngredientByIdIn(ids);
     }
 
     @Transactional(readOnly = true)

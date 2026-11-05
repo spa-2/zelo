@@ -220,8 +220,10 @@ public class QuoteCommandService {
         requested.forEach(ingredient -> merged.merge(ingredient.name(), ingredient,
                 (first, second) -> MenuPlanIngredient.of(first.name(), first.amount() + second.amount(), first.unit())));
         List<MenuPlanIngredient> ingredients = List.copyOf(merged.values());
-        List<String> ingredientNames = ingredients.stream().map(MenuPlanIngredient::name).toList();
-        List<Product> products = productService.findOnSaleProducts(ingredientNames);
+        Map<String, Integer> requiredAmounts = new LinkedHashMap<>();
+        ingredients.forEach(ingredient -> requiredAmounts.put(ingredient.name(), ingredient.amount()));
+        // 재료의 상품을 다 보지 않고 판매량·총액 상위 후보만 받는다 (상품이 많으면 재료 하나에 수천 개라서)
+        List<Product> products = productService.findQuoteCandidates(requiredAmounts, conditions);
         List<Long> productIds = products.stream().map(Product::getId).toList();
 
         Map<Long, Integer> stocks = inventoryService.findAvailableQuantities(productIds);

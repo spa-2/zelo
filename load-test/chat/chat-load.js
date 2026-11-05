@@ -45,9 +45,9 @@ export const options = {
     thresholds: {
         'http_req_failed{phase:steady}': ['rate<0.01'],
         'checks{phase:steady,kind:basic}': ['rate>0.99'],
-        // 계획서 4-2: 기대와 다른 의도 5% 미만 (fake로 돌리면 이 check가 없다)
+        // 계획서 4-2-1: 기대와 다른 의도 5% 미만 (fake로 돌리면 이 check가 없다)
         'checks{phase:steady,kind:intent}': ['rate>0.95'],
-        // LLM 시간 제한 12초 + 서버 처리 1초. 실제 OpenAI에서 견적 수정은 LLM 3번이라 의도별 값은 결과서에 따로 적는다 (계획서 4-1)
+        // LLM 시간 제한 12초 + 서버 처리 1초. 실제 OpenAI에서 견적 수정은 LLM 3번이라 의도별 값은 결과서에 따로 적는다 (계획서 4-2-1)
         'http_req_duration{phase:steady,name:startChat}': ['p(95)<13000'],
         'http_req_duration{phase:steady,name:sendMessage}': ['p(95)<13000'],
         'dropped_iterations{phase:steady}': ['count==0'],

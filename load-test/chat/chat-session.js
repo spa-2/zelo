@@ -77,7 +77,7 @@ export function session() {
 }
 
 // 카드가 왔다고 의도대로 처리된 것은 아니다. 새 견적과 견적 수정 모두 견적 카드를 돌려주므로 의도마다 따로 본다
-// kind:intent로 모아서 계획서 4-2 기준(기대와 다른 의도 5% 미만)으로 판정한다
+// kind:intent로 모아서 계획서 4-1-2·4-2-1 기준(기대와 다른 의도 5% 미만)으로 판정한다
 function checkIntent(message, payload, previousCard) {
     if (FAKE_LLM) {
         return;

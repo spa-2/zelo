@@ -35,7 +35,8 @@ export const options = {
         'http_req_duration{name:retryPayment,scenario:load}': ['max>=0'],
         'http_req_duration{name:confirmPayment,scenario:load}': ['max>=0'],
         'http_req_duration{name:payWithPaymentMethod,scenario:load}': ['max>=0'],
-        'dropped_iterations{scenario:load}': ['count>=0'],
+        // 못 보낸 세션이 있으면 목표를 못 버틴 것으로 본다
+        'dropped_iterations{scenario:load}': ['count==0'],
     },
 };
 

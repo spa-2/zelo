@@ -3,7 +3,7 @@ import exec from 'k6/execution';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';
 
-// 한계 (새 기준): 목표(분당 100세션 = 초당 1.67세션)의 10·50·100·150·200·250배로 올리다가 기준을 넘는 단계에서 멈춘다
+// 한계 (새 기준): 목표(분당 100세션 = 초당 1.67세션)의 10·50·100·150·200·250배로 올려 처음 기준을 넘는 단계를 찾는다
 // 단계마다 60초. 단계를 시나리오로 나눠 기준을 단계별로 본다 (처음부터 누적한 p95로 보면 늦게 걸린다)
 // 로그인(비밀번호 확인)이 먼저 병목이 되지 않도록 setup에서 결제 범위 사용자 토큰을 미리 받아 두고, 세션에서는 결제 요청만 보낸다
 // 모든 단계를 다 돌면 약 7.6만 세션. 시드 주문 10만 건 안에 들어온다
@@ -44,10 +44,12 @@ MULTIPLIERS.forEach((multiplier, index) => {
         // 단계마다 번호가 0부터 시작하므로 앞 단계가 쓴 주문 수만큼 띄운다
         env: { ORDER_OFFSET: String(offset) },
     };
-    offset += rate * STAGE_SECONDS;
-    // 결제 요청 에러 1% 초과 또는 p95 2초 초과가 10초 이어지면 멈춘다
+    // k6가 단계마다 1건을 더 돌 수 있어 10건 여유를 둔다
+    offset += rate * STAGE_SECONDS + 10;
+    // 에러가 쏟아질 때만 멈춘다
     thresholds[`http_req_failed{kind:payment,scenario:${name}}`] = [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '10s' }];
-    thresholds[`http_req_duration{kind:payment,scenario:${name}}`] = [{ threshold: 'p(95)<2000', abortOnFail: true, delayAbortEval: '10s' }];
+    // p95로는 멈추지 않고 단계별 결과로 판정한다
+    thresholds[`http_req_duration{kind:payment,scenario:${name}}`] = ['p(95)<2000'];
     thresholds[`http_reqs{kind:payment,scenario:${name}}`] = ['count>=0'];
     thresholds[`http_req_duration{name:confirmPayment,scenario:${name}}`] = ['max>=0'];
     thresholds[`http_req_duration{name:payWithPaymentMethod,scenario:${name}}`] = ['max>=0'];

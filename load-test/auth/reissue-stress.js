@@ -32,11 +32,11 @@ const recovered = new Counter('reissue_recovered');
 // 응답을 못 받은(상태 0) 실패에서 같은 토큰으로 다시 보낸 결과: 성공이면 서버가 처음 요청을 처리하지 않은 것이고, 이미 교체된 토큰이라는 응답이면 서버는 처리했는데 응답이 유실된 것이다
 const retryProcessed = new Counter('reissue_retry_already_processed');
 const retryUnknown = new Counter('reissue_retry_unknown');
-const retryNotProcessed = new Counter('reissue_retry_not_processed');
+const retrySucceeded = new Counter('reissue_retry_succeeded');
 const FAILURE_STATUSES = ['0', '400', '401', '404', '409', '429', '500', '502', '503'];
-// 올려 갈 초당 요청 수. 첫 값 5는 재발급 목표 RPS다
+// 올려 갈 초당 요청 수. 첫 값 25는 재발급 목표 RPS다 (1만 명 ÷ 액세스 토큰 600초 × 1.5)
 // 목표 5 RPS = 2,000명 × 접속자가 2시간 동안 액세스 토큰(10분) 만료마다 재발급(최대 12회) ÷ 7,200초 × 안전계수 1.5 (2시간 내내 접속한다는 가정이라 실제로는 더 낮을 수 있다)
-const RATES = (__ENV.RATES || '5,50,100,200,400,800,1200,1600,2000').split(',').map(Number);
+const RATES = (__ENV.RATES || '25,50,100,200,400,800,1200,1600,2000').split(',').map(Number);
 const STEP_SECONDS = toSeconds(__ENV.STEP || '60s'); // 한 단계의 길이
 const RAMP_SECONDS = toSeconds(__ENV.RAMP || '5s'); // 단계가 바뀔 때 속도를 올리는 데 쓰는 시간 (STEP 안에 포함)
 const WARMUP_SECONDS = toSeconds(__ENV.WARMUP || '20s'); // 측정 전에 가볍게 돌리는 구간 (결과에서 제외)
@@ -48,6 +48,10 @@ const ERROR_LIMIT = Number(__ENV.ERROR_LIMIT || 0.01);
 const PRE_ALLOCATED_VUS = Number(__ENV.PRE_VUS || 20); // 미리 만들어 둘 가상 사용자 수
 const MAX_VUS = Number(__ENV.MAX_VUS || 400); // 서버가 느려질 때 k6가 늘릴 수 있는 최대치
 const MONITOR_INTERVAL_SECONDS = Number(__ENV.MONITOR_INTERVAL || 2);
+// __VU는 시나리오와 상관없이 전체에서 번호가 매겨지고, 사용자는 VU 번호로 정한다. 그래서 워밍업(최대 50)과 모니터(1)의 VU까지 합친 수가 토큰 수를 넘으면 서로 다른 VU가 같은 토큰을 쓴다
+if (MAX_VUS + 50 + 1 > SETUP_USERS) {
+    throw new Error(`MAX_VUS(${MAX_VUS}) + 워밍업 50 + 모니터 1 이 SETUP_USERS(${SETUP_USERS})를 넘을 수 없습니다`);
+}
 const RESULT_DIR = __ENV.RESULT_DIR || 'docs/load-test/results/auth';
 const COMMIT = __ENV.COMMIT || '(미입력)';
 const NOTE = __ENV.NOTE || '';
@@ -75,7 +79,7 @@ export const options = {
         // 단계가 올라가는 본 시험. 속도는 "VU 수"가 아니라 "초당 요청 수"로 직접 정한다 (서버가 느려져도 약속한 속도로 계속 보낸다)
         stress: {
             executor: 'ramping-arrival-rate',
-            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (0.44 RPS = 분당 26건)
+            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (2.7 RPS = 분당 162건)
             timeUnit: '1m',
             startRate: perMinute(RATES[0]),
             preAllocatedVUs: PRE_ALLOCATED_VUS,
@@ -192,12 +196,14 @@ export default function (data) {
         return;
     }
 
+    // 요청이 단계 경계를 넘어 끝나도 요청과 check가 같은 단계로 집계되게 시작 시점에 한 번만 구한다
+    const step = currentStep(data);
     const res = http.post(`${BASE_URL}/api/auth/reissue`, null, {
         // 쿠키는 k6의 쿠키 저장소 대신 직접 보낸다 (서버가 Secure 쿠키로 내려줘서 http에서는 저장소가 보내지 않는다)
         headers: { Cookie: `refreshToken=${myToken}` },
         jar: new http.CookieJar(),
         timeout: '10s',
-        tags: { name: 'reissue', step: currentStep(data) },
+        tags: { name: 'reissue', step },
     });
 
     const newCookie = res.cookies.refreshToken;
@@ -206,14 +212,14 @@ export default function (data) {
         '상태 코드 200': (r) => r.status === 200,
         '새 액세스 토큰 있음': hasAccessToken,
         '새 리프레시 토큰 받음': () => newToken !== null,
-   }, { step: currentStep(data) });
+   }, { step });
     // 성공하면 새 토큰으로 교체한다
     if (res.status !== 200 || newToken === null) {
         // 원인을 알 수 있게 실패한 응답을 남기고 상태 코드별로 센다
-        console.error(`재발급 실패 VU=${__VU} 상태=${res.status} 오류=${res.error_code} ${res.error} 응답=${String(res.body).slice(0, 200)}`);
+        console.error(`재발급 실패 VU=${__VU} 상태=${res.status} 오류=${res.error_code}`);
         failures.add(1, { status: String(res.status) });
         if (res.status === 0) {
-            // 서버가 처음 요청을 처리했는지 알아보려고 같은 토큰으로 한 번 더 보낸다. 처리됐다면 "방금 교체된 토큰" 응답(409)이라 세션은 지워지지 않는다
+            // 서버가 처음 요청을 처리했는지 알아보려고 같은 토큰으로 한 번 더 보낸다(재시도가 200이어도 첫 요청이 뒤늦게 도착했는지는 알 수 없다). 처리됐다면 "방금 교체된 토큰" 응답(409)이라 세션은 지워지지 않는다
             const retry = http.post(`${BASE_URL}/api/auth/reissue`, null, {
                 headers: { Cookie: `refreshToken=${myToken}` },
                 jar: new http.CookieJar(),
@@ -222,7 +228,7 @@ export default function (data) {
             });
             const retryCookie = retry.cookies.refreshToken;
             if (retry.status === 200 && retryCookie && retryCookie.length > 0) {
-                retryNotProcessed.add(1);
+                retrySucceeded.add(1);
                 myToken = retryCookie[0].value;
                 return;
             }
@@ -232,7 +238,7 @@ export default function (data) {
             } else {
                 retryUnknown.add(1);
             }
-            console.error(`재시도 결과 VU=${__VU} 상태=${retry.status} 응답=${String(retry.body).slice(0, 200)}`);
+            console.error(`재시도 결과 VU=${__VU} 상태=${retry.status}`);
         }
         // 서버가 이미 토큰을 바꿨을 수 있어 같은 토큰은 다시 쓰지 않고, 로그인으로 새 토큰을 받아 이어간다
         myToken = recoverToken(__VU % data.tokens.length);
@@ -393,7 +399,7 @@ function buildReport(data) {
         `- k6가 못 보낸 요청(dropped_iterations): ${dropped} / 사용한 최대 VU: ${vusMax === null ? '-' : vusMax}`,
         `- 목표 속도에 못 미친 단계(도달률 ${REACH_LIMIT * 100}% 미만): ${rows.filter((row) => row.status === '미달').map((row) => `${row.step.rate} RPS`).join(', ') || '없음'}`,
         `- 재발급 실패 횟수(상태 코드별): ${FAILURE_STATUSES.map((status) => [status, value(`reissue_failures{status:${status}}`, 'count')]).filter(([, count]) => count).map(([status, count]) => `${status}번 ${count}회`).join(', ') || '없음'} (0번은 응답을 못 받은 연결 오류)`,
-        `- 응답을 못 받은 실패의 재시도 결과: 서버가 처음 요청을 처리하지 않음 ${value('reissue_retry_not_processed', 'count') || 0}회 / 이미 처리했는데 응답이 유실됨(재시도가 409) ${value('reissue_retry_already_processed', 'count') || 0}회 / 알 수 없음(재시도도 409가 아닌 실패) ${value('reissue_retry_unknown', 'count') || 0}회`,
+        `- 응답을 못 받은 실패의 재시도 결과: 재시도 성공 ${value('reissue_retry_succeeded', 'count') || 0}회 / 이미 처리했는데 응답이 유실됨(재시도가 409) ${value('reissue_retry_already_processed', 'count') || 0}회 / 알 수 없음(재시도도 409가 아닌 실패) ${value('reissue_retry_unknown', 'count') || 0}회`,
         `- 실패 뒤 다시 로그인해서 토큰을 되찾은 횟수: ${value('reissue_recovered', 'count') || 0} / 되찾지 못해 요청을 건너뛴 횟수: ${skippedCount}`,
         '',
         '## 단계별 결과',

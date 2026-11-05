@@ -1,0 +1,230 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "name": "로그인 200",
+                    "path": "::로그인 200",
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b",
+                    "passes": 5202,
+                    "fails": 0
+                },
+                "결제수단 조회 200": {
+                    "name": "결제수단 조회 200",
+                    "path": "::결제수단 조회 200",
+                    "id": "3c7fc7cc5f220e4f3779f7a83a23b9f3",
+                    "passes": 5202,
+                    "fails": 0
+                },
+                "결제 PAID": {
+                    "name": "결제 PAID",
+                    "path": "::결제 PAID",
+                    "id": "fadf73f6b138911f66fed0873cfa6dc6",
+                    "passes": 5202,
+                    "fails": 0
+                },
+                "재결제 200": {
+                    "name": "재결제 200",
+                    "path": "::재결제 200",
+                    "id": "0b2a8ba6ec2d7d884e79d1168cad3733",
+                    "passes": 780,
+                    "fails": 0
+                }
+            }
+    },
+    "metrics": {
+        "http_req_sending": {
+            "avg": 0.006117405101916275,
+            "min": 0,
+            "med": 0,
+            "max": 2.5095,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_receiving": {
+            "p(95)": 0.5316,
+            "avg": 0.15504025997802987,
+            "min": 0,
+            "med": 0,
+            "max": 10.9541,
+            "p(90)": 0.5252
+        },
+        "iterations": {
+            "count": 5202,
+            "rate": 12.36141670270262
+        },
+        "http_req_duration": {
+            "p(90)": 879.0264,
+            "p(95)": 883.029775,
+            "avg": 160.97819921274294,
+            "min": 0.5033,
+            "med": 2.69265,
+            "max": 916.8105
+        },
+        "dropped_iterations{scenario:stress}": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count>=0": false
+            }
+        },
+        "http_req_duration{name:retryPayment,scenario:stress}": {
+            "max": 13.1971,
+            "p(90)": 9.32968,
+            "p(95)": 9.475445,
+            "avg": 8.640614666666675,
+            "min": 7.2694,
+            "med": 8.48175,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "checks{scenario:stress}": {
+            "fails": 0,
+            "passes": 15753,
+            "thresholds": {
+                "rate>=0": false
+            },
+            "value": 1
+        },
+        "checks": {
+            "passes": 16386,
+            "fails": 0,
+            "value": 1
+        },
+        "http_req_duration{name:payWithPaymentMethod,scenario:stress}": {
+            "med": 880.7865999999999,
+            "max": 916.8105,
+            "p(90)": 885.58805,
+            "p(95)": 886.579265,
+            "avg": 880.1835066399982,
+            "min": 859.8644,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_connecting": {
+            "avg": 0.002332198217990968,
+            "min": 0,
+            "med": 0,
+            "max": 0.7363,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "vus": {
+            "value": 9,
+            "min": 0,
+            "max": 10
+        },
+        "iteration_duration": {
+            "p(95)": 945.84969,
+            "avg": 507.3285409650128,
+            "min": 89.6248,
+            "med": 377.53675,
+            "max": 971.1543,
+            "p(90)": 938.25791
+        },
+        "http_reqs": {
+            "count": 16386,
+            "rate": 38.93774972904367
+        },
+        "http_req_waiting": {
+            "p(95)": 882.898025,
+            "avg": 160.81704154766268,
+            "min": 0.5033,
+            "med": 2.6462,
+            "max": 916.8105,
+            "p(90)": 878.86085
+        },
+        "http_req_duration{name:getPaymentMethods,scenario:stress}": {
+            "min": 0.5033,
+            "med": 1.6757,
+            "max": 24.4862,
+            "p(90)": 2.1492,
+            "p(95)": 2.2232,
+            "avg": 1.8580546290741866,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 160.97819921274294,
+            "min": 0.5033,
+            "med": 2.69265,
+            "max": 916.8105,
+            "p(90)": 879.0264,
+            "p(95)": 883.029775
+        },
+        "http_req_blocked": {
+            "avg": 0.004496979128524351,
+            "min": 0,
+            "med": 0,
+            "max": 8.0223,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "data_received": {
+            "rate": 25404.015902633237,
+            "count": 10690659
+        },
+        "data_sent": {
+            "count": 5601753,
+            "rate": 13311.342387276914
+        },
+        "vus_max": {
+            "min": 45,
+            "max": 45,
+            "value": 45
+        },
+        "http_req_duration{name:confirmPayment,scenario:stress}": {
+            "med": 94.402,
+            "max": 132.3361,
+            "p(90)": 101.1459,
+            "p(95)": 102.0314,
+            "avg": 94.8199015193923,
+            "min": 85.5138,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_failed{kind:payment,scenario:stress}": {
+            "passes": 0,
+            "fails": 10752,
+            "thresholds": {
+                "rate>=0": false
+            },
+            "value": 0
+        },
+        "dropped_iterations": {
+            "count": 0,
+            "rate": 0
+        },
+        "http_req_duration{kind:payment,scenario:stress}": {
+            "max": 916.8105,
+            "p(90)": 881.61905,
+            "p(95)": 884.084445,
+            "avg": 228.1785651506701,
+            "min": 0.5033,
+            "med": 8.4845,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 16386,
+            "value": 0
+        }
+    }
+}

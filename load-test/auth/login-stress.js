@@ -19,8 +19,8 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const METRICS_URL = __ENV.METRICS_URL || 'http://host.docker.internal:9292/actuator/prometheus';
 const USER_COUNT = Number(__ENV.USER_COUNT || 21000);
 const PASSWORD = __ENV.PASSWORD || 'Zelo1234!';
-// 올려 갈 초당 요청 수. 첫 값 0.44는 팀 시나리오의 목표 RPS다
-const RATES = (__ENV.RATES || '0.44,2,5,10,20,40,60,80,100,130,160').split(',').map(Number);
+// 올려 갈 초당 요청 수. 첫 값 2.7은 팀 목표 RPS다 (1만 × 80% × 80% ÷ 3,600 × 1.5)
+const RATES = (__ENV.RATES || '2.7,5,10,20,40,60,80,100,130,160').split(',').map(Number);
 const STEP_SECONDS = toSeconds(__ENV.STEP || '60s'); // 한 단계의 길이
 const RAMP_SECONDS = toSeconds(__ENV.RAMP || '5s'); // 단계가 바뀔 때 속도를 올리는 데 쓰는 시간 (STEP 안에 포함)
 const WARMUP_SECONDS = toSeconds(__ENV.WARMUP || '20s'); // 측정 전에 가볍게 돌리는 구간 (결과에서 제외)
@@ -60,7 +60,7 @@ export const options = {
         // 단계가 올라가는 본 시험. 속도는 "VU 수"가 아니라 "초당 요청 수"로 직접 정한다 (서버가 느려져도 약속한 속도로 계속 보낸다)
         stress: {
             executor: 'ramping-arrival-rate',
-            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (0.44 RPS = 분당 26건)
+            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (2.7 RPS = 분당 162건)
             timeUnit: '1m',
             startRate: perMinute(RATES[0]),
             preAllocatedVUs: PRE_ALLOCATED_VUS,
@@ -132,6 +132,8 @@ function buildThresholds() {
 export default function () {
     // 반복 번호로 사용자를 순서대로 고른다. 같은 사용자가 동시에 로그인하지 않도록 번호가 겹치지 않게 한다
     const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + 1;
+    // 요청이 단계 경계를 넘어 끝나도 요청과 check가 같은 단계로 집계되게 시작 시점에 한 번만 구한다
+    const step = currentStep();
 
     const res = http.post(
         `${BASE_URL}/api/users/login`,
@@ -141,14 +143,14 @@ export default function () {
             // 서버가 막혀도 요청이 영원히 매달려 있지 않게 10초에서 실패로 끊는다
             timeout: '10s',
             // step 태그로 "지금 몇 번째 단계인지"를 표시해서 단계별로 결과를 나눈다
-            tags: { name: 'login', step: currentStep() },
+            tags: { name: 'login', step },
         },
     );
 
     check(res, {
         '상태 코드 200': (r) => r.status === 200,
         '액세스 토큰 있음': hasAccessToken,
-   }, { step: currentStep() });
+   }, { step });
 }
 
 // 서버 지표를 읽어서 현재 단계 이름표를 붙여 저장한다

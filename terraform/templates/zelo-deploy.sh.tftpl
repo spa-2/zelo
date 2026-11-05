@@ -27,6 +27,7 @@ fi
 docker run -d --name zelo --restart unless-stopped \
   -e SPRING_CONFIG_IMPORT="aws-parameterstore:$PREFIX/" \
   -e SPRING_CLOUD_AWS_REGION_STATIC="$REGION" \
+  -e SPRING_PROFILES_ACTIVE="${spring_profile}" \
   -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
   -p ${app_port}:8080 -p ${management_port}:9292 "$REPOSITORY:$TAG"
 

@@ -16,7 +16,7 @@ export KAKAO_CLIENT_SECRET=...        # only for SOCIAL_MODE=real: application.y
 export LLM_MODE=fake                  # optional: application.yaml reads ${LLM_MODE:fake}. fake returns canned LLM responses, real calls OpenAI (OPENAI_API_KEY is still read either way)
 export MAIL_MODE=fake                 # optional: application.yaml reads ${MAIL_MODE:fake}. fake logs the mail instead of sending it, real sends through AWS SES
 export MAIL_FROM=...                  # only for MAIL_MODE=real: SES verified sender address (zelo.mail.from), must match the IAM ses:FromAddress condition
-./gradlew bootRun                     # run the app
+./gradlew bootRun                     # run the app (local defaults). Add --args='--spring.profiles.active=performance' for load tests
 ./gradlew build                       # compile + test (what CI runs, followed by `sonar`)
 ./gradlew test                        # all tests (JUnit Platform)
 ./gradlew test --tests 'com.server.zelo.ZeloApplicationTests'            # single class
@@ -27,7 +27,9 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 
 ## Configuration notes
 
-- `application.yaml` hardcodes the local DB (matches `docker-compose.yml`) and uses `ddl-auto: update` (no migration tool).
+- `application.yaml` hardcodes the local DB (matches `docker-compose.yml`) and uses `ddl-auto: update` (no migration tool). It is the local-development default: debug SQL logs, all external modes `fake`, no seed.
+- Profiles layer on top of `application.yaml` (`SPRING_PROFILES_ACTIVE` or `--spring.profiles.active`): `performance` is for load tests (pool 30, seed on, schedulers off, 1h access token, `info` logs, 900ms fake social latency), `prod` is for production (requires `LLM_MODE`/`PORTONE_MODE`/`SOCIAL_MODE`/`MAIL_MODE` with no defaults and turns seeds off), `test` is for unit tests. Only values that differ per environment belong in a profile file.
+- In AWS, `spring.config.import` loads SSM parameters (names = property names) and they override both `application.yaml` and the profile files. DB, Redis and the modes come from SSM, so a profile file cannot change them there (e.g. `LLM_MODE=real` in SSM wins over `performance`). Terraform sets the profile through `spring_profile`.
 - JPA `open-in-view` is disabled, so lazy associations must be loaded inside the transaction.
 
 ## CI and review

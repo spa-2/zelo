@@ -53,9 +53,9 @@ zelo:
       model: gpt-6-luna
       reasoning-effort: low
     retry:
-     # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
-     max-attempts: 2
-     wait-duration: 500ms
+      # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
+      max-attempts: 2
+      wait-duration: 500ms
     # 채팅 메시지 하나(LLM 2~3번)를 답하는 전체 시간 (LlmTimeBudget). 위 시간 제한·재시도는 호출 한 건 단위라 메시지 하나는 최악 73.5초까지 걸린다
     time-budget:
       # 견적 수정(LLM 3번)이 세 번 모두 p95(약 7.5초)로 느리고 견적 락을 3초 기다려도(약 25.5초) 끊기지 않는 값
@@ -69,7 +69,7 @@ zelo:
       minimum-number-of-calls: 5
       failure-rate-threshold: 50
       wait-duration-in-open-state: 30s
-    # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
+      # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
       permitted-number-of-calls-in-half-open-state: 3
 
   hash:

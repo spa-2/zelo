@@ -179,3 +179,9 @@ variable "metrics_collector_security_group_id" {
   default     = null
   description = "동일 VPC의 Prometheus 수집기 보안 그룹. 지정한 경우에만 관리 포트 접근 허용"
 }
+
+# 앱이 켤 Spring 프로필. application-{값}.yaml이 base 위에 덮어쓴다 (performance: 부하 테스트용, prod: 운영용)
+variable "spring_profile" {
+  type    = string
+  default = "performance"
+}

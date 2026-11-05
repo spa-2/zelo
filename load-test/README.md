@@ -33,10 +33,15 @@ docs/load-test/results/        결과 파일이 생기는 곳
 **터미널 1: 앱 실행 (SQL 로그 끄기)**
 
 ```bash
-./gradlew bootRun --args='--logging.level.org.hibernate.SQL=info --logging.level.org.hibernate.orm.jdbc.bind=info'
+JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance'
 ```
 
-SQL 로그가 켜져 있으면 요청마다 로그를 찍느라 느려져서 서버의 진짜 속도가 아닌 로그 속도를 재게 된다.
+`performance` 프로필이 부하 테스트에 필요한 설정을 한꺼번에 적용한다. 프로필 없이 실행하면 아래 값이 빠져서 테스트가 틀어진다.
+
+- SQL 로그를 `info`로 낮춘다. 켜져 있으면 요청마다 로그를 찍느라 느려져서 서버의 진짜 속도가 아닌 로그 속도를 재게 된다.
+- 액세스 토큰을 1시간으로 늘린다. 10분이면 길게 도는 테스트가 중간에 401로 실패한다.
+- 시드를 켠다. 더미 데이터(사용자 3만 명 등)가 없으면 로그인이 전부 실패한다. 빈 DB에서 처음 실행할 때는 시드를 넣느라 기동이 오래 걸린다.
+- 스케줄러를 끈다. 주문 만료·배송 같은 작업이 측정 중에 데이터를 바꾸지 않게 한다.
 
 **터미널 2: 서버 지표 기록 (선택이지만 병목을 찾으려면 필요)**
 

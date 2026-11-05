@@ -1,0 +1,10 @@
+hikaricp_connections_acquire_seconds_count{application="zelo",pool="HikariPool-1"} 213
+hikaricp_connections_acquire_seconds_sum{application="zelo",pool="HikariPool-1"} 0.236
+hikaricp_connections_usage_seconds_count{application="zelo",pool="HikariPool-1"} 213
+hikaricp_connections_usage_seconds_sum{application="zelo",pool="HikariPool-1"} 14.302
+zelo_chat_reply_seconds_count{application="zelo",intent="SHOPPING_REQUEST",outcome="SUCCESS",result="NORMAL"} 45
+zelo_chat_reply_seconds_sum{application="zelo",intent="SHOPPING_REQUEST",outcome="SUCCESS",result="NORMAL"} 438.52294121
+zelo_llm_call_seconds_count{application="zelo",operation="MENU_PLAN",outcome="SUCCESS"} 45
+zelo_llm_call_seconds_sum{application="zelo",operation="MENU_PLAN",outcome="SUCCESS"} 211.226258333
+zelo_llm_call_seconds_count{application="zelo",operation="QUOTE_EXPLAIN",outcome="SUCCESS"} 45
+zelo_llm_call_seconds_sum{application="zelo",operation="QUOTE_EXPLAIN",outcome="SUCCESS"} 214.768508036

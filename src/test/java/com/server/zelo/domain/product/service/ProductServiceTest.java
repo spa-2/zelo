@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.json.JsonMapper;
 import com.server.zelo.domain.product.model.ProductDetail;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,9 @@ class ProductServiceTest {
     @Mock
     private PopularProductService popularProductService;
 
+    @Spy
+    private JsonMapper jsonMapper = JsonMapper.builder().build();
+
     @InjectMocks
     private ProductService productService;
 
@@ -70,17 +75,28 @@ class ProductServiceTest {
     }
 
     @Test
-    void 재료_이름으로_판매중인_상품을_찾는다() {
+    void 견적_후보는_재료별_필요량과_정렬한_조건_키워드로_찾는다() {
         // given
         Product product = product(1L);
-        given(productRepository.findAllByIngredient_NameInAndStatus(List.of("김치"), ProductStatus.ON_SALE))
-                .willReturn(List.of(product));
+        given(productRepository.findQuoteCandidateIds("{\"김치\":400}", "DOMESTIC,NOT_SPICY", 100)).willReturn(List.of(1L));
+        given(productRepository.findAllWithIngredientByIdIn(List.of(1L))).willReturn(List.of(product));
 
         // when
-        List<Product> result = productService.findOnSaleProducts(List.of("김치"));
+        List<Product> result = productService.findQuoteCandidates(Map.of("김치", 400),
+                List.of(Keyword.NOT_SPICY, Keyword.DOMESTIC));
 
         // then
         assertThat(result).containsExactly(product);
+    }
+
+    @Test
+    void 재료가_없으면_견적_후보를_찾지_않는다() {
+        // when
+        List<Product> result = productService.findQuoteCandidates(Map.of(), List.of());
+
+        // then
+        assertThat(result).isEmpty();
+        then(productRepository).shouldHaveNoInteractions();
     }
 
     @Test

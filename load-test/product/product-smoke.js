@@ -14,14 +14,14 @@ export const options = {
     // 하나라도 실패하면 본 테스트로 넘어가지 않는다. API별 p95가 요약에 나오게 기준을 둠
     thresholds: {
         'http_req_failed{kind:product}': ['rate==0'],
-        checks: ['rate==1'],
+        'checks{kind:product}': ['rate==1'],
         'http_req_duration{kind:product}': ['max>=0'],
-        'http_req_duration{name:search}': ['max>=0'],
-        'http_req_duration{name:detail}': ['max>=0'],
-        'http_req_duration{name:autocomplete}': ['max>=0'],
-        'http_req_duration{name:popular}': ['max>=0'],
-        'http_req_duration{name:popularKeywords}': ['max>=0'],
-        'http_req_duration{name:categories}': ['max>=0'],
+        'http_req_duration{kind:product,name:search}': ['max>=0'],
+        'http_req_duration{kind:product,name:detail}': ['max>=0'],
+        'http_req_duration{kind:product,name:autocomplete}': ['max>=0'],
+        'http_req_duration{kind:product,name:popular}': ['max>=0'],
+        'http_req_duration{kind:product,name:popularKeywords}': ['max>=0'],
+        'http_req_duration{kind:product,name:categories}': ['max>=0'],
     },
 };
 

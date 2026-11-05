@@ -18,8 +18,33 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
+    // 견적 후보 상품 ID. 재료마다 (카테고리, 맞춘 조건 키워드)별로 판매량 상위 limit개 + 필요한 양을 샀을 때 총액이 싼 limit개
+    // 견적 점수(판매량 40 + 리뷰 30 + 총액 30)에서 이길 상품은 거의 판매량이나 총액 쪽 상위라 여기서만 고른다
+    // 상품이 10만 개면 김치만 7천 개가 넘어서, 재료의 상품을 다 불러와 점수를 매기면 견적 하나에 0.7초가 걸렸음
+    // amounts: {"김치": 400, ...} (재료 이름 → 기본 단위 필요량), conditions: 조건 키워드를 쉼표로 이은 것 (없으면 빈 문자열)
+    @Query(value = """
+            select ranked.id from (
+                select p.id,
+                       row_number() over (partition by p.ingredient_id, p.category_id, matched.keywords
+                                          order by p.sales_count desc, p.id) as by_sales,
+                       row_number() over (partition by p.ingredient_id, p.category_id, matched.keywords
+                                          order by p.price * ceil(cast(required.amount as numeric) / p.content_amount), p.id) as by_price
+                from products p
+                join ingredients i on i.id = p.ingredient_id
+                join jsonb_each_text(cast(:amounts as jsonb)) as required(name, amount) on required.name = i.name
+                cross join lateral (
+                    select coalesce(string_agg(k.keyword, ',' order by k.keyword), '') as keywords
+                    from product_keywords k
+                    where k.product_id = p.id and k.keyword = any(string_to_array(:conditions, ','))
+                ) matched
+                where p.status = 'ON_SALE'
+            ) ranked
+            where ranked.by_sales <= :limit or ranked.by_price <= :limit
+            """, nativeQuery = true)
+    List<Long> findQuoteCandidateIds(String amounts, String conditions, int limit);
+
     @EntityGraph(attributePaths = {"ingredient", "category"})
-    List<Product> findAllByIngredient_NameInAndStatus(Collection<String> ingredientNames, ProductStatus status);
+    List<Product> findAllWithIngredientByIdIn(Collection<Long> ids);
 
     // keyword는 %, _를 이스케이프해서 넘김 (ProductService.escapeLike)
     // 대분류로 찾으면 그 아래 소분류 상품까지 나오게 parent도 같이 봄 (대분류는 parent가 없어서 left join)

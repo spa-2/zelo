@@ -17,6 +17,7 @@ import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -265,7 +266,14 @@ public class ResilientLlmGateway implements LlmGateway {
             // 응답 본문이 비어 객체를 만들지 못한 경우. 문장 응답의 빈 답과 같게 본다
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
         }
-        result.content().validate(ingredientUnits);
+        Optional<String> invalidField = result.content().findInvalidField(ingredientUnits);
+        if (invalidField.isPresent()) {
+            // AI_009만으로는 어느 규칙에 걸렸는지 몰라 프롬프트와 검증 중 무엇을 고칠지 정할 수 없다.
+            // 예외 메시지는 사용자 응답에 쓰여서 여기서 한 번 남긴다. 응답 원문 대신 칸 이름과 의도만 남긴다
+            log.warn("LLM 응답 검증 실패 operation={} intent={} field={}",
+                    LlmOperation.MENU_PLAN, result.content().intent(), invalidField.get());
+            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+        }
         return result;
     }
 

@@ -11,11 +11,14 @@ import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.ai.plan.QuoteEdit;
 import com.server.zelo.ai.plan.QuoteEditAction;
 import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class FakeLlmGatewayTest {
 
@@ -209,5 +212,97 @@ class FakeLlmGatewayTest {
         // when & then
         assertThatThrownBy(() -> fakeLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS))
                 .isInstanceOf(InternalServerException.class);
+    }
+
+    @Test
+    void 작업별_지연을_주면_그_작업만_그_시간만큼_늦게_응답한다() {
+        // given: 다른 작업은 기본 지연(0초)을 쓴다
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.DELAY);
+        fakeLlmGateway.changeDelay(Duration.ZERO);
+        fakeLlmGateway.changeOperationDelays("MENU_PLAN:300ms");
+
+        // when
+        long planStart = System.nanoTime();
+        fakeLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
+        Duration planElapsed = Duration.ofNanos(System.nanoTime() - planStart);
+        long answerStart = System.nanoTime();
+        fakeLlmGateway.explain("system", List.of(), "질문");
+        Duration answerElapsed = Duration.ofNanos(System.nanoTime() - answerStart);
+
+        // then
+        assertThat(planElapsed).isGreaterThanOrEqualTo(Duration.ofMillis(300));
+        assertThat(answerElapsed).isLessThan(Duration.ofMillis(200));
+    }
+
+    @Test
+    void 작업별_지연에_범위를_주면_최소와_최대_사이만큼_늦게_응답한다() {
+        // given
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.DELAY);
+        fakeLlmGateway.changeDelay(Duration.ZERO);
+        fakeLlmGateway.changeOperationDelays("QUOTE_EDIT_PLAN:100ms-200ms");
+        long start = System.nanoTime();
+
+        // when
+        fakeLlmGateway.planQuoteEdit("system", List.of(), "계란 빼줘", INGREDIENT_UNITS);
+
+        // then: 위쪽은 스레드 깨어나는 시간이 더해져 넉넉하게 본다
+        assertThat(Duration.ofNanos(System.nanoTime() - start))
+                .isGreaterThanOrEqualTo(Duration.ofMillis(100))
+                .isLessThan(Duration.ofSeconds(1));
+    }
+
+    @Test
+    void 견적_안내와_일반_답변은_system_프롬프트로_나눠_각자의_지연을_쓴다() {
+        // given
+        QuoteExplainPrompt quoteExplainPrompt = new QuoteExplainPrompt(new ByteArrayResource("견적 안내 규칙".getBytes()));
+        ReflectionTestUtils.setField(fakeLlmGateway, "quoteExplainPrompt", quoteExplainPrompt);
+        fakeLlmGateway.changeMode(FakeLlmGateway.Mode.DELAY);
+        fakeLlmGateway.changeDelay(Duration.ZERO);
+        fakeLlmGateway.changeOperationDelays("QUOTE_EXPLAIN:300ms");
+
+        // when
+        long explainStart = System.nanoTime();
+        fakeLlmGateway.explain(quoteExplainPrompt.systemPrompt(), List.of(), "메뉴: 김치볶음밥");
+        Duration explainElapsed = Duration.ofNanos(System.nanoTime() - explainStart);
+        long answerStart = System.nanoTime();
+        fakeLlmGateway.explain("일반 답변 규칙", List.of(), "질문");
+        Duration answerElapsed = Duration.ofNanos(System.nanoTime() - answerStart);
+
+        // then
+        assertThat(explainElapsed).isGreaterThanOrEqualTo(Duration.ofMillis(300));
+        assertThat(answerElapsed).isLessThan(Duration.ofMillis(200));
+    }
+
+    @Test
+    void 의도_단어가_든_문장은_그_의도로_정리하고_없으면_기본_의도를_쓴다() {
+        // given
+        fakeLlmGateway.changePlanIntent(MenuPlanIntent.SHOPPING_REQUEST);
+        fakeLlmGateway.changeIntentKeywords("QUOTE_EDIT:빼 줘|빼줘, LOOKUP_QUESTION:리뷰, GENERAL_QUESTION:보관");
+
+        // when
+        MenuPlan edit = fakeLlmGateway.planMenu("system", List.of(), "계란은 빼 줘", INGREDIENT_UNITS).content();
+        MenuPlan lookup = fakeLlmGateway.planMenu("system", List.of(), "이 김치 리뷰 어때?", INGREDIENT_UNITS).content();
+        MenuPlan general = fakeLlmGateway.planMenu("system", List.of(), "남은 김치볶음밥은 어떻게 보관해?", INGREDIENT_UNITS).content();
+        MenuPlan shopping = fakeLlmGateway.planMenu("system", List.of(), "4인분으로 해 줘", INGREDIENT_UNITS).content();
+
+        // then
+        assertThat(edit.intent()).isEqualTo(MenuPlanIntent.QUOTE_EDIT);
+        assertThat(lookup.intent()).isEqualTo(MenuPlanIntent.LOOKUP_QUESTION);
+        assertThat(general.intent()).isEqualTo(MenuPlanIntent.GENERAL_QUESTION);
+        assertThat(shopping.intent()).isEqualTo(MenuPlanIntent.SHOPPING_REQUEST);
+        assertThat(shopping.ingredients()).isNotEmpty();
+        assertThatCode(() -> edit.validate(INGREDIENT_UNITS)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 의도_단어가_여러_규칙에_맞으면_먼저_적은_규칙을_따른다() {
+        // given: "리뷰 나쁜 계란은 빼 줘"는 리뷰를 말해도 견적 수정이다 (menu-plan.md 규칙)
+        fakeLlmGateway.changeIntentKeywords("QUOTE_EDIT:빼 줘, LOOKUP_QUESTION:리뷰");
+
+        // when
+        MenuPlan menuPlan = fakeLlmGateway.planMenu("system", List.of(), "리뷰 나쁜 계란은 빼 줘", INGREDIENT_UNITS).content();
+
+        // then
+        assertThat(menuPlan.intent()).isEqualTo(MenuPlanIntent.QUOTE_EDIT);
     }
 }

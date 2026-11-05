@@ -7,6 +7,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.util.StringUtils;
 
 // LLM이 사용자 말을 정리한 장보기 메모. 가격·상품은 없고, 견적은 견적 도메인이 이 메모를 받아 서버에서 만든다
@@ -41,31 +42,49 @@ public record MenuPlan(
 
     // LLM이 준 값은 믿지 않는다. 장보기 요청이 아니면 재료가 없어도 정상이다
     public void validate(Map<String, BaseUnit> ingredientUnits) {
-        if (intent == null) {
+        if (findInvalidField(ingredientUnits).isPresent()) {
             throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+        }
+    }
+
+    // 검증에 걸린 칸 이름. 같은 AI_009라도 어느 규칙에 걸렸는지 로그에 남기려고 validate와 나눴다
+    public Optional<String> findInvalidField(Map<String, BaseUnit> ingredientUnits) {
+        if (intent == null) {
+            return Optional.of("intent");
         }
         // 견적 수정은 무엇을 바꿀지 이 메모가 아니라 수정 계획(QuoteEditPlan)이 정하므로, 일반·조회 질문처럼 나머지 칸을 보지 않는다
         if (intent == MenuPlanIntent.GENERAL_QUESTION || intent == MenuPlanIntent.LOOKUP_QUESTION
                 || intent == MenuPlanIntent.QUOTE_EDIT) {
-            return;
+            return Optional.empty();
         }
         if (!StringUtils.hasText(menuName)) {
-            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+            return Optional.of("menuName");
         }
         if (servings == null || servings < MIN_SERVINGS || servings > MAX_SERVINGS) {
-            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+            return Optional.of("servings");
         }
         if (budget != null && budget < 0) {
-            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+            return Optional.of("budget");
         }
         if (ingredients == null || ingredients.isEmpty() || ingredients.size() > MAX_INGREDIENTS) {
-            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+            return Optional.of("ingredients");
         }
-        ingredients.forEach(ingredient -> ingredient.validate(ingredientUnits));
+        for (MenuPlanIngredient ingredient : ingredients) {
+            Optional<String> invalidField = ingredient.findInvalidField(ingredientUnits);
+            if (invalidField.isPresent()) {
+                return invalidField;
+            }
+        }
         // 견적은 이름이 같은 재료를 양을 합쳐 한 줄로 고른다(QuoteCommandService.select).
         // 줄마다 상한 안이어도 합친 양이 넘을 수 있어(쪽파 8단 + 8단), 합친 양도 같은 기준으로 본다
         Map<String, MenuPlanIngredient> merged = new LinkedHashMap<>();
         ingredients.forEach(ingredient -> merged.merge(ingredient.name(), ingredient, MenuPlanIngredient::plus));
-        merged.values().forEach(ingredient -> ingredient.validate(ingredientUnits));
+        for (MenuPlanIngredient ingredient : merged.values()) {
+            Optional<String> invalidField = ingredient.findInvalidField(ingredientUnits);
+            if (invalidField.isPresent()) {
+                return Optional.of("merged." + invalidField.get());
+            }
+        }
+        return Optional.empty();
     }
 }

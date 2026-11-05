@@ -7,16 +7,22 @@ import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.ai.plan.QuoteEditPlan;
+import com.server.zelo.ai.prompt.QuoteExplainPrompt;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -53,27 +59,43 @@ public class FakeLlmGateway implements LlmGateway {
     @Value("${zelo.llm.fake.plan-intent:GENERAL_QUESTION}")
     private volatile MenuPlanIntent planIntent = MenuPlanIntent.GENERAL_QUESTION;// 기본은 무엇을 고칠지 되묻는 계획이라 견적을 바꾸지 않는다. 수정 흐름을 확인할 때만 테스트에서 바꾼다
     private volatile QuoteEditPlan quoteEditPlan = QuoteEditPlan.of(List.of(), EDIT_QUESTION);
+    // 실제 OpenAI는 작업마다 응답 시간이 달라서(견적 안내 1~2초, 견적 수정 계획 5~8초) 작업별로 따로 줄 수 있게 한다.
+    // 여기 없는 작업은 delay~delay-max를 쓴다. 장애 테스트(FakeLlmController)는 delay만 바꾸므로 이 값을 비워 두고 돌린다
+    private volatile Map<LlmOperation, DelayRange> operationDelays = Map.of();
+    // 부하 테스트에서 실제처럼 의도를 섞으려고 문장에 든 단어로 의도를 고른다. 적은 순서대로 보고, 맞는 게 없으면 planIntent
+    private volatile List<IntentKeywords> intentKeywords = List.of();
+    // explain은 견적 안내와 일반 답변이 같이 쓰므로, ResilientLlmGateway처럼 system 프롬프트로 둘을 나눈다
+    @Autowired(required = false)
+    private QuoteExplainPrompt quoteExplainPrompt;
+
+    private record DelayRange(Duration min, Duration max) {
+    }
+
+    private record IntentKeywords(MenuPlanIntent intent, List<String> keywords) {
+    }
 
     @Override
     public LlmReply explain(String systemPrompt, List<ChatMessage> history, String userText) {
-        applyMode();
-        return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);
+        applyMode(explainOperation(systemPrompt));
+        return answer(userText);
     }
 
     // 도구는 부르지 않고 explain과 같은 고정 답을 준다. 도구 호출 왕복은 SpringAiLlmGateway 테스트에서 확인한다
     @Override
     public LlmReply answerWithTools(String systemPrompt, List<ChatMessage> history, String userText, Object tools,
                                     Map<String, Object> toolContext) {
-        return explain(systemPrompt, history, userText);
+        applyMode(LlmOperation.LOOKUP_ANSWER);
+        return answer(userText);
     }
 
-    // 사용자 말·대화 기록과 관계없이 정해 둔 판단(planIntent)대로 같은 메모를 돌려준다.
+    // 대화 기록과 관계없이 정해 둔 판단(intent-keywords에 맞는 단어가 있으면 그 의도, 없으면 planIntent)대로 같은 메모를 돌려준다.
     // 판단과 조건 키워드를 맞게 뽑는지는 실제 OpenAI 호출 테스트에서 확인한다
     @Override
     public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
                                         Map<String, BaseUnit> ingredientUnits) {
-        applyMode();
-        MenuPlan menuPlan = planIntent == MenuPlanIntent.SHOPPING_REQUEST
+        applyMode(LlmOperation.MENU_PLAN);
+        MenuPlanIntent intent = intentOf(userText);
+        MenuPlan menuPlan = intent == MenuPlanIntent.SHOPPING_REQUEST
                 ? MenuPlan.of(
                         MenuPlanIntent.SHOPPING_REQUEST,
                         "김치볶음밥",
@@ -86,7 +108,7 @@ public class FakeLlmGateway implements LlmGateway {
                                 MenuPlanIngredient.of("대파", 1, BaseUnit.BUNCH)),
                         List.of(Keyword.NOT_SPICY),
                         List.of())
-                : MenuPlan.of(planIntent, "", 0, 0L, List.of(), List.of(), List.of());
+                : MenuPlan.of(intent, "", 0, 0L, List.of(), List.of(), List.of());
         return LlmResult.of(menuPlan, MODEL, 0, 0);
     }
 
@@ -94,14 +116,44 @@ public class FakeLlmGateway implements LlmGateway {
     @Override
     public LlmResult<QuoteEditPlan> planQuoteEdit(String systemPrompt, List<ChatMessage> history, String userText,
                                                   Map<String, BaseUnit> ingredientUnits) {
-        applyMode();
+        applyMode(LlmOperation.QUOTE_EDIT_PLAN);
         return LlmResult.of(quoteEditPlan, MODEL, 0, 0);
     }
 
     @Override
     public LlmReply summarizeReviews(String systemPrompt, String reviewText) {
-        applyMode();
+        applyMode(LlmOperation.REVIEW_SUMMARY);
         return LlmReply.of(REVIEW_SUMMARY, MODEL, 0, 0);
+    }
+
+    // 예: zelo.llm.fake.operation-delays=MENU_PLAN:1500ms-5300ms,QUOTE_EXPLAIN:1300ms-1800ms
+    // 값은 delay처럼 1500ms, 2s 형식이고, 하나만 적으면(MENU_PLAN:3s) 그 시간으로 고정한다
+    @Value("${zelo.llm.fake.operation-delays:}")
+    public void changeOperationDelays(String spec) {
+        Map<LlmOperation, DelayRange> delays = new EnumMap<>(LlmOperation.class);
+        for (String entry : entries(spec)) {
+            String[] operationAndRange = entry.split(":", 2);
+            String[] range = operationAndRange[1].split("-", 2);
+            Duration min = DurationStyle.detectAndParse(range[0].strip());
+            Duration max = range.length > 1 ? DurationStyle.detectAndParse(range[1].strip()) : min;
+            delays.put(LlmOperation.valueOf(operationAndRange[0].strip()), new DelayRange(min, max));
+        }
+        this.operationDelays = Map.copyOf(delays);
+    }
+
+    // 예: zelo.llm.fake.intent-keywords=QUOTE_EDIT:빼 줘|빼줘,LOOKUP_QUESTION:리뷰,GENERAL_QUESTION:보관
+    @Value("${zelo.llm.fake.intent-keywords:}")
+    public void changeIntentKeywords(String spec) {
+        List<IntentKeywords> rules = new ArrayList<>();
+        for (String entry : entries(spec)) {
+            String[] intentAndKeywords = entry.split(":", 2);
+            List<String> keywords = Arrays.stream(intentAndKeywords[1].split("\\|"))
+                    .map(String::strip)
+                    .filter(keyword -> !keyword.isEmpty())
+                    .toList();
+            rules.add(new IntentKeywords(MenuPlanIntent.valueOf(intentAndKeywords[0].strip()), keywords));
+        }
+        this.intentKeywords = List.copyOf(rules);
     }
 
     public void changeMode(Mode mode) {
@@ -124,9 +176,37 @@ public class FakeLlmGateway implements LlmGateway {
         this.delayMax = delayMax;
     }
 
-    private void applyMode() {
+    private LlmReply answer(String userText) {
+        return LlmReply.of("[FAKE] " + userText + "에 대한 답변입니다.", MODEL, 0, 0);
+    }
+
+    private LlmOperation explainOperation(String systemPrompt) {
+        return quoteExplainPrompt != null && quoteExplainPrompt.systemPrompt().equals(systemPrompt)
+                ? LlmOperation.QUOTE_EXPLAIN : LlmOperation.CHAT_ANSWER;
+    }
+
+    private MenuPlanIntent intentOf(String userText) {
+        String text = userText == null ? "" : userText;
+        return intentKeywords.stream()
+                .filter(rule -> rule.keywords().stream().anyMatch(text::contains))
+                .map(IntentKeywords::intent)
+                .findFirst()
+                .orElse(planIntent);
+    }
+
+    private static List<String> entries(String spec) {
+        if (spec == null || spec.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(spec.split(","))
+                .map(String::strip)
+                .filter(entry -> !entry.isEmpty())
+                .toList();
+    }
+
+    private void applyMode(LlmOperation operation) {
         switch (mode) {
-            case DELAY -> sleep(pickDelay());
+            case DELAY -> sleep(pickDelay(operation));
             case FAIL -> throw InternalServerException.builder()
                     .statusCode(500)
                     .headers(Headers.builder().build())
@@ -138,11 +218,16 @@ public class FakeLlmGateway implements LlmGateway {
         }
     }
 
-    private Duration pickDelay() {
-        if (delayMax.compareTo(delay) <= 0) {
-            return delay;
+    private Duration pickDelay(LlmOperation operation) {
+        DelayRange range = operationDelays.get(operation);
+        return range == null ? pickBetween(delay, delayMax) : pickBetween(range.min(), range.max());
+    }
+
+    private static Duration pickBetween(Duration min, Duration max) {
+        if (max.compareTo(min) <= 0) {
+            return min;
         }
-        return Duration.ofMillis(ThreadLocalRandom.current().nextLong(delay.toMillis(), delayMax.toMillis() + 1));
+        return Duration.ofMillis(ThreadLocalRandom.current().nextLong(min.toMillis(), max.toMillis() + 1));
     }
 
     private void sleep(Duration duration) {

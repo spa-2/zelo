@@ -12,15 +12,16 @@
 - 로그인은 측정에서 뺀다 (`kind:order` 태그가 없는 요청). 외부 API 호출이 없어 응답 시간이 서버 처리 시간이다
 
 ## 파일
+경로는 `load-test/order/` 기준
 | 파일 | 쓰는 테스트 | 내용 |
 |---|---|---|
-| `order-session.js` | 공통 | 주문 1건의 흐름 (로그인 → 주문 확인 → 주문 생성 → 주문 상세) |
-| `order-smoke.js` | 공통 | 스모크: VU 1, 1분 |
-| `order-dau50k-load.js` | DAU 5만 | 부하: 분당 100세션, 예열 2분 + 5분 |
-| `order-dau50k-stress.js` | DAU 5만 | 스트레스: 분당 1,000세션, 예열 2분 + 5분 |
-| `order-dau50k-limit.js` | DAU 5만 | 한계: 목표 × 10·30·60·100, 단계마다 20초 |
-| `order-load.js` | 예행연습 | 부하: 분당 5세션, 5분 |
-| `order-stress.js` | 예행연습 | 스트레스: 분당 50세션, 5분 |
+| `practice/order-session.js` | 공통 | 주문 1건의 흐름 (로그인 → 주문 확인 → 주문 생성 → 주문 상세) |
+| `practice/order-smoke.js` | 공통 | 스모크: VU 1, 1분 |
+| `50kdau/order-dau50k-load.js` | DAU 5만 | 부하: 분당 100세션, 예열 2분 + 5분 |
+| `50kdau/order-dau50k-stress.js` | DAU 5만 | 스트레스: 분당 1,000세션, 예열 2분 + 5분 |
+| `50kdau/order-dau50k-limit.js` | DAU 5만 | 한계: 목표 × 10·30·60·100, 단계마다 20초 |
+| `practice/order-load.js` | 예행연습 | 부하: 분당 5세션, 5분 |
+| `practice/order-stress.js` | 예행연습 | 스트레스: 분당 50세션, 5분 |
 
 ---
 
@@ -33,29 +34,45 @@
 - 한계는 setup에서 미리 로그인하고 주문 요청만 보낸다. 사용자가 8,000명이라 단계를 20초로 둔다
 
 ## 실행
-단계마다 앱 재시작 (`주문 시드 저장 완료 quotes=8000` 확인) → 지표 기록 → 실행
+모든 명령은 저장소 루트에서 실행한다. 터미널 3개를 쓴다
+
+**터미널 1: 앱** (서버가 켜진 채로 있어서 이 터미널은 앱 전용)
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=local,performance --server.port=8080 --zelo.llm.mode=fake --zelo.social.mode=fake --zelo.portone.mode=fake'
-k6 run --summary-export=docs/load-test/results/order/dau50k/smoke-summary.json load-test/order/order-smoke.js
-k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/load-summary.json load-test/order/order-dau50k-load.js
-k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/stress-summary.json load-test/order/order-dau50k-stress.js
-k6 run --summary-export=docs/load-test/results/order/dau50k/limit-summary.json --out csv=docs/load-test/results/order/dau50k/limit.csv load-test/order/order-dau50k-limit.js
 ```
-- 서버 지표: `load-test/chat/record-metrics.sh docs/load-test/results/order/dau50k/<단계>-server.csv`
+- `performance` 프로필이 시드 켜기와 스케줄러 끄기를 함께 적용한다 (#414)
+- 로그 `부하 테스트 주문 시드 저장 완료 quotes=8000`이 나오면 준비 끝
+
+**터미널 2: 서버 지표** (k6 실행 전에 켜고, 끝나면 Ctrl+C)
+```bash
+load-test/chat/record-metrics.sh docs/load-test/results/order/dau50k/<단계>-server.csv
+```
+
+**터미널 3: k6** (한 번에 한 단계만)
+```bash
+k6 run --summary-export=docs/load-test/results/order/dau50k/smoke-summary.json load-test/order/practice/order-smoke.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/load-summary.json load-test/order/50kdau/order-dau50k-load.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/stress-summary.json load-test/order/50kdau/order-dau50k-stress.js
+k6 run --summary-export=docs/load-test/results/order/dau50k/limit-summary.json --out csv=docs/load-test/results/order/dau50k/limit.csv load-test/order/50kdau/order-dau50k-limit.js
+```
+
+**단계마다 재시작:** 스모크·부하·스트레스·한계 **각 단계 전에** 터미널 1의 앱을 Ctrl+C로 끄고 다시 실행한다. 견적이 사용자당 1개라 한 번 주문하면 다시 못 쓰고, 재시작하면 시드가 다시 들어간다
 - `limit.csv`는 크기가 커서 커밋하지 않는다
 
 ## 결과 (로컬, 2026-11-05)
 조건: performance 프로필 (커넥션 풀 30, 스케줄러 끔), Tomcat 스레드 200, k6·서버·DB를 PC 한 대에서 실행
 
-| 단계 | 주문 RPS | 실패 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
-|---|---|---|---|---|---|---|
-| 스모크 (VU 1) | 31 | 0% | 20.5ms | 1 | 1 / 0 | 통과 |
-| 부하 (목표) | 5 | 0% | 18.4ms | 1 | 1 / 0 | 통과 |
-| 스트레스 (× 10) | 50 | 0% | 17.2ms | 18 | 2 / 0 | 무너지지 않음 |
-| 한계 × 10 | 51 | 0% | 18.9ms | 2 | 1 / 0 | 안정 |
-| 한계 × 30 | 150 | 0% | 16.8ms | 1 | 2 / 0 | 안정 |
-| 한계 × 60 | 300 | 0% | 16.5ms | 3 | 2 / 0 | 안정 |
-| **한계 × 100** | **501** | 0% | **17.0ms** | 5 | 5 / 0 | **안정 (최대로 올린 단계)** |
+| 단계 | 주문 RPS | 실패 | 누락 세션 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
+|---|---|---|---|---|---|---|---|
+| 스모크 (VU 1) | 31 | 0% | - | 20.5ms | 1 | 1 / 0 | 통과 |
+| 부하 (목표) | 5 | 0% | 0 | 18.4ms | 1 | 1 / 0 | 통과 |
+| 스트레스 (× 10) | 50 | 0% | 0 | 17.2ms | 18 | 2 / 0 | 무너지지 않음 |
+| 한계 × 10 | 51 | 0% | 0 | 18.9ms | 2 | 1 / 0 | 안정 |
+| 한계 × 30 | 150 | 0% | 0 | 16.8ms | 1 | 2 / 0 | 안정 |
+| 한계 × 60 | 300 | 0% | 0 | 16.5ms | 3 | 2 / 0 | 안정 |
+| **한계 × 100** | **501** | 0% | 0 | **17.0ms** | 5 | 5 / 0 | **안정 (최대로 올린 단계)** |
+
+- 안정 판정은 실패율·p95와 함께 **누락 세션(`dropped_iterations`) 0**인지 본다. 누락이 있으면 k6가 다 보내지 못한 것이라 서버 용량으로 읽지 않는다
 
 | API | 부하 p95 | 스트레스 p95 | 한계 × 100 p95 |
 |---|---|---|---|

@@ -15,6 +15,7 @@
 | `product-smoke.js` | 스모크: VU 1, 1분 |
 | `product-load.js` | 부하: 4.2 RPS, 5분 |
 | `product-stress.js` | 스트레스: 부하 × 10 (42 RPS), 5분 |
+| `product-limit.js` | 한계: 부하 × 10·25·50·100·150·200·300 (42~1,260 RPS), 단계마다 90초 |
 
 ## 목표와 VU
 - 목표: 4.2 RPS = 10초에 42번 (피크 2,000명 × 상품 호출 10번 ÷ 7,200초 × 1.5)
@@ -22,6 +23,8 @@
 - 스모크: VU 1 고정, 1분 → p95 측정
 - 부하: VU = 4.2 × 스모크 p95(초), 올림 (최소 1), 5분. preAllocatedVUs = VU × 2 (최소 5), maxVUs = VU × 10
 - 스트레스: 부하 × 10 (10초에 420번, VU × 10), 5분
+- 한계: 목표의 10배부터 300배까지 7단계로 올려 처음 무너지는 단계를 찾는다. 단계마다 90초, 단계를 시나리오로 나눠 summary에 단계별 값이 남는다
+  - VU는 단계 RPS만큼 미리 만들고(응답 1초까지) 그 2배까지 늘린다
 - 바깥 API를 부르지 않아서 지연(fake-delay)은 넣지 않는다. 측정값이 그대로 서버 처리 시간
 
 ## 준비
@@ -37,6 +40,7 @@ mkdir -p docs/load-test/results/product
 k6 run --summary-export=docs/load-test/results/product/smoke-summary.json load-test/product/product-smoke.js
 k6 run -e VUS=1 --summary-export=docs/load-test/results/product/load-summary.json load-test/product/product-load.js
 k6 run -e VUS=1 --summary-export=docs/load-test/results/product/stress-summary.json load-test/product/product-stress.js
+k6 run --summary-export=docs/load-test/results/product/limit-summary.json load-test/product/product-limit.js
 ```
 테스트 중에는 서버 지표를 같이 기록한다: `load-test/chat/record-metrics.sh docs/load-test/results/product/<단계>-server.csv`
 
@@ -114,11 +118,34 @@ k6 run -e VUS=1 --summary-export=docs/load-test/results/product/stress-summary.j
   - 매번 실제 검색어로 계획을 짬. 트랜잭션이 끝나면 원래대로 돌아가 다른 쿼리엔 영향 없음
   - 접속 설정(`prepareThreshold=0`)으로 앱 전체를 바꾸는 방법도 있지만, 다른 도메인 쿼리까지 바뀌어서 상품 쪽만 고침
 
+### 한계 RPS (검색 수정 후)
+목표의 10배부터 300배까지 단계마다 90초씩 올렸다. 결과 파일: `limit-summary.json`(단계별 = `scenario` 태그), `limit-server.csv`(19:15:00부터 90초씩 한 단계)
+
+| 단계 | 목표 RPS | 처리한 RPS | 못 보낸 요청 | 실패 | 전체 p95 | 검색 p95 | 상세 p95 | Tomcat 바쁜 스레드 (평균/최대) | Hikari 사용 (평균/최대) | Hikari 대기 (평균/최대) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ×10 | 42 | 42 | 0 | 0% | 43ms | 45ms | 7.6ms | 1 / 5 | 0.8 / 3 | 0 / 0 |
+| ×25 | 105 | 105 | 0 | 0% | 41ms | 43ms | 5.4ms | 1 / 3 | 1.3 / 3 | 0 / 0 |
+| ×50 | 210 | 210 | 0 | 0% | 41ms | 45ms | 3.3ms | 3 / 5 | 2.8 / 5 | 0 / 0 |
+| ×100 | 420 | 420 | 0 | 0% | 56ms | 66ms | 11ms | 10 / 17 | 8.4 / **10** | 2 / 16 |
+| ×150 | 630 | **556** | 6,662 | 0% | **2.60s** | 2.62s | 2.58s | **200 / 200** | 9.9 / 10 | **190 / 190** |
+| ×200 | 840 | 571 | 24,184 | 0% | 3.21s | 3.23s | 3.20s | 200 / 200 | 10 / 10 | 190 / 190 |
+| ×300 | 1,260 | 524 | 66,273 | 0.67% (317건) | 5.39s | 5.41s | 5.38s | 200 / 200 | 10 / 10 | 190 / 190 |
+
+- **버티는 한계: 420 RPS (목표의 100배)**. 실패 0%, p95 56ms
+  - 이 단계부터 DB 커넥션 10개가 가끔 다 차고 최대 16개가 잠깐 기다렸다. p95가 41ms → 56ms로 처음 늘었다
+- **무너지는 지점: 630 RPS (×150)**
+  - 커넥션 10개가 계속 다 차고 Tomcat 스레드 200개 중 190개가 커넥션을 기다림
+  - 응답이 0.04초 → 2.6초, 처리량은 556 RPS에서 멈추고 나머지는 VU가 모자라 못 보냄
+  - 검색뿐 아니라 상세(원래 3~11ms)도 2.6초로 같이 밀림. 느린 API가 아니라 커넥션 풀 크기 자체가 병목
+- **최대 처리량: 약 550~570 RPS**. 더 보내도 처리량은 늘지 않고 응답만 길어짐 (×300에서 524 RPS로 오히려 줄어듦)
+- ×300의 실패 317건은 서버 로그에 오류가 없어서 서버 오류(500)는 아니다. 연결 단계에서 실패한 것으로 보이지만 상태 코드는 따로 기록하지 않아 확인하지 못했다
+- 로컬 PC 한 대에서 k6(Docker, 최대 VU 4,200)·서버·DB를 같이 돌려서, 서버를 따로 둔 환경에서는 한계가 달라질 수 있다
+
 ## 결론
 | 항목 | 내용 |
 |---|---|
 | 버티는가 | 목표(4.2 RPS)와 그 10배(42 RPS)에서 실패 0%, 전체 p95 약 40ms, 검색 p95 약 45ms |
 | 시간 구성 | 바깥 API 없이 서버·DB 처리만. 검색이 가장 느리고 count와 목록 쿼리가 각각 약 20ms |
 | 수정 전 | 검색 하나가 1~3초씩 커넥션을 잡아서 42 RPS에서 요청 절반을 못 보냄. 느린 쿼리 하나가 커넥션 풀을 막으면 다른 API까지 같이 느려진다 |
-| 한계 | 42 RPS에서도 동시에 처리한 요청이 최대 2개. 커넥션 풀 고갈 같은 동시성 병목과 한계 RPS는 확인하지 못함 |
-| 다음 | 동시 요청이 생기는 수준(예: 42 → 100 → 200 → 400 RPS)까지 올리고 Hikari 대기·Tomcat 스레드를 함께 본다 |
+| 한계 | 420 RPS(목표의 100배)까지 실패 0%, p95 56ms. 630 RPS(×150)에서 DB 커넥션 10개가 다 차서 응답이 2.6초로 늘고, 최대 처리량은 약 560 RPS |
+| 다음 | 커넥션 풀을 늘리면(예: 10 → 20) 한계가 올라가는지, 아니면 DB CPU가 먼저 차는지 확인. 커넥션을 가장 오래 잡는 검색(count + 목록 약 40ms)을 줄이는 방법도 같이 본다 |

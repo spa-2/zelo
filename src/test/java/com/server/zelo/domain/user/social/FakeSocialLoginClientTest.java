@@ -15,11 +15,38 @@ class FakeSocialLoginClientTest {
 
     private static final String REDIRECT_URI = "http://localhost:3000/callback";
 
-    private final FakeSocialLoginClient client = new FakeSocialLoginClient();
+    private final FakeSocialLoginClient client = new FakeSocialLoginClient(0, 0);
 
     @Test
     void 제공자는_GOOGLE이다() {
         assertThat(client.getProvider()).isEqualTo(SocialProvider.GOOGLE);
+    }
+
+    // ===== 응답 지연 =====
+
+    @Test
+    void 지연_설정이_있으면_평균을_중심으로_한_범위_안에서_기다린다() {
+        // given
+        FakeSocialLoginClient delayed = new FakeSocialLoginClient(100, 0.5);
+
+        // when
+        long start = System.nanoTime();
+        delayed.getProfile("fake-jieun", REDIRECT_URI, null);
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        // then
+        assertThat(elapsedMillis).isBetween(45L, 400L);
+    }
+
+    @Test
+    void 지연이_0이면_기다리지_않는다() {
+        // when
+        long start = System.nanoTime();
+        client.getProfile("fake-jieun", REDIRECT_URI, null);
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        // then
+        assertThat(elapsedMillis).isLessThan(50L);
     }
 
     // ===== 정상 프로필 =====

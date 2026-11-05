@@ -139,6 +139,8 @@ function buildThresholds() {
 export default function () {
     // 반복 번호로 사용자를 순서대로 고른다. 같은 사용자가 동시에 로그인하지 않도록 번호가 겹치지 않게 한다
     const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + FIRST_USER_ID;
+    // 요청이 단계 경계를 넘어 끝나도 요청과 check가 같은 단계로 집계되게 시작 시점에 한 번만 구한다
+    const step = currentStep();
 
     const res = http.post(
         `${BASE_URL}/api/auth/social/google/login`,
@@ -148,14 +150,14 @@ export default function () {
             // 서버가 막혀도 요청이 영원히 매달려 있지 않게 10초에서 실패로 끊는다
             timeout: '10s',
             // step 태그로 "지금 몇 번째 단계인지"를 표시해서 단계별로 결과를 나눈다
-            tags: { name: 'social-login', step: currentStep() },
+            tags: { name: 'social-login', step },
         },
     );
 
     check(res, {
         '상태 코드 200': (r) => r.status === 200,
         '기존 회원으로 로그인': hasAccessToken,
-   }, { step: currentStep() });
+   }, { step });
 }
 
 // 서버 지표를 읽어서 현재 단계 이름표를 붙여 저장한다

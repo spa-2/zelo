@@ -1,0 +1,328 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "passes": 6248,
+                    "fails": 0,
+                    "name": "로그인 200",
+                    "path": "::로그인 200",
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b"
+                },
+                "견적 발급 201": {
+                    "name": "견적 발급 201",
+                    "path": "::견적 발급 201",
+                    "id": "1ee429d22e97874520419f30dd99bc90",
+                    "passes": 6248,
+                    "fails": 0
+                },
+                "견적 카드": {
+                    "name": "견적 카드",
+                    "path": "::견적 카드",
+                    "id": "eee78eb0c5d3475014bcc6776f0147ca",
+                    "passes": 6248,
+                    "fails": 0
+                },
+                "changeQuantity 201": {
+                    "path": "::changeQuantity 201",
+                    "id": "9a5b559b12765c52559aa00fca31a500",
+                    "passes": 6248,
+                    "fails": 0,
+                    "name": "changeQuantity 201"
+                },
+                "changeQuantity 새 견적 카드": {
+                    "passes": 6248,
+                    "fails": 0,
+                    "name": "changeQuantity 새 견적 카드",
+                    "path": "::changeQuantity 새 견적 카드",
+                    "id": "1c5765b6af53b81d89ae69f85f93c16c"
+                },
+                "removeItem 201": {
+                    "name": "removeItem 201",
+                    "path": "::removeItem 201",
+                    "id": "6c9808e350e80fe7f2a8b2220170360b",
+                    "passes": 6248,
+                    "fails": 0
+                },
+                "removeItem 새 견적 카드": {
+                    "passes": 6248,
+                    "fails": 0,
+                    "name": "removeItem 새 견적 카드",
+                    "path": "::removeItem 새 견적 카드",
+                    "id": "8f30f35e0046e9e624dc76f11bc65b63"
+                }
+            }
+    },
+    "metrics": {
+        "server_system_cpu": {
+            "max": 0.5178222111721669,
+            "p(90)": 0.4500962209330454,
+            "p(95)": 0.45916536559061943,
+            "avg": 0.3942220551700466,
+            "min": 0.15175343878663494,
+            "med": 0.38979005406991085
+        },
+        "http_req_duration{expected_response:true}": {
+            "max": 415.925831,
+            "p(90)": 302.0593498,
+            "p(95)": 312.07589709999996,
+            "avg": 97.60750869652787,
+            "min": 5.80583,
+            "med": 42.294681
+        },
+        "data_sent": {
+            "count": 10740822,
+            "rate": 35762.97983208583
+        },
+        "checks": {
+            "passes": 43736,
+            "fails": 0,
+            "value": 1
+        },
+        "server_system_cpu{stage:stress}": {
+            "med": 0.38979005406991085,
+            "max": 0.5178222111721669,
+            "p(90)": 0.4500962209330454,
+            "p(95)": 0.45916536559061943,
+            "avg": 0.3942220551700466,
+            "min": 0.15175343878663494,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "server_tomcat_busy": {
+            "avg": 8.156462585034014,
+            "min": 1,
+            "med": 8,
+            "max": 9,
+            "p(90)": 9,
+            "p(95)": 9
+        },
+        "server_process_cpu{stage:stress}": {
+            "p(90)": 0.16479212385937603,
+            "p(95)": 0.1675474994562092,
+            "avg": 0.15506050495445192,
+            "min": 0.006795028315154789,
+            "med": 0.15534370007501266,
+            "max": 0.1762101169270073,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "server_tomcat_busy{stage:stress}": {
+            "p(90)": 9,
+            "p(95)": 9,
+            "avg": 8.156462585034014,
+            "min": 1,
+            "med": 8,
+            "max": 9,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "server_hikari_active": {
+            "p(95)": 9,
+            "avg": 7.904761904761905,
+            "min": 1,
+            "med": 8,
+            "max": 9,
+            "p(90)": 9
+        },
+        "vus": {
+            "value": 8,
+            "min": 8,
+            "max": 10
+        },
+        "http_req_receiving": {
+            "avg": 0.14654168690083252,
+            "min": 0.018042,
+            "med": 0.064687,
+            "max": 15.778701,
+            "p(90)": 0.21547340000000004,
+            "p(95)": 0.38395699999999994
+        },
+        "server_hikari_pending": {
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_duration{kind:quote,name:removeItem}": {
+            "min": 5.80583,
+            "med": 8.003858999999999,
+            "max": 18.832431,
+            "p(90)": 8.67851,
+            "p(95)": 9.013033,
+            "avg": 8.12158127112673,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "vus_max": {
+            "value": 11,
+            "min": 11,
+            "max": 11
+        },
+        "server_process_cpu": {
+            "max": 0.1762101169270073,
+            "p(90)": 0.16479212385937603,
+            "p(95)": 0.1675474994562092,
+            "avg": 0.15506050495445192,
+            "min": 0.006795028315154789,
+            "med": 0.15534370007501266
+        },
+        "data_received": {
+            "rate": 236469.7469617214,
+            "count": 71019794
+        },
+        "http_req_duration": {
+            "avg": 97.60750869652787,
+            "min": 5.80583,
+            "med": 42.294681,
+            "max": 415.925831,
+            "p(90)": 302.0593498,
+            "p(95)": 312.07589709999996
+        },
+        "http_req_tls_handshaking": {
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0
+        },
+        "server_hikari_pending{stage:stress}": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "server_hikari_active{stage:stress}": {
+            "med": 8,
+            "max": 9,
+            "p(90)": 9,
+            "p(95)": 9,
+            "avg": 7.904761904761905,
+            "min": 1,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_duration{kind:quote,name:issueQuote}": {
+            "avg": 304.4002489161335,
+            "min": 277.643897,
+            "med": 299.4070925,
+            "max": 415.925831,
+            "p(90)": 334.1389018,
+            "p(95)": 339.62767145,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_duration{kind:quote}": {
+            "avg": 107.29619868517983,
+            "min": 5.80583,
+            "med": 9.257781999999999,
+            "max": 415.925831,
+            "p(90)": 305.545955,
+            "p(95)": 324.7411318999999,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "dropped_iterations": {
+            "rate": 0.006659263105204766,
+            "count": 2
+        },
+        "http_req_sending": {
+            "med": 0.010962,
+            "max": 0.453242,
+            "p(90)": 0.032453,
+            "p(95)": 0.03554489999999998,
+            "avg": 0.018055788774414206,
+            "min": 0.004981
+        },
+        "http_req_failed{kind:quote}": {
+            "fails": 18744,
+            "passes": 0,
+            "thresholds": {
+                "rate>=0": false
+            },
+            "value": 0
+        },
+        "http_req_connecting": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.010661964278610929,
+            "min": 0,
+            "med": 0,
+            "max": 1.745517
+        },
+        "http_req_duration{kind:quote,name:changeQuantity}": {
+            "max": 76.851105,
+            "p(90)": 10.0302759,
+            "p(95)": 10.43022395,
+            "avg": 9.366765868277852,
+            "min": 6.928347,
+            "med": 9.2188225,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_waiting": {
+            "med": 34.751444,
+            "max": 415.721597,
+            "p(90)": 301.9661574,
+            "p(95)": 311.95119049999994,
+            "avg": 97.44291122085272,
+            "min": 5.691907
+        },
+        "http_reqs": {
+            "count": 25139,
+            "rate": 83.70360760087131
+        },
+        "checks{kind:quote}": {
+            "fails": 0,
+            "passes": 37488,
+            "thresholds": {
+                "rate>=0": false
+            },
+            "value": 1
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 25139,
+            "value": 0
+        },
+        "iteration_duration": {
+            "min": 360.808908,
+            "med": 387.86033399999997,
+            "max": 2060.756606,
+            "p(90)": 424.79254860000003,
+            "p(95)": 431.27663259999997,
+            "avg": 430.2241737528929
+        },
+        "iterations": {
+            "count": 6394,
+            "rate": 21.289664147339636
+        },
+        "http_req_blocked": {
+            "min": 0.00103,
+            "med": 0.00216,
+            "max": 2.286459,
+            "p(90)": 0.00341,
+            "p(95)": 0.00403,
+            "avg": 0.013993812243923808
+        }
+    }
+}

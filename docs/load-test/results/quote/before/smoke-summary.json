@@ -1,0 +1,240 @@
+{
+    "metrics": {
+        "data_received": {
+            "count": 529528,
+            "rate": 8779.74667668025
+        },
+        "http_req_connecting": {
+            "avg": 0.013299861842105264,
+            "min": 0,
+            "med": 0,
+            "max": 1.059007,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_duration{kind:quote,name:issueQuote}": {
+            "avg": 709.0321948552631,
+            "min": 613.952911,
+            "med": 705.226665,
+            "max": 828.436769,
+            "p(90)": 765.980545,
+            "p(95)": 779.12456475,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "iteration_duration{scenario:smoke}": {
+            "p(95)": 861.6025755000001,
+            "avg": 793.6024749736841,
+            "min": 697.328526,
+            "med": 792.301831,
+            "max": 911.953864,
+            "p(90)": 849.3906355,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "checks{kind:quote}": {
+            "passes": 456,
+            "fails": 0,
+            "thresholds": {
+                "rate==1": false
+            },
+            "value": 1
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 198.2123841710527,
+            "min": 7.733594,
+            "med": 42.705775,
+            "max": 828.436769,
+            "p(90)": 711.8370066,
+            "p(95)": 746.1937313
+        },
+        "http_req_blocked": {
+            "avg": 0.022018388157894756,
+            "min": 0.00129,
+            "med": 0.0022754999999999997,
+            "max": 2.656789,
+            "p(90)": 0.0034899999999999987,
+            "p(95)": 0.004238
+        },
+        "http_req_failed{kind:quote}": {
+            "passes": 0,
+            "fails": 228,
+            "thresholds": {
+                "rate==0": false
+            },
+            "value": 0
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 304,
+            "value": 0
+        },
+        "data_sent": {
+            "count": 130034,
+            "rate": 2156.0060645620997
+        },
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_tls_handshaking": {
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_duration{kind:quote,name:changeQuantity}": {
+            "med": 11.898878499999999,
+            "max": 17.952317,
+            "p(90)": 13.6789555,
+            "p(95)": 14.439075749999999,
+            "avg": 11.939438684210527,
+            "min": 9.811964,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_duration{kind:quote,name:removeItem}": {
+            "avg": 9.180946592105263,
+            "min": 7.733594,
+            "med": 8.75489,
+            "max": 25.091322,
+            "p(90)": 10.029929,
+            "p(95)": 11.081236500000001,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "iteration_duration": {
+            "p(95)": 861.6025755000001,
+            "avg": 793.6024749736841,
+            "min": 697.328526,
+            "med": 792.301831,
+            "max": 911.953864,
+            "p(90)": 849.3906355
+        },
+        "checks": {
+            "passes": 532,
+            "fails": 0,
+            "value": 1
+        },
+        "http_req_sending": {
+            "max": 0.100722,
+            "p(90)": 0.035833,
+            "p(95)": 0.040398499999999955,
+            "avg": 0.02034146710526316,
+            "min": 0.00529,
+            "med": 0.0136505
+        },
+        "http_reqs": {
+            "count": 304,
+            "rate": 5.040418995238771
+        },
+        "iterations": {
+            "count": 76,
+            "rate": 1.2601047488096928
+        },
+        "http_req_receiving": {
+            "p(90)": 0.2923539,
+            "p(95)": 0.3736633499999999,
+            "avg": 0.12718741776315784,
+            "min": 0.034992,
+            "med": 0.092416,
+            "max": 0.607194
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_duration": {
+            "avg": 198.2123841710527,
+            "min": 7.733594,
+            "med": 42.705775,
+            "max": 828.436769,
+            "p(90)": 711.8370066,
+            "p(95)": 746.1937313
+        },
+        "http_req_duration{kind:quote}": {
+            "avg": 243.384193377193,
+            "min": 7.733594,
+            "med": 12.083142,
+            "max": 828.436769,
+            "p(90)": 728.4604131,
+            "p(95)": 754.32128545,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_req_waiting": {
+            "min": 7.654756,
+            "med": 42.445698500000006,
+            "max": 828.013573,
+            "p(90)": 711.7049036999999,
+            "p(95)": 745.8465245999998,
+            "avg": 198.06485528618427
+        }
+    },
+    "root_group": {
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "path": "::로그인 200",
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b",
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "로그인 200"
+                },
+                "견적 발급 201": {
+                    "name": "견적 발급 201",
+                    "path": "::견적 발급 201",
+                    "id": "1ee429d22e97874520419f30dd99bc90",
+                    "passes": 76,
+                    "fails": 0
+                },
+                "견적 카드": {
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "견적 카드",
+                    "path": "::견적 카드",
+                    "id": "eee78eb0c5d3475014bcc6776f0147ca"
+                },
+                "changeQuantity 201": {
+                    "id": "9a5b559b12765c52559aa00fca31a500",
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "changeQuantity 201",
+                    "path": "::changeQuantity 201"
+                },
+                "changeQuantity 새 견적 카드": {
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "changeQuantity 새 견적 카드",
+                    "path": "::changeQuantity 새 견적 카드",
+                    "id": "1c5765b6af53b81d89ae69f85f93c16c"
+                },
+                "removeItem 201": {
+                    "path": "::removeItem 201",
+                    "id": "6c9808e350e80fe7f2a8b2220170360b",
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "removeItem 201"
+                },
+                "removeItem 새 견적 카드": {
+                    "path": "::removeItem 새 견적 카드",
+                    "id": "8f30f35e0046e9e624dc76f11bc65b63",
+                    "passes": 76,
+                    "fails": 0,
+                    "name": "removeItem 새 견적 카드"
+                }
+            },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+}

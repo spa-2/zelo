@@ -34,9 +34,9 @@ const retryProcessed = new Counter('reissue_retry_already_processed');
 const retryUnknown = new Counter('reissue_retry_unknown');
 const retryNotProcessed = new Counter('reissue_retry_not_processed');
 const FAILURE_STATUSES = ['0', '400', '401', '404', '409', '429', '500', '502', '503'];
-// 올려 갈 초당 요청 수. 첫 값 5는 재발급 목표 RPS다
+// 올려 갈 초당 요청 수. 첫 값 25는 재발급 목표 RPS다 (1만 명 ÷ 액세스 토큰 600초 × 1.5)
 // 목표 5 RPS = 2,000명 × 접속자가 2시간 동안 액세스 토큰(10분) 만료마다 재발급(최대 12회) ÷ 7,200초 × 안전계수 1.5 (2시간 내내 접속한다는 가정이라 실제로는 더 낮을 수 있다)
-const RATES = (__ENV.RATES || '5,50,100,200,400,800,1200,1600,2000').split(',').map(Number);
+const RATES = (__ENV.RATES || '25,50,100,200,400,800,1200,1600,2000').split(',').map(Number);
 const STEP_SECONDS = toSeconds(__ENV.STEP || '60s'); // 한 단계의 길이
 const RAMP_SECONDS = toSeconds(__ENV.RAMP || '5s'); // 단계가 바뀔 때 속도를 올리는 데 쓰는 시간 (STEP 안에 포함)
 const WARMUP_SECONDS = toSeconds(__ENV.WARMUP || '20s'); // 측정 전에 가볍게 돌리는 구간 (결과에서 제외)
@@ -75,7 +75,7 @@ export const options = {
         // 단계가 올라가는 본 시험. 속도는 "VU 수"가 아니라 "초당 요청 수"로 직접 정한다 (서버가 느려져도 약속한 속도로 계속 보낸다)
         stress: {
             executor: 'ramping-arrival-rate',
-            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (0.44 RPS = 분당 26건)
+            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (2.7 RPS = 분당 162건)
             timeUnit: '1m',
             startRate: perMinute(RATES[0]),
             preAllocatedVUs: PRE_ALLOCATED_VUS,

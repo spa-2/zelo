@@ -155,7 +155,7 @@ load-test/run-k6.sh load-test/auth/login-smoke.js -e NOTE="로컬 첫 측정"
 # 먼저 짧게 동작 확인 (3단계, 약 40초). 이 숫자는 결과로 쓰지 않는다
 load-test/run-k6.sh load-test/auth/login-stress.js -e RATES=1,5,10 -e STEP=10s -e RAMP=2s -e WARMUP=3s
 
-# 진짜 측정 (기본: 0.44 → 2 → 5 → 10 → 20 → 40 → 60 → 80 → 100 → 130 → 160 RPS, 한 단계 60초)
+# 진짜 측정 (기본: 2.7 → 5 → 10 → 20 → 40 → 60 → 80 → 100 → 130 → 160 RPS, 한 단계 60초)
 load-test/run-k6.sh load-test/auth/login-stress.js -e NOTE="로컬 첫 스트레스"
 ```
 
@@ -166,12 +166,12 @@ load-test/run-k6.sh load-test/auth/login-stress.js -e NOTE="로컬 첫 스트레
   - 마지막으로 통과한 단계 = 지금 서버가 안정적으로 처리하는 RPS
   - 처음 실패한 단계의 서버 지표 단서 = 병목 후보 (CPU 포화, Hikari 대기, 스레드 한도 중 무엇인지)
   - `dropped_iterations`가 0보다 크면 k6가 약속한 속도를 못 낸 것이므로, 서버가 아니라 k6나 내 컴퓨터가 한계였을 수 있다.
-- **속도 값은 분당 요청 수로 바꿔서 쓴다.** k6의 속도는 정수만 받아서, 0.44 RPS는 분당 26건(`timeUnit: '1m'`)으로 보낸다.
+- **속도 값은 분당 요청 수로 바꿔서 쓴다.** k6의 속도는 정수만 받아서, 2.7 RPS는 분당 162건(`timeUnit: '1m'`)으로 보낸다.
 - 스크립트의 환경변수
 
 | 환경변수 | 기본값 | 의미 |
 |---|---|---|
-| `RATES` | `0.44,2,5,10,20,40,60,80,100,130,160` | 단계별 목표 RPS (쉼표로 구분) |
+| `RATES` | `2.7,5,10,20,40,60,80,100,130,160` | 단계별 목표 RPS (쉼표로 구분) |
 | `STEP` | `60s` | 한 단계의 길이 |
 | `RAMP` | `5s` | 단계가 바뀔 때 속도를 올리는 시간 (`STEP`보다 짧아야 함) |
 | `WARMUP`, `WARMUP_RATE` | `20s`, `5` | 시작 전 워밍업 시간과 속도 |
@@ -182,9 +182,35 @@ load-test/run-k6.sh load-test/auth/login-stress.js -e NOTE="로컬 첫 스트레
 
 **스모크와 스트레스의 차이**: 스모크는 VU 1명이 쉬지 않고 보내서 기준선(p95)을 얻는다. 스트레스는 VU가 아니라 **초당 요청 수를 약속**하고, 서버가 느려지면 k6가 VU를 늘려서라도 그 속도를 지킨다. 그래서 서버가 못 따라가는 지점이 정확히 드러난다.
 
-**부하 테스트**(목표 RPS 0.44를 5~10분 유지)는 스트레스에서 한계를 확인한 뒤에 만든다. VU는 **올림(목표 RPS × 스모크 p95(초)), 최소 1**로 계산한다.
+## 7. 부하 테스트 (`auth/login-load.js`, `social-login-load.js`, `reissue-load.js`)
 
-## 7. 자주 겪는 문제
+팀 목표 트래픽을 **5분 동안 일정하게** 보내서, 합격 기준(p95, 실패율, 응답 검사)을 통과하는지와 그때 서버 상태를 본다. 스트레스와 같은 구조이고 단계가 하나(목표 RPS)다.
+
+목표 RPS는 DAU 5만, 피크 1시간에 1만 명 입장, 로그인 80%, 이메일 80% : 소셜 20%, 안전계수 1.5로 계산했다 (근거와 계산은 `docs/load-test/results/auth/README.md`의 "목표 RPS").
+
+| 스크립트 | 목표 RPS | 합격 기준(기본) |
+|---|---|---|
+| `login-load.js` | 2.7 | p95 500ms 미만, 실패율 1% 미만, check 99% 초과 |
+| `social-login-load.js` | 0.67 | p95 2000ms 미만(fake 지연 900ms ±50% 포함), 나머지 같음 |
+| `reissue-load.js` | 25 | p95 100ms 미만, 나머지 같음 |
+
+```bash
+# 짧게 동작 확인 (30초). 이 숫자는 결과로 쓰지 않는다
+load-test/run-k6.sh load-test/auth/login-load.js -e STEP=30s
+
+# 진짜 측정 (워밍업 20초 + 5분)
+load-test/run-k6.sh load-test/auth/login-load.js -e NOTE="로컬 부하 테스트"
+load-test/run-k6.sh load-test/auth/social-login-load.js -e NOTE="로컬 부하 테스트"
+load-test/run-k6.sh load-test/auth/reissue-load.js -e NOTE="로컬 부하 테스트"
+```
+
+- 서버는 `application-performance.yaml` 프로필로 띄운다(Hikari 풀 30, 소셜 fake 지연 900ms, 스케줄러 끔).
+- 목표 속도는 `RATES`, 유지 시간은 `STEP`(기본 `5m`)으로 바꾼다. VU는 k6가 필요한 만큼 늘리고 최대 `MAX_VUS`(기본 100)까지 쓴다.
+- 결과 문서의 "합격 판정"이 통과이고 도달률이 100%에 가까우면 목표 트래픽을 처리한 것이다. `dropped_iterations`는 본 시험(load)만 센다.
+- 서버 지표(CPU, 스레드, 커넥션 풀)는 k6가 직접 읽어 표에 넣으므로 `collect-metrics.sh`는 필요 없다.
+- 재발급은 시작 전에 `SETUP_USERS`(기본 300)명을 로그인해서 토큰을 모은다.
+
+## 8. 자주 겪는 문제
 
 | 증상 | 원인과 해결 |
 |---|---|

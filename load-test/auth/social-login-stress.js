@@ -23,9 +23,9 @@ const METRICS_URL = __ENV.METRICS_URL || 'http://host.docker.internal:9292/actua
 const FIRST_USER_ID = Number(__ENV.FIRST_USER_ID || 21001);
 const USER_COUNT = Number(__ENV.USER_COUNT || 9000);
 const REDIRECT_URI = __ENV.REDIRECT_URI || 'http://localhost:3000/callback';
-// 올려 갈 초당 요청 수. 첫 값 0.19는 소셜 로그인 목표 RPS다 (2,000명 × 소셜 30% × 1.5회 ÷ 7,200초 × 1.5)
+// 올려 갈 초당 요청 수. 첫 값 0.67은 소셜 로그인 목표 RPS다 (1만 × 80% × 20% ÷ 3,600 × 1.5)
 // 소셜은 응답 대기가 길어서 Tomcat 스레드 200개 / 0.9초 = 약 220 RPS에서 스레드가 바닥날 것으로 예상해 단계를 더 높게 잡았다
-const RATES = (__ENV.RATES || '0.19,1,5,10,20,40,80,120,160,200,240,300').split(',').map(Number);
+const RATES = (__ENV.RATES || '0.67,1,5,10,20,40,80,120,160,200,240,300').split(',').map(Number);
 const STEP_SECONDS = toSeconds(__ENV.STEP || '60s'); // 한 단계의 길이
 const RAMP_SECONDS = toSeconds(__ENV.RAMP || '5s'); // 단계가 바뀔 때 속도를 올리는 데 쓰는 시간 (STEP 안에 포함)
 const WARMUP_SECONDS = toSeconds(__ENV.WARMUP || '20s'); // 측정 전에 가볍게 돌리는 구간 (결과에서 제외)
@@ -67,7 +67,7 @@ export const options = {
         // 단계가 올라가는 본 시험. 속도는 "VU 수"가 아니라 "초당 요청 수"로 직접 정한다 (서버가 느려져도 약속한 속도로 계속 보낸다)
         stress: {
             executor: 'ramping-arrival-rate',
-            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (0.44 RPS = 분당 26건)
+            // k6의 속도 값은 정수만 되어서 "분당 요청 수"로 쓴다 (2.7 RPS = 분당 162건)
             timeUnit: '1m',
             startRate: perMinute(RATES[0]),
             preAllocatedVUs: PRE_ALLOCATED_VUS,

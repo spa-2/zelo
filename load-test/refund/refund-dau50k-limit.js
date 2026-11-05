@@ -3,7 +3,7 @@ import exec from 'k6/execution';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';
 
-// 한계 (새 기준): 목표(분당 50세션 = 초당 0.83세션)의 10·50·100·150·200·250·300배로 올리다가 기준을 넘는 단계에서 멈춘다
+// 한계 (새 기준): 목표(분당 50세션 = 초당 0.83세션)의 10·50·100·150·200·250·300배로 올려 처음 기준을 넘는 단계를 찾는다
 // 단계마다 60초. 단계를 시나리오로 나눠 기준을 단계별로 본다
 // 환불 범위 사용자(25,001~27,000, 전부 소셜)는 setup에서 미리 로그인한다. 소셜 로그인 fake 지연(900ms)이 먼저 병목이 되지 않게 한다
 // 모든 단계를 다 돌면 약 5.3만 세션. 환불 시드 6만 건 안에 들어온다
@@ -50,11 +50,12 @@ MULTIPLIERS.forEach((multiplier, index) => {
         // 단계마다 번호가 0부터 시작하므로 앞 단계가 쓴 주문 수만큼 띄운다
         env: { ORDER_OFFSET: String(offset) },
     };
-    // k6가 단계마다 1건을 더 실행할 수 있어 여유를 둔다 (딱 맞추면 다음 단계 첫 주문이 겹쳐 PAYMENT_008로 거절됨)
+    // k6가 단계마다 1건을 더 돌 수 있어 10건 여유를 둔다
     offset += rate * STAGE_SECONDS + 10;
-    // 환불 요청 에러 1% 초과 또는 p95 2초 초과가 10초 이어지면 멈춘다
+    // 에러가 쏟아질 때만 멈춘다
     thresholds[`http_req_failed{kind:refund,scenario:${name}}`] = [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '10s' }];
-    thresholds[`http_req_duration{kind:refund,scenario:${name}}`] = [{ threshold: 'p(95)<2000', abortOnFail: true, delayAbortEval: '10s' }];
+    // p95로는 멈추지 않고 단계별 결과로 판정한다
+    thresholds[`http_req_duration{kind:refund,scenario:${name}}`] = ['p(95)<2000'];
     thresholds[`http_reqs{kind:refund,scenario:${name}}`] = ['count>=0'];
     thresholds[`http_req_duration{name:fullRefund,scenario:${name}}`] = ['max>=0'];
     thresholds[`http_req_duration{name:partialRefund,scenario:${name}}`] = ['max>=0'];

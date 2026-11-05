@@ -33,7 +33,8 @@ export const options = {
         'checks{scenario:load}': ['rate>0.99'],
         'http_req_duration{name:fullRefund,scenario:load}': ['max>=0'],
         'http_req_duration{name:partialRefund,scenario:load}': ['max>=0'],
-        'dropped_iterations{scenario:load}': ['count>=0'],
+        // 못 보낸 세션이 있으면 목표를 못 버틴 것으로 본다
+        'dropped_iterations{scenario:load}': ['count==0'],
     },
 };
 

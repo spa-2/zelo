@@ -29,7 +29,7 @@ No lint/format plugin is configured. Note that `ZeloApplicationTests` loads the 
 
 - `application.yaml` hardcodes the local DB (matches `docker-compose.yml`) and uses `ddl-auto: update` (no migration tool). It is the local-development default: debug SQL logs, all external modes `fake`, no seed.
 - Profiles layer on top of `application.yaml` (`SPRING_PROFILES_ACTIVE` or `--spring.profiles.active`): `performance` is for load tests (pool 30, seed on, schedulers off, 1h access token, `info` logs, 900ms fake social latency), `prod` is for production (requires `LLM_MODE`/`PORTONE_MODE`/`SOCIAL_MODE`/`MAIL_MODE` with no defaults and turns seeds off), `test` is for unit tests. Only values that differ per environment belong in a profile file.
-- In AWS, `spring.config.import` loads SSM parameters (names = property names) and they override both `application.yaml` and the profile files. DB, Redis and the modes come from SSM, so a profile file cannot change them there (e.g. `LLM_MODE=real` in SSM wins over `performance`). Terraform sets the profile through `spring_profile`.
+- In AWS, `spring.config.import` loads SSM parameters (names = property names) and they override both `application.yaml` and the profile files. DB, Redis and the modes come from SSM, so a profile file cannot change them there (e.g. a mode set in SSM, e.g. `LLM_MODE=real`, wins over the profile file). Terraform sets the profile through `spring_profile`.
 - JPA `open-in-view` is disabled, so lazy associations must be loaded inside the transaction.
 
 ## CI and review

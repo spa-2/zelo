@@ -1,5 +1,10 @@
 # 결제 부하 테스트
 
+| 구분 | 기준 | 결과 |
+|---|---|---|
+| **DAU 5만 (본 테스트)** | 피크 1시간 1만 명, 결제 분당 100세션 | 목표 통과, 안정 한계 × 150 (약 540 RPS), 첫 병목 Tomcat 스레드 |
+| 예행연습 | DAU 1만, 결제 분당 5세션 | 목표 통과. 요청이 겹치지 않아 동시성은 확인 못 함 |
+
 ## 범위
 - 결제수단 조회 `GET /api/payment-methods`
 - 결제 확인 `POST /api/payments/{portoneId}/confirm`
@@ -8,105 +13,105 @@
 - 로그인은 측정에서 뺀다 (`kind:payment` 태그가 없는 요청)
 
 ## 파일
-| 파일 | 내용 |
-|---|---|
-| `payment-session.js` | 결제 1건의 흐름 (로그인 → 결제수단 조회 → 재결제 → 결제) |
-| `payment-smoke.js` | 스모크: VU 1, 1분 |
-| `payment-load.js` | 부하: 세션 분당 5개, 5분 |
-| `payment-stress.js` | 스트레스: 부하 × 10, 5분 |
-| `portone-latency.js` | 포트원 테스트 채널 응답 시간 측정 (fake-delay 근거) |
-| `data/` | 시드 주문 CSV. 커밋하지 않는다 |
+| 파일 | 쓰는 테스트 | 내용 |
+|---|---|---|
+| `payment-session.js` | 공통 | 결제 1건의 흐름 (로그인 → 결제수단 조회 → 재결제 → 결제) |
+| `payment-smoke.js` | 공통 | 스모크: VU 1, 1분 |
+| `portone-latency.js` | 공통 | 포트원 테스트 채널 응답 시간 측정 (fake 지연 근거) |
+| `payment-dau50k-load.js` | DAU 5만 | 부하: 분당 100세션, 예열 2분 + 5분 |
+| `payment-dau50k-stress.js` | DAU 5만 | 스트레스: 분당 1,000세션, 예열 2분 + 5분 |
+| `payment-dau50k-limit.js` | DAU 5만 | 한계: 목표 × 10·50·100·150·200·250, 단계마다 60초 |
+| `payment-load.js` | 예행연습 | 부하: 분당 5세션, 5분 |
+| `payment-stress.js` | 예행연습 | 스트레스: 분당 50세션, 5분 |
+| `data/` | 공통 | 시드 주문 CSV. 커밋하지 않는다 |
 
-## 목표와 VU
-- 목표: 0.2 RPS = 세션 분당 5개 (피크 2,000명 × 결제 20% × 2.3회 ÷ 7,200초 × 1.5)
-- 스모크: VU 1 고정, 1분 → 결제 요청 p95 측정
-- 부하: VU = 0.2 × 스모크 p95(초), 반올림, 5분
-- 스트레스: 부하 × 10 (세션 분당 50개, VU × 10), 5분
+## 포트원 fake 지연 (근거)
+| 호출 | 측정 (테스트 채널, `portone-latency.js`) | 적용 |
+|---|---|---|
+| 결제 조회 | avg 63ms, p95 72ms | `--zelo.portone.fake-delay=63ms` |
+| 빌링키 결제 | avg 773ms, p95 1.01s | `--zelo.portone.fake-billing-delay=773ms` |
 
-## 포트원 응답 시간 (fake-delay 근거)
-- 측정: `portone-latency.js`, 테스트 채널, 로컬, 2026-11-04
-- 결제 조회: avg 63ms, p95 72ms (31회)
-- 빌링키 결제: avg 773ms, p95 1.01s (21회). PG사 승인까지 거쳐서 조회보다 크게 느리다
-- 적용 (팀 기준대로 평균): `--zelo.portone.fake-delay=63ms --zelo.portone.fake-billing-delay=773ms`
-- 취소(`cancelPayment`)는 측정하지 않아 조회 값을 쓴다. 환불 테스트 때 따로 잰다
+- 측정할 때 시크릿·빌링키는 환경변수로만 넘긴다: `PORTONE_API_SECRET='...' STORE_ID='...' PAYMENT_ID='...' BILLING_KEY='...' k6 run load-test/payment/portone-latency.js`
 
-측정 방법 (DB를 비우기 전에 한다. 비우면 테스트 결제와 빌링키가 사라진다)
-1. 결제된 테스트 결제 ID: `select portone_id from payments where status = 'PAID' order by id desc limit 1;`
-2. 테스트 빌링키: `select billing_key from payment_methods where billing_key not like 'fake-%' order by id desc limit 1;` (없으면 `http/payment-test/billing-key.html`로 발급)
-3. 실행 (시크릿·빌링키는 환경변수로만 넘긴다)
-   ```bash
-   PORTONE_API_SECRET='...' STORE_ID='...' PAYMENT_ID='...' BILLING_KEY='...' k6 run load-test/payment/portone-latency.js
-   ```
-4. `http_req_duration{name:getPayment}`, `{name:billingPay}`의 avg를 위에 적는다
+---
 
-## 준비
-1. DB 비우기: `docker compose down -v` → `docker compose up -d --wait`
-2. 앱을 두 번 실행한다 (1번째: 사용자·상품, 2번째: 결제 대기 주문 10만 건)
-   ```bash
-   JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance --zelo.portone.mode=fake --zelo.portone.fake-delay=63ms --zelo.portone.fake-billing-delay=773ms --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true --zelo.delivery.scheduler.enabled=false --zelo.order.expiration.scheduler.enabled=false --jwt.access-expiration=3600000'
-   ```
-3. 시드 주문 CSV 뽑기 (시드를 새로 넣을 때마다)
-   ```bash
-   mkdir -p load-test/payment/data && docker compose exec -T postgres psql -U postgres -d zelotest -c "\copy (select o.id as order_id, o.user_id, p.portone_id, p.status from orders o join payments p on p.order_id = o.id where o.quote_id like 'LT-PAY-%' order by o.quote_id) to stdout with csv header" > load-test/payment/data/payment-orders.csv
-   ```
+# DAU 5만 (본 테스트)
+
+## 목표와 구성
+- 목표: 1만 명 중 40%(4,000명) 결제 → 4,000 ÷ 3,600초 × 1.5 = **분당 100세션** (결제 요청 약 3.5 RPS)
+- 시드: 결제 대기 주문 10만 건 (사용자 20,001~25,000)
+- 예열 2분은 측정에서 뺀다. 시나리오마다 `ORDER_OFFSET`만큼 띄워 시드 주문이 겹치지 않게 한다
+- 한계는 setup에서 미리 로그인하고 결제 요청만 보낸다. 단계별 결과로 판정하고 에러율 1%를 넘을 때만 멈춘다
 
 ## 실행
-단계마다 앱 재시작 → CSV 다시 뽑기 → 실행. 시드를 넣고 30분 안에 끝낸다 (재결제는 주문 생성 30분 뒤 막힘)
+단계마다 앱 재시작 → CSV 다시 뽑기 → 지표 기록 → 실행. 시드를 넣고 30분 안에 끝낸다 (재결제는 주문 생성 30분 뒤 막힘)
 ```bash
-mkdir -p docs/load-test/results/payment
-k6 run --summary-export=docs/load-test/results/payment/smoke-summary.json load-test/payment/payment-smoke.js
-k6 run -e VUS=1 --summary-export=docs/load-test/results/payment/load-summary.json load-test/payment/payment-load.js
-k6 run -e VUS=1 --summary-export=docs/load-test/results/payment/stress-summary.json load-test/payment/payment-stress.js
+./gradlew bootRun --args='--spring.profiles.active=local,performance --server.port=8080 --zelo.llm.mode=fake --zelo.social.mode=fake --zelo.portone.mode=fake --zelo.portone.fake-delay=63ms --zelo.portone.fake-billing-delay=773ms'
+docker compose exec -T postgres psql -U postgres -d zelotest -c "\copy (select o.id as order_id, o.user_id, p.portone_id, p.status from orders o join payments p on p.order_id = o.id where o.quote_id like 'LT-PAY-%' order by o.quote_id) to stdout with csv header" > load-test/payment/data/payment-orders.csv
+k6 run --summary-export=docs/load-test/results/payment/dau50k/smoke-summary.json load-test/payment/payment-smoke.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/payment/dau50k/load-summary.json load-test/payment/payment-dau50k-load.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/payment/dau50k/stress-summary.json load-test/payment/payment-dau50k-stress.js
+k6 run --summary-export=docs/load-test/results/payment/dau50k/limit-summary.json --out csv=docs/load-test/results/payment/dau50k/limit.csv load-test/payment/payment-dau50k-limit.js
 ```
+- 서버 지표: `load-test/chat/record-metrics.sh docs/load-test/results/payment/dau50k/<단계>-server.csv`
+- `limit.csv`는 크기가 커서 커밋하지 않는다
 
-## 볼 지표
-- k6:
-  - `http_req_duration{kind:payment}` p95, p99
-  - `http_req_failed{kind:payment}`
-  - `checks`
-  - `dropped_iterations` (VU가 모자라 못 보낸 세션)
-- 서버 (`http://localhost:9292/actuator/prometheus`):
-  - DB 커넥션 `hikaricp_connections_active` / `hikaricp_connections_pending`
-  - Tomcat `tomcat_threads_busy_threads`
-- 결제 결과: `sum by (status) (rate(zelo_payment_result_total[1m]))`
-- 결제 실패 코드: `sum by (code) (rate(zelo_api_error_total{code=~"PAYMENT.*|PG.*"}[1m]))`
+## 결과 (로컬, 2026-11-05)
+조건: performance 프로필, **커넥션 풀 10** (#414 전), Tomcat 스레드 200, k6·서버·DB를 PC 한 대에서 실행
 
-## 결과 (예행연습, 로컬, 2026-11-04)
-조건: performance 프로필, 포트원 fake (`fake-delay=63ms`, `fake-billing-delay=773ms`), 결제 대기 주문 10만 건. 시간·p95 기준(1초)은 임시값
+| 단계 | 결제 RPS | 실패 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
+|---|---|---|---|---|---|---|
+| 스모크 (VU 1) | 3.9 | 0% | 890ms | 1 | 1 / 0 | 통과 |
+| 부하 (목표) | 3.6 | 0% | 887ms | 2 | 1 / 0 | 통과 |
+| 스트레스 (× 10) | 36 | 0% | 884ms | 10 | 3 / 0 | 무너지지 않음 |
+| 한계 × 10 | 37 | 0% | 883ms | 9 | 1 / 0 | 안정 |
+| 한계 × 50 | 178 | 0% | 883ms | 41 | 4 / 0 | 안정 |
+| 한계 × 100 | 359 | 0% | 879ms | 85 | 8 / 0 | 안정 |
+| **한계 × 150** | **538** | 0% | **887ms** | 133 | 10 / 0 | **안정 (마지막)** |
+| 한계 × 200 | 715 | 0% | 1.15s | **200** | 10 / **67** | 느려짐 |
+| 한계 × 250 | 약 660 | 0% | **2.03s** | 200 | 10 / 58 | 기준 초과 (15초 만에 멈춤) |
 
-### 요약
-| 단계 | 조건 | 세션 | 결제 요청 | RPS | 실패 | checks | p95 | 판정 |
-|---|---|---|---|---|---|---|---|---|
-| 스모크 | VU 1, 1분, 쉬지 않고 | 110 | 235 | 3.9 | 0% | 100% (345/345) | 872ms | 통과 |
-| 부하 | 분당 5세션 (목표 0.2 RPS), VU 1, 5분 | 26 | 55 | 0.18 | 0% | 100% (81/81) | 898ms | 통과 |
-| 스트레스 | 분당 50세션 (목표 × 10), VU 10, 5분 | 250 | 536 | 1.79 | 0% | 100% (786/786) | 872ms | 무너지지 않음 |
+| API | 부하 p95 | 한계 × 150 p95 | 한계 × 250 p95 | 구성 |
+|---|---|---|---|---|
+| 등록 카드 결제 | 890ms | 901ms | 2.32s | 빌링키 결제 773ms + 결제 조회 63ms + 서버 |
+| 일반 결제 (confirm) | 105ms | 112ms | 1.56s | 결제 조회 63ms + 서버 |
+| 재결제 | 11ms | - | - | 서버만 |
+| 결제수단 조회 | 2.6ms | - | - | 서버만 |
 
-### 결제 요청 응답 시간 (`kind:payment`)
-| 단계 | avg | med | p90 | p95 | max |
-|---|---|---|---|---|---|
-| 스모크 | 229ms | 11ms | 870ms | 872ms | 895ms |
-| 부하 | 242ms | 23ms | 896ms | 898ms | 902ms |
-| 스트레스 | 227ms | 11ms | 870ms | 872ms | 901ms |
-
-- p95는 등록 카드 결제: 빌링키 결제 지연 773ms + 결제 조회 63ms + 서버 처리 약 36ms
-- 결제수단 조회·재결제처럼 포트원 대기가 없는 요청은 수십 ms 이하
-- 세 단계의 응답 시간이 같다. 목표와 그 10배에서 느려지지 않음
-
-### 서버·DB
-| 단계 | Tomcat 바쁜 스레드 (최대) | Hikari 사용 (최대) | Hikari 대기 | 놓친 세션 | DB: 시드 주문 PAID |
-|---|---|---|---|---|---|
-| 스모크 | 1 | 1 | 0 | - | 110 (세션 수와 같음) |
-| 부하 | 1 | 1 | 0 | 0 | 26 (세션 수와 같음) |
-| 스트레스 | 1 | 1 | 0 | 0 | 250 (세션 수와 같음) |
-
-- 스모크 check별: 로그인 110/110, 결제수단 조회 110/110, 재결제 15/15, 결제 PAID 110/110
-- 부하 RPS가 0.2보다 낮은 이유: 세션당 2.3회 가정인데 재결제가 26회 중 3회라 세션당 약 2.1회
-- 부하 VU = 0.2 × 0.872 = 0.17 → 1 (최소 1)
+- DB: 단계마다 PAID 수 = 세션 수 (부하 700, 스트레스 5,202, 한계 56,017), 음수 재고 0
+- 한계 측정 때는 단계별 p95 2초를 넘으면 멈추게 했다. 멈추기 전 단계(× 200)까지 60초를 다 돌았으므로 안정 한계는 그대로다
 
 ## 결론
 | 항목 | 내용 |
 |---|---|
-| 버티는가 | 목표(0.2 RPS)와 그 10배(2 RPS)에서 실패 0%, p95 약 0.9초 |
-| 시간 구성 | 대부분 포트원 대기(빌링키 결제 773ms). 서버 처리는 수십 ms |
-| 한계 | 스트레스에서 VU 10명을 준비했지만 동시에 일한 VU는 최대 1명. 세션 1회(평균 0.56초)가 간격(1.2초)보다 짧아 요청이 겹치지 않았다. 락 경합·커넥션 풀 고갈 같은 동시성 병목과 한계 RPS는 확인하지 못함 |
-| 다음 | 동시 요청이 생기는 수준까지 올린다 (예: 세션 분당 50 → 100 → 200 → 400, VU 넉넉히, Hikari 대기·Tomcat 스레드 확인). 결과를 API별(`name` 태그)로 나눠 본다 |
+| 목표 | 분당 100세션에서 실패 0%, p95 887ms로 통과. 10배에서도 같다 |
+| 안정 한계 | **× 150 = 약 540 RPS** |
+| 무너지는 지점 | × 200부터 느려지고 × 250에서 p95 2초 초과. 더 보내도 처리량이 715 → 660으로 줄었다 |
+| 첫 병목 | **Tomcat 스레드 200개.** 포트원 응답을 기다리는 동안 스레드를 잡는다 (동시 요청 = 초당 세션 × 세션 시간, × 200: 333 × 0.6초 ≈ 200) |
+| 다음 | 포트원이 느려지면 스레드가 다른 기능까지 막을 수 있다 → 벌크헤드·서킷 브레이커와 장애 테스트 |
+
+---
+
+<details>
+<summary><b>예행연습 (DAU 1만, 2026-11-04)</b></summary>
+
+## 목표와 구성
+- 목표: 피크 2,000명 × 결제 20% × 2.3회 ÷ 7,200초 × 1.5 = 0.2 RPS = 분당 5세션
+- 스모크 VU 1, 부하 분당 5세션, 스트레스 분당 50세션, 각 5분
+- 조건: 커넥션 풀 10, 예열 없음
+
+## 결과
+| 단계 | 세션 | RPS | 실패 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
+|---|---|---|---|---|---|---|---|
+| 스모크 (VU 1) | 110 | 3.9 | 0% | 872ms | 1 | 1 / 0 | 통과 |
+| 부하 (목표) | 26 | 0.18 | 0% | 898ms | 1 | 1 / 0 | 통과 |
+| 스트레스 (× 10) | 250 | 1.79 | 0% | 872ms | 1 | 1 / 0 | 무너지지 않음 |
+
+- DB: 단계마다 PAID 수 = 세션 수
+- p95는 등록 카드 결제(빌링키 773ms + 조회 63ms + 서버 약 36ms)다
+
+## 결론
+- 목표와 10배에서 실패 0%, p95 약 0.9초. 시간 대부분이 포트원 대기다
+- 세션(평균 0.56초)이 간격(1.2초)보다 짧아 요청이 겹치지 않았다. 동시성 병목과 한계는 확인하지 못했다 → DAU 5만 테스트에서 예열과 한계 단계를 추가했다
+
+</details>

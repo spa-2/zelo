@@ -1,0 +1,170 @@
+{
+    "metrics": {
+        "http_req_duration{kind:payment}": {
+            "med": 10.5225,
+            "max": 895.0119,
+            "p(90)": 881.1171,
+            "p(95)": 889.5801,
+            "avg": 231.8931,
+            "min": 2.0673,
+            "thresholds": {
+                "max>=0": false
+            }
+        },
+        "http_reqs": {
+            "count": 339,
+            "rate": 5.593209819520335
+        },
+        "http_req_blocked": {
+            "med": 0,
+            "max": 12.0151,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.04185663716814159,
+            "min": 0
+        },
+        "data_received": {
+            "count": 219128,
+            "rate": 3615.4244287075276
+        },
+        "checks": {
+            "passes": 339,
+            "fails": 0,
+            "thresholds": {
+                "rate==1": false
+            },
+            "value": 1
+        },
+        "http_req_connecting": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.004482300884955752,
+            "min": 0,
+            "med": 0,
+            "max": 0.9969
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 339,
+            "value": 0
+        },
+        "http_req_receiving": {
+            "max": 3.6063,
+            "p(90)": 0.52624,
+            "p(95)": 0.5316599999999999,
+            "avg": 0.2362064896755162,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 178.547404719764,
+            "min": 2.0673,
+            "med": 61.7624,
+            "max": 895.0119,
+            "p(90)": 878.3350800000001,
+            "p(95)": 884.01379
+        },
+        "http_req_duration": {
+            "max": 895.0119,
+            "p(90)": 878.3350800000001,
+            "p(95)": 884.01379,
+            "avg": 178.547404719764,
+            "min": 2.0673,
+            "med": 61.7624
+        },
+        "http_req_sending": {
+            "avg": 0.015393805309734512,
+            "min": 0,
+            "med": 0,
+            "max": 0.5274,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_failed{kind:payment}": {
+            "passes": 0,
+            "fails": 231,
+            "thresholds": {
+                "rate==0": false
+            },
+            "value": 0
+        },
+        "iteration_duration": {
+            "min": 152.1317,
+            "med": 725.37825,
+            "max": 987.3308,
+            "p(90)": 956.23925,
+            "p(95)": 959.507,
+            "avg": 561.1470111111108
+        },
+        "iterations": {
+            "count": 108,
+            "rate": 1.7819075531215225
+        },
+        "http_req_waiting": {
+            "p(90)": 877.68184,
+            "p(95)": 884.01379,
+            "avg": 178.29580442477877,
+            "min": 2.0673,
+            "med": 61.4411,
+            "max": 894.9973
+        },
+        "data_sent": {
+            "count": 114109,
+            "rate": 1882.7008238809613
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b",
+                    "passes": 108,
+                    "fails": 0,
+                    "name": "로그인 200",
+                    "path": "::로그인 200"
+                },
+                "결제수단 조회 200": {
+                    "name": "결제수단 조회 200",
+                    "path": "::결제수단 조회 200",
+                    "id": "3c7fc7cc5f220e4f3779f7a83a23b9f3",
+                    "passes": 108,
+                    "fails": 0
+                },
+                "결제 PAID": {
+                    "name": "결제 PAID",
+                    "path": "::결제 PAID",
+                    "id": "fadf73f6b138911f66fed0873cfa6dc6",
+                    "passes": 108,
+                    "fails": 0
+                },
+                "재결제 200": {
+                    "passes": 15,
+                    "fails": 0,
+                    "name": "재결제 200",
+                    "path": "::재결제 200",
+                    "id": "0b2a8ba6ec2d7d884e79d1168cad3733"
+                }
+            }
+    }
+}

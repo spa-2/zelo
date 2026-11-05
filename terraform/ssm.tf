@@ -23,8 +23,8 @@ locals {
     PORTONE_API_SECRET     = "CHANGE_ME"
     PORTONE_STORE_ID       = "CHANGE_ME"
     PORTONE_WEBHOOK_SECRET = "CHANGE_ME"
-    # real은 OpenAI를 호출하고 fake는 호출 없이 고정된 응답을 돌려주는 모드. application.yaml의 기본값은 fake라서 서버에서는 real로 명시한다
-    LLM_MODE = "real"
+    # real은 OpenAI를 호출하고 fake는 호출 없이 고정된 응답을 돌려주는 모드. 기본은 fake(부하 테스트·비용 방지)이고, 운영으로 쓸 때 real로 바꾼다
+    LLM_MODE = "fake"
     # fake는 포트원 키 없이 동작하는 모드. 실제 결제를 붙일 때 real로 바꾼다
     PORTONE_MODE = "fake"
     # fake는 메일을 보내지 않고 로그에만 남기는 모드. SES 프로덕션 액세스 승인 후 real로 바꾼다

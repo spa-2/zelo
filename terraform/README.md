@@ -23,7 +23,7 @@ terraform apply      # RDS 때문에 10분 안팎 걸린다
    ```bash
    aws ssm put-parameter --name /zelo/dev/JWT_SECRET --type SecureString --overwrite --value '<값>'
    ```
-   대상: `JWT_SECRET`(Base64 32바이트 이상), `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `KAKAO_CLIENT_ID/SECRET`, `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_WEBHOOK_SECRET`. 포트원을 쓰지 않으면 `PORTONE_MODE`는 `fake` 그대로 둔다. `LLM_MODE`는 `real`로 만들어지고, 소셜 로그인(`SOCIAL_MODE`)은 파라미터가 없으면 기본값 `fake`로 동작한다(실제로 켤 때 `real`로 새로 만든다).
+   대상: `JWT_SECRET`(Base64 32바이트 이상), `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `KAKAO_CLIENT_ID/SECRET`, `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_WEBHOOK_SECRET`. 포트원을 쓰지 않으면 `PORTONE_MODE`는 `fake` 그대로 둔다. `LLM_MODE`와 소셜 로그인(`SOCIAL_MODE`)도 `fake`로 만들어지며, 운영으로 쓸 때 `real`로 바꾼다(`LLM_MODE=real`이면 OpenAI 호출 비용이 든다).
    파라미터 이름은 `application.yaml`의 `${...}` 이름과 **대소문자까지 같아야** 한다.
 2. **이미지 푸시**: `docker buildx build --platform linux/arm64`로 빌드해서 `ecr_repository_url` 출력값으로 푸시 (EC2가 ARM(Graviton)이라 arm64 이미지가 필요하다. Apple Silicon 맥은 기본이 arm64)
 3. **배포할 태그 지정**: `aws ssm put-parameter --name /zelo/dev/deploy/image_tag --type String --overwrite --value <태그>`
@@ -33,7 +33,9 @@ terraform apply      # RDS 때문에 10분 안팎 걸린다
 ## 앱 쪽 준비 (Spring Cloud AWS)
 
 - `build.gradle`에 `implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store:4.0.2'`를 추가한다.
-- 배포 스크립트가 컨테이너에 `SPRING_CONFIG_IMPORT=aws-parameterstore:/zelo/dev/`와 `SPRING_CLOUD_AWS_REGION_STATIC`을 환경변수로 넣어서, 별도 프로파일 파일 없이 서버에서만 SSM을 읽는다. 로컬과 CI는 이 값이 없어서 영향이 없다.
+- 배포 스크립트가 컨테이너에 `SPRING_CONFIG_IMPORT=aws-parameterstore:/zelo/dev/`, `SPRING_CLOUD_AWS_REGION_STATIC`, `SPRING_PROFILES_ACTIVE`를 환경변수로 넣는다. 서버에서만 SSM을 읽고, 로컬과 CI는 이 값이 없어서 영향이 없다.
+- 켤 프로필은 `spring_profile` 변수(기본값 `performance`)로 정한다. 운영은 `prod`로 바꾼다. 배포 스크립트가 launch template 안에 들어 있어서, 프로필을 바꾸면 `terraform apply` 후 인스턴스를 교체해야 반영된다.
+- SSM 파라미터는 프로필 파일보다 우선한다. `LLM_MODE`는 기본 `fake`로 만들어지므로 부하 테스트는 그대로 쓰면 되고, 운영으로 쓸 때만 SSM에서 `real`로 바꾼다. `performance`는 스케줄러를 끄고 시드를 켜므로 공유 개발 서버에는 맞지 않는다.
 - DB·Redis 주소와 비밀번호는 `spring.datasource.*`, `spring.data.redis.*` 이름의 파라미터가 `application.yaml` 값을 덮어쓴다.
 - EC2 역할로 SSM을 읽으므로 인스턴스 메타데이터 hop limit을 2로 두었다(컨테이너에서 자격 증명을 받기 위함).
 

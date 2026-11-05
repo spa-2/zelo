@@ -14,6 +14,7 @@ locals {
     app_port          = var.app_port
     management_port   = var.management_port
     health_check_path = var.health_check_path
+    spring_profile    = var.spring_profile
   })
 }
 

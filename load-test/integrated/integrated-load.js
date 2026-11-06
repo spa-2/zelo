@@ -6,11 +6,10 @@ import { COUNT_DISPLAY, GRACEFUL_STOP, rate, SHARE, setupData, USER_COUNTS, VUS 
 
 // 2단계 통합 부하 (계획서 9장): 네 흐름을 비율대로 섞어 피크 목표(×1)에서 기준(4-1)을 지키는지 본다
 // 데우기 5분(판정 제외) + 측정 20분. 기준은 측정 구간(phase:steady)에만 건다
-// LLM과 포트원은 fake다 (계획서 5장, 6-2). 지연은 실측 값이고, 채팅 도메인 테스트(chat-load.js)와 같은 설정이다
+// LLM과 포트원은 fake다 (계획서 5장, 6-2). LLM 지연은 실측 값이고 채팅 도메인 테스트(chat-load.js)와 같은 설정이다. 포트원 지연은 performance 프로필에 있다
 //   로컬: ./gradlew bootRun --args='--spring.profiles.active=performance --zelo.llm.fake.mode=DELAY --zelo.llm.fake.plan-intent=SHOPPING_REQUEST
 //     --zelo.llm.fake.operation-delays=MENU_PLAN:1100ms-3600ms,QUOTE_EXPLAIN:1000ms-1800ms,QUOTE_EDIT_PLAN:1100ms-2200ms,LOOKUP_ANSWER:2600ms-4100ms,CHAT_ANSWER:1400ms-2300ms
 //     --zelo.llm.fake.intent-keywords=QUOTE_EDIT:빼,LOOKUP_QUESTION:리뷰,GENERAL_QUESTION:보관
-//     --zelo.portone.fake-delay=63ms --zelo.portone.fake-billing-delay=773ms --zelo.portone.fake-cancel-delay=807ms
 //     --zelo.seed.load-test.payment-order-count=0 --zelo.seed.load-test.extra-stock=100000'
 //   payment-order-count=0: 결제 시드가 결제 대기 주문 없이 결제수단만 넣는다. 결제 대기 주문이 있으면 C의 주문 생성이 409(ORDER_004)다
 //   extra-stock=100000: 김치·밥·계란·대파 상품 재고를 더한다. fake 메뉴 계획이 늘 같은 재료라 C의 구매가 몰려 재고가 금방 바닥난다 (계획서 3-5)

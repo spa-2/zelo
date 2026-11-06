@@ -11,8 +11,7 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 목표: 피크 2,000명 × 결제 20% × 2.3회 ÷ 7,200초 × 1.5 = 0.2 RPS → 세션 분당 5개 (0.2 ÷ 2.3 × 60)
 export const TARGET_SESSIONS_PER_MINUTE = 5;
 
-// 사용자 시드에서 1~21,000은 이메일 가입, 그 뒤는 소셜 가입. 결제 범위(20,001~25,000)는 둘이 섞여 있다
-const EMAIL_USER_MAX = 21000;
+// 사용자 시드에서 id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입. 결제 범위(20,001~25,000)는 둘이 섞여 있다
 const PASSWORD = 'Zelo1234!';
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -62,11 +61,17 @@ export function session() {
 // 로그인은 결제 측정에서 빼려고 kind 태그를 붙이지 않는다
 function login(userId) {
     const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
-    const res = userId <= EMAIL_USER_MAX
+    const res = isEmailUser(userId)
         ? http.post(`${BASE_URL}/api/users/login`,
             JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params)
         : http.post(`${BASE_URL}/api/auth/social/google/login`,
             JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }), params);
     check(res, { '로그인 200': (r) => r.status === 200 });
     return res.status === 200 ? res.json('data.accessToken') : null;
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

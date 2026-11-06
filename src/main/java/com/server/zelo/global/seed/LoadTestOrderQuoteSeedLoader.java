@@ -33,8 +33,8 @@ public class LoadTestOrderQuoteSeedLoader {
     private static final String QUOTE_KEY_PREFIX = "quote:";
     private static final String MENU_NAME = "부하 테스트 메뉴";
     // 다른 파트 VU와 같은 사용자를 쓰면 주문 상태가 서로 꼬이므로 팀에서 나눈 범위만 쓴다
-    private static final int USER_FROM = 15_001;
-    private static final int USER_COUNT = 5_000;
+    // 주문은 사용자당 1건이라 비어 있던 27,001~30,000(소셜 가입)까지 붙여 8,000명을 쓴다
+    private static final List<UserRange> USER_RANGES = List.of(new UserRange(15_001, 20_000), new UserRange(27_001, 30_000));
     // 자동 증가하는 실제 채팅방 ID와 겹치지 않을 번호대
     private static final long ROOM_ID_START = 90_000_000L;
     // 실제 견적 TTL(10분)이면 테스트 도중 만료되므로 길게 둔다
@@ -64,7 +64,8 @@ public class LoadTestOrderQuoteSeedLoader {
         LocalDateTime now = LocalDateTime.now();
         // 결제·환불 시드와 다른 상품부터 골라 같은 재고 행에 겹치지 않게 한다
         ProductCursor cursor = new ProductCursor(products, products.size() / 4);
-        List<Quote> quotes = IntStream.range(USER_FROM, USER_FROM + USER_COUNT)
+        List<Quote> quotes = USER_RANGES.stream()
+                .flatMapToInt(range -> IntStream.rangeClosed(range.from(), range.to()))
                 .mapToObj(userId -> quote(userId, cursor.items(1 + userId % 3, userId), now))
                 .toList();
         loadTestOrderSeedSupport.saveInChunks(quotes, chunk -> saveChatRooms(chunk, Timestamp.valueOf(now)));
@@ -74,10 +75,12 @@ public class LoadTestOrderQuoteSeedLoader {
     }
 
     private void deleteChatRooms() {
-        long fromRoomId = ROOM_ID_START + USER_FROM;
-        long toRoomId = ROOM_ID_START + USER_FROM + USER_COUNT - 1;
-        jdbcTemplate.update("delete from chat_messages where room_id between ? and ?", fromRoomId, toRoomId);
-        jdbcTemplate.update("delete from chat_rooms where id between ? and ?", fromRoomId, toRoomId);
+        for (UserRange range : USER_RANGES) {
+            long fromRoomId = ROOM_ID_START + range.from();
+            long toRoomId = ROOM_ID_START + range.to();
+            jdbcTemplate.update("delete from chat_messages where room_id between ? and ?", fromRoomId, toRoomId);
+            jdbcTemplate.update("delete from chat_rooms where id between ? and ?", fromRoomId, toRoomId);
+        }
     }
 
     // 주문 API가 품목 가격·합계를 상품과 다시 비교하므로 DB의 현재 가격으로 맞춘다
@@ -101,5 +104,8 @@ public class LoadTestOrderQuoteSeedLoader {
     private void saveQuote(Quote quote) {
         stringRedisTemplate.opsForValue()
                 .set(QUOTE_KEY_PREFIX + quote.roomId(), jsonMapper.writeValueAsString(quote), QUOTE_TTL);
+    }
+
+    private record UserRange(int from, int to) {
     }
 }

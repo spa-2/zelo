@@ -1,103 +1,119 @@
 # 주문 부하 테스트
 
+| 구분 | 기준 | 결과 |
+|---|---|---|
+| **DAU 5만 (본 테스트)** | 피크 1시간 1만 명, 주문 분당 100세션 | 목표 통과, × 100(약 500 RPS)까지 무너지지 않음 |
+| 예행연습 | DAU 1만, 주문 분당 5세션 | 목표 통과. 요청이 겹치지 않아 동시성은 확인 못 함 |
+
 ## 범위
 - 주문 확인 `POST /api/orders/confirmations`
 - 주문 생성 `POST /api/orders` (사용자별 락, 상품 검증, 재고 선점, 결제 READY 생성)
 - 주문 상세 `GET /api/orders/{orderId}`
-- 로그인은 측정에서 뺀다 (`kind:order` 태그가 없는 요청)
-- 외부 API 호출이 없어 응답 시간이 서버 처리 시간이다
+- 로그인은 측정에서 뺀다 (`kind:order` 태그가 없는 요청). 외부 API 호출이 없어 응답 시간이 서버 처리 시간이다
 
 ## 파일
-| 파일 | 내용 |
-|---|---|
-| `order-session.js` | 주문 1건의 흐름 (로그인 → 주문 확인 → 주문 생성 → 주문 상세) |
-| `order-smoke.js` | 스모크: VU 1, 1분 |
-| `order-load.js` | 부하: 세션 분당 5개, 5분 |
-| `order-stress.js` | 스트레스: 부하 × 10, 5분 |
+경로는 `load-test/order/` 기준
+| 파일 | 쓰는 테스트 | 내용 |
+|---|---|---|
+| `practice/order-session.js` | 공통 | 주문 1건의 흐름 (로그인 → 주문 확인 → 주문 생성 → 주문 상세) |
+| `practice/order-smoke.js` | 공통 | 스모크: VU 1, 1분 |
+| `50kdau/order-dau50k-load.js` | DAU 5만 | 부하: 분당 100세션, 예열 2분 + 5분 |
+| `50kdau/order-dau50k-stress.js` | DAU 5만 | 스트레스: 분당 1,000세션, 예열 2분 + 5분 |
+| `50kdau/order-dau50k-limit.js` | DAU 5만 | 한계: 목표 × 10·30·60·100, 단계마다 20초 |
+| `practice/order-load.js` | 예행연습 | 부하: 분당 5세션, 5분 |
+| `practice/order-stress.js` | 예행연습 | 스트레스: 분당 50세션, 5분 |
 
-## 목표와 VU
-- 목표: 0.25 RPS = 세션 분당 5개 (피크 2,000명 × 주문 20% × 3회 ÷ 7,200초 × 1.5)
-- 스모크: VU 1 고정, 1분 → 주문 요청 p95 측정
-- 부하: VU = 0.25 × 스모크 p95(초), 반올림 (최소 1), 5분
-- 스트레스: 부하 × 10 (세션 분당 50개, VU × 10), 5분
+---
 
-## 시드
-- 사용자 15,001 ~ 20,000 (전부 이메일 로그인, `load{id}@test.com` / `Zelo1234!`)
-- 사용자마다 채팅방 1개 (ID = 90,000,000 + 사용자 ID)와 Redis 견적 1개 (`LT-ORD-{사용자 ID 7자리}`, TTL 3시간)
-- 결제 대기 주문은 사용자당 1건이라 1회 테스트에 최대 5,000세션
+# DAU 5만 (본 테스트)
 
-## 준비
-1. 앱 실행 (사용자·상품 시드가 이미 있으면 한 번만, 없으면 DB를 비우고 두 번)
-   ```bash
-   ./gradlew bootRun --args='--spring.profiles.active=local,performance --server.port=8080 --zelo.llm.mode=fake --zelo.social.mode=fake --zelo.portone.mode=fake --zelo.portone.fake-delay=63ms --zelo.portone.fake-billing-delay=773ms --zelo.portone.fake-cancel-delay=807ms --zelo.seed.enabled=true --zelo.seed.load-test.enabled=true --zelo.delivery.scheduler.enabled=false --zelo.order.expiration.scheduler.enabled=false --jwt.access-expiration=3600000'
-   ```
-2. 로그에 `부하 테스트 주문 시드 저장 완료 quotes=5000`이 나오는지 확인
+## 목표와 구성
+- 목표: 1만 명 중 40%(4,000명) 주문 → 4,000 ÷ 3,600초 × 1.5 = **분당 100세션** (주문 요청 약 5 RPS)
+- 사용자: 15,001~20,000(이메일) + 27,001~30,000(소셜) **8,000명**. 주문은 사용자당 1건이라 범위를 늘렸다
+- 예열 2분은 측정에서 뺀다. 시나리오마다 `USER_OFFSET`만큼 띄워 사용자가 겹치지 않게 한다
+- 한계는 setup에서 미리 로그인하고 주문 요청만 보낸다. 사용자가 8,000명이라 단계를 20초로 둔다
 
 ## 실행
-단계마다 앱을 재시작한다 (지난 주문 삭제 + 선점 재고 복원 + 견적 다시 저장)
+모든 명령은 저장소 루트에서 실행한다. 터미널 3개를 쓴다
+
+**터미널 1: 앱** (서버가 켜진 채로 있어서 이 터미널은 앱 전용)
 ```bash
-mkdir -p docs/load-test/results/order
-k6 run --summary-export=docs/load-test/results/order/smoke-summary.json load-test/order/order-smoke.js
-k6 run -e VUS=1 --summary-export=docs/load-test/results/order/load-summary.json load-test/order/order-load.js
-k6 run -e VUS=1 --summary-export=docs/load-test/results/order/stress-summary.json load-test/order/order-stress.js
+./gradlew bootRun --args='--spring.profiles.active=local,performance --server.port=8080 --zelo.llm.mode=fake --zelo.social.mode=fake --zelo.portone.mode=fake'
 ```
-테스트 중에는 서버 지표를 같이 기록한다: `load-test/chat/record-metrics.sh docs/load-test/results/order/<단계>-server.csv`
+- `performance` 프로필이 시드 켜기와 스케줄러 끄기를 함께 적용한다 (#414)
+- 로그 `부하 테스트 주문 시드 저장 완료 quotes=8000`이 나오면 준비 끝
 
-## 볼 지표
-- k6:
-  - `http_req_duration{kind:order}` p95, p99
-  - API별: `{name:createConfirmation}`, `{name:createOrder}`, `{name:getOrderDetail}`
-  - `http_req_failed{kind:order}`
-  - `checks`
-  - `dropped_iterations`
-- 서버: Hikari `hikaricp_connections_active` / `pending`, Tomcat `tomcat_threads_busy_threads`
-- DB 대조: `LT-ORD-` 주문 수 = 세션 수, 주문 상태 `PAYMENT_PENDING`, 결제 `READY`, 주문 상품 `RESERVED`
+**터미널 2: 서버 지표** (k6 실행 전에 켜고, 끝나면 Ctrl+C)
+```bash
+load-test/chat/record-metrics.sh docs/load-test/results/order/dau50k/<단계>-server.csv
+```
 
-## 결과 (로컬, 2026-11-04)
-조건: performance 프로필, 외부 API 호출 없음, 주문 시드(채팅방 + 견적) 5,000명, 커넥션 풀 최대 10. 시간·p95 기준(1초)은 임시값. 정합성 대사 스케줄러는 켜져 있었다 (대상 0건)
+**터미널 3: k6** (한 번에 한 단계만)
+```bash
+k6 run --summary-export=docs/load-test/results/order/dau50k/smoke-summary.json load-test/order/practice/order-smoke.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/load-summary.json load-test/order/50kdau/order-dau50k-load.js
+k6 run -e VUS=2 --summary-export=docs/load-test/results/order/dau50k/stress-summary.json load-test/order/50kdau/order-dau50k-stress.js
+k6 run --summary-export=docs/load-test/results/order/dau50k/limit-summary.json --out csv=docs/load-test/results/order/dau50k/limit.csv load-test/order/50kdau/order-dau50k-limit.js
+```
 
-### 요약
-| 단계 | 조건 | 세션 | 주문 요청 | RPS | 실패 | checks | p95 | 판정 |
-|---|---|---|---|---|---|---|---|---|
-| 스모크 | VU 1, 1분, 쉬지 않고 | 578 | 1,734 | 28.9 | 0% | 100% (2,890/2,890) | 24.0ms | 통과 |
-| 부하 | 분당 5세션 (목표 0.25 RPS), VU 1, 5분 | 26 | 78 | 0.26 | 0% | 100% (130/130) | 33.6ms | 통과 |
-| 스트레스 | 분당 50세션 (목표 × 10), VU 10, 5분 | 251 | 753 | 2.51 | 0% | 100% (1,255/1,255) | 21.3ms | 무너지지 않음 |
+**단계마다 재시작:** 스모크·부하·스트레스·한계 **각 단계 전에** 터미널 1의 앱을 Ctrl+C로 끄고 다시 실행한다. 견적이 사용자당 1개라 한 번 주문하면 다시 못 쓰고, 재시작하면 시드가 다시 들어간다
+- `limit.csv`는 크기가 커서 커밋하지 않는다
 
-### 주문 요청 응답 시간 (`kind:order`)
-| 단계 | avg | med | p90 | p95 | max |
-|---|---|---|---|---|---|
-| 스모크 | 11.5ms | 7.5ms | 21.9ms | 24.0ms | 42.8ms |
-| 부하 | 17.3ms | 9.7ms | 27.5ms | 33.6ms | 125.8ms |
-| 스트레스 | 10.4ms | 6.3ms | 19.2ms | 21.3ms | 135.6ms |
+## 결과 (로컬, 2026-11-05)
+조건: performance 프로필 (커넥션 풀 30, 스케줄러 끔), Tomcat 스레드 200, k6·서버·DB를 PC 한 대에서 실행
 
-### API별 p95
-| API | 스모크 | 부하 | 스트레스 |
+| 단계 | 주문 RPS | 실패 | 누락 세션 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
+|---|---|---|---|---|---|---|---|
+| 스모크 (VU 1) | 31 | 0% | - | 20.5ms | 1 | 1 / 0 | 통과 |
+| 부하 (목표) | 5 | 0% | 0 | 18.4ms | 1 | 1 / 0 | 통과 |
+| 스트레스 (× 10) | 50 | 0% | 0 | 17.2ms | 18 | 2 / 0 | 무너지지 않음 |
+| 한계 × 10 | 51 | 0% | 0 | 18.9ms | 2 | 1 / 0 | 안정 |
+| 한계 × 30 | 150 | 0% | 0 | 16.8ms | 1 | 2 / 0 | 안정 |
+| 한계 × 60 | 300 | 0% | 0 | 16.5ms | 3 | 2 / 0 | 안정 |
+| **한계 × 100** | **501** | 0% | 0 | **17.0ms** | 5 | 5 / 0 | **안정 (최대로 올린 단계)** |
+
+- 안정 판정은 실패율·p95와 함께 **누락 세션(`dropped_iterations`) 0**인지 본다. 누락이 있으면 k6가 다 보내지 못한 것이라 서버 용량으로 읽지 않는다
+
+| API | 부하 p95 | 스트레스 p95 | 한계 × 100 p95 |
 |---|---|---|---|
-| 주문 확인 | 10.7ms | 15.1ms | 9.5ms |
-| 주문 생성 | 27.4ms | 39.4ms | 25.9ms |
-| 주문 상세 | 9.1ms | 11.8ms | 9.0ms |
+| 주문 확인 | 6.3ms | 5.7ms | 5.5ms |
+| 주문 생성 | 19.5ms | 17.8ms | 18.8ms |
+| 주문 상세 | 5.3ms | 5.2ms | 5.8ms |
 
-- 외부 대기가 없어 응답 시간이 곧 서버 처리 시간이다. 주문 생성(사용자 락, 상품 검증, 재고 선점, 결제 생성)이 가장 길다
-- 부하가 조금 느린 이유: 요청이 12초에 1번이라 사이에 서버가 쉬어 덜 데워진 상태로 처리한다
-- 부하·스트레스의 max(126~136ms)는 앱 재시작 뒤 첫 세션(예열 전)이다
-- 전체 `http_req_duration` p95(약 70ms)는 로그인(비밀번호 확인) 때문이다. 로그인은 측정에서 뺀다
-
-### 서버·DB
-| 단계 | Tomcat 바쁜 스레드 (최대) | Hikari 사용 (최대) | Hikari 대기 | 놓친 세션 | DB: 주문 `PAYMENT_PENDING` + 결제 `READY` |
-|---|---|---|---|---|---|
-| 스모크 | 1 | 1 | 0 | - | 578 (사용자 15,001~15,578) |
-| 부하 | 1 | 1 | 0 | 0 | 26 (사용자 15,001~15,026) |
-| 스트레스 | 1 | 1 | 0 | 0 | 251 (사용자 15,001~15,251) |
-
-- 세 단계 모두 DB 주문 수가 k6 세션 수와 같고, 주문 상품은 `RESERVED`(재고 선점)였다
-- 스모크 전에 확인용으로 사용자 20,000번 주문 1건을 직접 만들었다 (스모크 DB 579건 중 1건)
-- 부하 VU = 0.25 × 0.024 = 0.006 → 1 (최소 1)
+- DB: 단계마다 주문 수 = 세션 수 (부하 701, 스트레스 5,202, 한계 6,682). 주문 PAYMENT_PENDING, 결제 READY, 주문 상품 RESERVED, 음수 재고 0
+- 스트레스의 스레드 18개는 대부분 소셜 로그인 대기(0.9초)다
 
 ## 결론
 | 항목 | 내용 |
 |---|---|
-| 버티는가 | 목표(0.25 RPS)와 그 10배(2.5 RPS)에서 실패 0%, 주문 요청 p95 21~34ms |
-| 시간 구성 | 서버 처리만. 주문 생성이 가장 길다 (p95 26~39ms) |
-| 비교 | 결제(p95 872ms)·환불(858ms)은 포트원 대기가 대부분이고, 주문은 서버 처리만이라 30배 넘게 빠르다 |
-| 한계 | 스트레스에서도 동시에 일한 VU는 최대 1명. 세션 1회(약 0.1초)가 간격(1.2초)보다 짧아 요청이 겹치지 않았다. 동시성 병목(사용자 락, 재고 선점 경합, 커넥션 풀)과 한계 RPS는 확인하지 못함. 재시작 직후 첫 세션이 느리다 (예열 없음) |
-| 다음 | 측정 전 예열, 정합성 대사 스케줄러 끄기, 동시 요청이 생기는 수준까지 단계 상승, AWS 테스트 때 1년 치 이력 데이터 추가 |
+| 목표 | 분당 100세션에서 실패 0%, p95 18ms로 통과 |
+| 한계 | **× 100(약 500 RPS)까지 무너지지 않음.** 사용자가 8,000명이라 더 올리지 못했다 |
+| 자원 | × 100에서도 스레드 5개, 커넥션 5개. 요청이 약 9ms에 끝나 동시 요청이 적다 (501 × 0.009초 ≈ 5) |
+| 결제·환불과 차이 | 외부 대기가 없어 같은 RPS에서 스레드를 약 100분의 1만 쓴다. 한계는 CPU·DB 처리량일 가능성이 크다 |
+| 참고 | 한계 테스트의 미리 로그인이 약 9분 걸렸다 (이메일 로그인 5,000명의 BCrypt) |
+
+---
+
+<details>
+<summary><b>예행연습 (DAU 1만, 2026-11-04)</b></summary>
+
+## 목표와 구성
+- 목표: 피크 2,000명 × 주문 20% × 3회 ÷ 7,200초 × 1.5 = 0.25 RPS = 분당 5세션
+- 사용자 15,001~20,000 (5,000명). 스모크 VU 1, 부하 분당 5세션, 스트레스 분당 50세션, 각 5분
+- 조건: 커넥션 풀 10, 예열 없음, 정합성 대사 스케줄러 켜짐 (대상 0건)
+
+## 결과
+| 단계 | 세션 | RPS | 실패 | p95 | Tomcat (최대) | Hikari (최대 / 대기) | 판정 |
+|---|---|---|---|---|---|---|---|
+| 스모크 (VU 1) | 578 | 28.9 | 0% | 24.0ms | 1 | 1 / 0 | 통과 |
+| 부하 (목표) | 26 | 0.26 | 0% | 33.6ms | 1 | 1 / 0 | 통과 |
+| 스트레스 (× 10) | 251 | 2.51 | 0% | 21.3ms | 1 | 1 / 0 | 무너지지 않음 |
+
+- DB: 단계마다 주문 수 = 세션 수, 주문 상품 RESERVED
+- 부하·스트레스의 max(126~136ms)는 재시작 뒤 첫 세션이다 (예열 없음)
+
+## 결론
+- 목표와 10배에서 실패 0%, p95 21~34ms
+- 세션(약 0.1초)이 간격(1.2초)보다 짧아 요청이 겹치지 않았다. 동시성 병목과 한계는 확인하지 못했다 → DAU 5만 테스트에서 예열, 스케줄러 끄기, 한계 단계를 추가했다
+
+</details>

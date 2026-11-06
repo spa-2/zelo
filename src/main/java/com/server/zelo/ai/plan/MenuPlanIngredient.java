@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.util.StringUtils;
 
 public record MenuPlanIngredient(
@@ -31,12 +32,26 @@ public record MenuPlanIngredient(
 
     // 목록에 없는 재료는 오류가 아니다. 견적 단계에서 "상품 없음"으로 빠진다
     public void validate(Map<String, BaseUnit> ingredientUnits) {
-        if (!StringUtils.hasText(name) || amount == null || unit == null || amount <= 0 || amount > MAX_AMOUNTS.get(unit)) {
+        if (findInvalidField(ingredientUnits).isPresent()) {
             throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+        }
+    }
+
+    // 검증에 걸린 칸 이름. 같은 AI_009라도 어느 규칙에 걸렸는지 로그에 남기려고 validate와 나눴다
+    public Optional<String> findInvalidField(Map<String, BaseUnit> ingredientUnits) {
+        if (!StringUtils.hasText(name)) {
+            return Optional.of("ingredient.name");
+        }
+        if (unit == null) {
+            return Optional.of("ingredient.unit");
+        }
+        if (amount == null || amount <= 0 || amount > MAX_AMOUNTS.get(unit)) {
+            return Optional.of("ingredient.amount");
         }
         BaseUnit expectedUnit = ingredientUnits.get(name);
         if (expectedUnit != null && expectedUnit != unit) {
-            throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
+            return Optional.of("ingredient.unitMismatch");
         }
+        return Optional.empty();
     }
 }

@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { emailUserId } from '../common/user-id.js';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
@@ -18,7 +19,7 @@ import { Counter, Trend } from 'k6/metrics';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 앱의 지표 주소. 테스트 중 서버 상태(CPU, 스레드, 커넥션 풀)를 읽어서 결과 표에 넣는다
 const METRICS_URL = __ENV.METRICS_URL || 'http://host.docker.internal:9292/actuator/prometheus';
-// 준비 단계에서 로그인해서 토큰을 모아 둘 사용자 수 (load1@test.com ~ load{N}@test.com, LoadTestUserSeedLoader 참고)
+// 준비 단계에서 로그인해서 토큰을 모아 둘 사용자 수 (이메일 사용자 N명, LoadTestUserSeedLoader 참고)
 // VU마다 사용자 한 명을 맡으므로, 스트레스 중 VU 번호가 이 수보다 커지면 안 된다 (VU는 MAX_VUS + 워밍업 + 모니터까지 쓴다)
 const SETUP_USERS = Number(__ENV.SETUP_USERS || 300);
 const SETUP_BATCH = 12;
@@ -167,14 +168,14 @@ export function setup() {
             requests.push([
                 'POST',
                 `${BASE_URL}/api/users/login`,
-                JSON.stringify({ email: `load${n}@test.com`, password: PASSWORD }),
+                JSON.stringify({ email: `load${emailUserId(n)}@test.com`, password: PASSWORD }),
                 { headers: { 'Content-Type': 'application/json' }, jar: new http.CookieJar(), timeout: '30s', tags: { name: 'setup-login' } },
             ]);
         }
         http.batch(requests).forEach((res, offset) => {
             const cookie = res.cookies.refreshToken;
             if (res.status !== 200 || !cookie || cookie.length === 0) {
-                throw new Error(`준비 단계 로그인 실패 (사용자 load${start + offset}@test.com, 상태 ${res.status}). 더미 데이터와 서버를 확인하세요`);
+                throw new Error(`준비 단계 로그인 실패 (사용자 load${emailUserId(start + offset)}@test.com, 상태 ${res.status}). 더미 데이터와 서버를 확인하세요`);
             }
             tokens.push(cookie[0].value);
         });
@@ -254,7 +255,7 @@ export default function (data) {
 function recoverToken(index) {
     const res = http.post(
         `${BASE_URL}/api/users/login`,
-        JSON.stringify({ email: `load${index + 1}@test.com`, password: PASSWORD }),
+        JSON.stringify({ email: `load${emailUserId(index + 1)}@test.com`, password: PASSWORD }),
         { headers: { 'Content-Type': 'application/json' }, jar: new http.CookieJar(), timeout: '10s', tags: { name: 'recover-login' } },
     );
     const cookie = res.cookies.refreshToken;
@@ -389,7 +390,7 @@ function buildReport(data) {
         `- 단계(RPS): ${RATES.join(' → ')}`,
         `- 한 단계 ${STEP_SECONDS}초(속도 올리는 구간 ${RAMP_SECONDS}초 포함), 시작 전 워밍업 ${WARMUP_SECONDS}초(결과 제외)`,
         `- 멈추는 기준: 단계별 p95 ${P95_LIMIT_MS}ms 초과 또는 실패율 ${(ERROR_LIMIT * 100).toFixed(1)}% 초과`,
-        `- 준비: 시작 전에 load1@test.com ~ load${SETUP_USERS}@test.com 을 로그인해서 리프레시 토큰을 모음 (측정 제외). VU마다 한 명을 맡고, 재발급 응답의 새 토큰으로 다음 요청을 보냄`,
+        `- 준비: 시작 전에 이메일 사용자(id 끝자리 1~7) ${SETUP_USERS}명을 로그인해서 리프레시 토큰을 모음 (측정 제외). VU마다 한 명을 맡고, 재발급 응답의 새 토큰으로 다음 요청을 보냄`,
         '- 외부 서비스 호출 없음',
         '',
         '## 합격 판정',

@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { socialUserId } from '../common/user-id.js';
 import { check, sleep } from 'k6';
 import { Trend } from 'k6/metrics';
 import exec from 'k6/execution';
@@ -19,8 +20,7 @@ import exec from 'k6/execution';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 앱의 지표 주소. 테스트 중 서버 상태(CPU, 스레드, 커넥션 풀)를 읽어서 결과 표에 넣는다
 const METRICS_URL = __ENV.METRICS_URL || 'http://host.docker.internal:9292/actuator/prometheus';
-// 더미 데이터에서 소셜 사용자는 21001~30000번이고 code는 fake-load-{번호}다 (LoadTestUserSeedLoader 참고)
-const FIRST_USER_ID = Number(__ENV.FIRST_USER_ID || 21001);
+// 더미 데이터에서 소셜 사용자는 id 끝자리 8, 9, 0인 9000명이고 code는 fake-load-{번호}다 (LoadTestUserSeedLoader 참고)
 const USER_COUNT = Number(__ENV.USER_COUNT || 9000);
 const REDIRECT_URI = __ENV.REDIRECT_URI || 'http://localhost:3000/callback';
 // 올려 갈 초당 요청 수. 첫 값 0.67은 소셜 로그인 목표 RPS다 (1만 × 80% × 20% ÷ 3,600 × 1.5)
@@ -138,7 +138,7 @@ function buildThresholds() {
 // ───────── 3. 실제 요청 ─────────
 export default function () {
     // 반복 번호로 사용자를 순서대로 고른다. 같은 사용자가 동시에 로그인하지 않도록 번호가 겹치지 않게 한다
-    const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + FIRST_USER_ID;
+    const userNumber = socialUserId((exec.scenario.iterationInTest % USER_COUNT) + 1);
     // 요청이 단계 경계를 넘어 끝나도 요청과 check가 같은 단계로 집계되게 시작 시점에 한 번만 구한다
     const step = currentStep();
 
@@ -284,7 +284,7 @@ function buildReport(data) {
         `- 단계(RPS): ${RATES.join(' → ')}`,
         `- 한 단계 ${STEP_SECONDS}초(속도 올리는 구간 ${RAMP_SECONDS}초 포함), 시작 전 워밍업 ${WARMUP_SECONDS}초(결과 제외)`,
         `- 멈추는 기준: 단계별 p95 ${P95_LIMIT_MS}ms 초과, 실패율 ${(ERROR_LIMIT * 100).toFixed(1)}% 초과, 또는 응답 검사(check) 통과율 ${((1 - ERROR_LIMIT) * 100).toFixed(1)}% 이하`,
-        `- 사용자: fake-load-${FIRST_USER_ID} ~ fake-load-${FIRST_USER_ID + USER_COUNT - 1} 을 순서대로 소셜(구글) 로그인`,
+        `- 사용자: 소셜 사용자(id 끝자리 8, 9, 0) ${USER_COUNT}명을 순서대로 소셜(구글) 로그인`,
         '- 외부 서비스: 소셜 서버는 fake이고 응답 시간만큼 서버가 대기한다 (평균 ms와 ±비율은 아래 환경에 적기)',
         '',
         '## 한계 판정',

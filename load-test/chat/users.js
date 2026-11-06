@@ -3,9 +3,9 @@ import http from 'k6/http';
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 // 부하 테스트 시드(zelo.seed.load-test.enabled=true, LoadTestUserSeedLoader)의 이메일 사용자로 로그인한다.
-// 채팅은 id 5,001~15,000 사용자만 쓴다. 시드 이메일은 load{id}@test.com, 비밀번호는 모두 Zelo1234!
+// 채팅은 id 5,001~10,000 사용자만 쓴다 (10,001~15,000은 견적 테스트). 시드 이메일은 load{id}@test.com, 비밀번호는 모두 Zelo1234!
 const FIRST_USER_ID = 5001;
-const LAST_USER_ID = 15000;
+const LAST_USER_ID = 10000;
 const PASSWORD = 'Zelo1234!';
 
 export function loginUsers(baseUrl, count) {

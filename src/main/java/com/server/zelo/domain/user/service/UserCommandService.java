@@ -58,8 +58,6 @@ public class UserCommandService {
                 userAddress.getAddress(), userAddress.getZipCode(), user.getCreatedAt());
     }
 
-    // 리프레시 토큰은 Redis에 저장되므로 DB 변경은 없고 조회만 하는 트랜잭션으로 둠
-    @Transactional(readOnly = true)
     public LoginResult login(LoginRequest request, String remoteAddr) {
         // 로그인 시 요청 이메일과 사용자의 공인 IP를 조합으로 시도 횟수를 증가시킨다.
         loginAttemptService.attempt(request.email(), remoteAddr);

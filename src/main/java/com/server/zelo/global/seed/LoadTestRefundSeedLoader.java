@@ -29,8 +29,8 @@ public class LoadTestRefundSeedLoader {
     // 다른 파트 VU와 같은 사용자를 쓰면 주문 상태가 서로 꼬이므로 팀에서 나눈 범위만 쓴다
     private static final int USER_FROM = 25_001;
     private static final int USER_COUNT = 2_000;
-    // 한계점 찾기까지 한 번에 쓸 수 있는 양. k6가 앞에서부터 하나씩 꺼내 쓴다
-    private static final int ORDER_COUNT = 10_000;
+    // 한계점 찾기까지 한 번에 쓸 수 있는 양. k6가 앞에서부터 하나씩 꺼내 쓴다 (한계 테스트 전 단계 약 5.3만 건)
+    private static final int ORDER_COUNT = 60_000;
 
     private static final String INSERT_PAID_PAYMENT = """
             insert into payments (order_id, portone_id, amount, pg_amount, status, paid_at, payment_method_name,

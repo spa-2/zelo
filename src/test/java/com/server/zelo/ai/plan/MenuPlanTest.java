@@ -11,6 +11,7 @@ import com.server.zelo.domain.product.entity.Keyword;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -223,6 +224,61 @@ class MenuPlanTest {
 
         // when & then
         assertInvalid(menuPlan);
+    }
+
+    @Test
+    void 검증을_통과하면_걸린_칸이_없다() {
+        // given
+        MenuPlan menuPlan = shopping(4, 30_000L, INGREDIENTS);
+
+        // when
+        Optional<String> invalidField = menuPlan.findInvalidField(INGREDIENT_UNITS);
+
+        // then
+        assertThat(invalidField).isEmpty();
+    }
+
+    @Test
+    void 검증에_걸리면_걸린_칸_이름을_돌려준다() {
+        // given
+        MenuPlan noIntent = MenuPlan.of(null, "김치볶음밥", 4, null, INGREDIENTS, List.of(), List.of());
+        MenuPlan noMenuName = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, " ", 4, null, INGREDIENTS, List.of(), List.of());
+
+        // when & then
+        assertThat(noIntent.findInvalidField(INGREDIENT_UNITS)).contains("intent");
+        assertThat(noMenuName.findInvalidField(INGREDIENT_UNITS)).contains("menuName");
+        assertThat(shopping(21, null, INGREDIENTS).findInvalidField(INGREDIENT_UNITS)).contains("servings");
+        assertThat(shopping(4, -1L, INGREDIENTS).findInvalidField(INGREDIENT_UNITS)).contains("budget");
+        assertThat(shopping(4, null, List.of()).findInvalidField(INGREDIENT_UNITS)).contains("ingredients");
+    }
+
+    @Test
+    void 재료가_검증에_걸리면_재료의_걸린_칸_이름을_돌려준다() {
+        // given
+        MenuPlan noName = shopping(4, null, List.of(MenuPlanIngredient.of(" ", 400, BaseUnit.G)));
+        MenuPlan noUnit = shopping(4, null, List.of(MenuPlanIngredient.of("김치", 400, null)));
+        MenuPlan zeroAmount = shopping(4, null, List.of(MenuPlanIngredient.of("김치", 0, BaseUnit.G)));
+        MenuPlan wrongUnit = shopping(4, null, List.of(MenuPlanIngredient.of("계란", 400, BaseUnit.G)));
+
+        // when & then
+        assertThat(noName.findInvalidField(INGREDIENT_UNITS)).contains("ingredient.name");
+        assertThat(noUnit.findInvalidField(INGREDIENT_UNITS)).contains("ingredient.unit");
+        assertThat(zeroAmount.findInvalidField(INGREDIENT_UNITS)).contains("ingredient.amount");
+        assertThat(wrongUnit.findInvalidField(INGREDIENT_UNITS)).contains("ingredient.unitMismatch");
+    }
+
+    @Test
+    void 합친_재료_양이_상한을_넘으면_merged가_붙은_칸_이름을_돌려준다() {
+        // given: 쪽파 8단 + 8단 = 16단으로 BUNCH 상한 10단을 넘는다
+        MenuPlan menuPlan = shopping(4, null, List.of(
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH),
+                MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH)));
+
+        // when
+        Optional<String> invalidField = menuPlan.findInvalidField(INGREDIENT_UNITS);
+
+        // then
+        assertThat(invalidField).contains("merged.ingredient.amount");
     }
 
     private static MenuPlan shopping(Integer servings, Long budget, List<MenuPlanIngredient> ingredients) {

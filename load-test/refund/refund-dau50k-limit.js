@@ -5,7 +5,7 @@ import { SharedArray } from 'k6/data';
 
 // 한계 (새 기준): 목표(분당 50세션 = 초당 0.83세션)의 10·50·100·150·200·250·300배로 올려 처음 기준을 넘는 단계를 찾는다
 // 단계마다 60초. 단계를 시나리오로 나눠 기준을 단계별로 본다
-// 환불 범위 사용자(25,001~27,000, 전부 소셜)는 setup에서 미리 로그인한다. 소셜 로그인 fake 지연(900ms)이 먼저 병목이 되지 않게 한다
+// 환불 범위 사용자(25,001~27,000, 이메일·소셜 섞임)는 setup에서 미리 로그인한다. 로그인(비밀번호 확인, 소셜 fake 지연 900ms)이 먼저 병목이 되지 않게 한다
 // 모든 단계를 다 돌면 약 5.3만 세션. 환불 시드 6만 건 안에 들어온다
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const TARGET_SESSIONS_PER_SECOND = 50 / 60;
@@ -14,6 +14,7 @@ const STAGE_SECONDS = Number(__ENV.STAGE_SECONDS || 60);
 const USER_FROM = 25001;
 const USER_COUNT = 2000;
 const LOGIN_BATCH = 20;
+const PASSWORD = 'Zelo1234!';
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 // items 열은 "주문상품ID:수량;주문상품ID:수량"
@@ -72,9 +73,7 @@ export function setup() {
         for (let userId = from; userId < Math.min(from + LOGIN_BATCH, USER_FROM + USER_COUNT); userId++) {
             userIds.push(userId);
         }
-        const responses = http.batch(userIds.map((userId) => ['POST', `${BASE_URL}/api/auth/social/google/login`,
-            JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }),
-            { headers: JSON_HEADERS, tags: { name: 'login' } }]));
+        const responses = http.batch(userIds.map((userId) => loginRequest(userId)));
         responses.forEach((res, i) => {
             if (res.status !== 200) {
                 throw new Error(`로그인 실패 userId=${userIds[i]} status=${res.status}`);
@@ -85,6 +84,15 @@ export function setup() {
     // 서버 지표 CSV를 단계별로 나누려고 첫 단계가 시작하는 시각을 남긴다
     console.log(`첫 단계 시작 ${new Date().toISOString()}`);
     return { tokens };
+}
+
+function loginRequest(userId) {
+    const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
+    return isEmailUser(userId)
+        ? ['POST', `${BASE_URL}/api/users/login`,
+            JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params]
+        : ['POST', `${BASE_URL}/api/auth/social/google/login`,
+            JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }), params];
 }
 
 export function session(data) {
@@ -101,4 +109,10 @@ export function session(data) {
         tags: { name: partial ? 'partialRefund' : 'fullRefund', kind: 'refund' },
     });
     check(res, { '환불 COMPLETED': (r) => r.status === 200 && r.json('data.status') === 'COMPLETED' });
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

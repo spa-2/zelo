@@ -13,9 +13,8 @@ const MULTIPLIERS = (__ENV.MULTIPLIERS || '10,50,100,150,200,250').split(',').ma
 const STAGE_SECONDS = Number(__ENV.STAGE_SECONDS || 60);
 const USER_FROM = 20001;
 const USER_COUNT = 5000;
-const EMAIL_USER_MAX = 21000;
 const PASSWORD = 'Zelo1234!';
-const LOGIN_BATCH = 20;
+const LOGIN_BATCH = 50;
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 const orders = new SharedArray('payment-orders', () => open('./data/payment-orders.csv').trim().split('\n').slice(1)
@@ -38,7 +37,8 @@ MULTIPLIERS.forEach((multiplier, index) => {
         startTime: `${STAGE_SECONDS * index}s`,
         // 서버가 느려져도 k6가 속도를 유지해야 서버 쪽 한계를 볼 수 있다
         preAllocatedVUs: Math.max(10, rate),
-        maxVUs: Math.max(30, rate * 3),
+        // 포트원 지연 테스트처럼 세션이 길어지면 -e MAX_VU_FACTOR로 늘린다 (세션 시간(초)보다 크게)
+        maxVUs: Math.max(30, rate * Number(__ENV.MAX_VU_FACTOR || 3)),
         exec: 'session',
         gracefulStop: '10s',
         // 단계마다 번호가 0부터 시작하므로 앞 단계가 쓴 주문 수만큼 띄운다
@@ -56,7 +56,8 @@ MULTIPLIERS.forEach((multiplier, index) => {
     thresholds[`dropped_iterations{scenario:${name}}`] = ['count>=0'];
 });
 
-export const options = { setupTimeout: '10m', scenarios, thresholds };
+// http.batch는 기본으로 한 호스트에 6개씩만 동시에 보내서, 미리 로그인이 느려지지 않게 LOGIN_BATCH만큼 연다
+export const options = { setupTimeout: '10m', batch: LOGIN_BATCH, batchPerHost: LOGIN_BATCH, scenarios, thresholds };
 
 // 결제 범위 사용자 전부 미리 로그인. 한 번에 LOGIN_BATCH명씩 보낸다
 export function setup() {
@@ -81,7 +82,7 @@ export function setup() {
 
 function loginRequest(userId) {
     const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
-    return userId <= EMAIL_USER_MAX
+    return isEmailUser(userId)
         ? ['POST', `${BASE_URL}/api/users/login`,
             JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params]
         : ['POST', `${BASE_URL}/api/auth/social/google/login`,
@@ -115,4 +116,10 @@ export function session(data) {
             JSON.stringify({ paymentMethodId: methods.json('data.0.paymentMethodId') }), params('payWithPaymentMethod'))
         : http.post(`${BASE_URL}/api/payments/${portoneId}/confirm`, null, params('confirmPayment'));
     check(pay, { '결제 PAID': (r) => r.status === 200 && r.json('data.status') === 'PAID' });
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

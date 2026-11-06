@@ -291,4 +291,178 @@ class MenuPlanTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_INVALID_RESPONSE));
     }
+
+    @Test
+    void 개수_단위_재료에_그램_같은_큰_수를_적으면_사는_개수로_다시_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("김치", 100, BaseUnit.G), MenuPlanIngredient.of("대파", 30, BaseUnit.BUNCH)),
+                List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("김치", BaseUnit.G, "대파", BaseUnit.BUNCH);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction)
+                .startsWith("직전 답이 서버 검증에 걸렸어")
+                .contains("대파의 unit은 BUNCH라서 amount는 그램이 아니라 사는 단 수야. 지금 적은 값(30)이 너무 커. 10 이하로 다시 적어.");
+    }
+
+    @Test
+    void 단위가_재료_목록과_다르면_목록의_단위로_다시_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("계란", 100, BaseUnit.G)), List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("계란", BaseUnit.EA);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).contains("계란의 unit은 재료 목록에 적힌 EA로 적고, amount도 그 단위에 맞게 다시 적어.");
+    }
+
+    @Test
+    void 같은_재료를_나눠_적어_합친_양이_넘으면_한_줄로_합치라고_고칠_점을_만든다() {
+        // given: 줄마다 8단은 상한(10) 안이지만 합치면 16단이다
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH), MenuPlanIngredient.of("쪽파", 8, BaseUnit.BUNCH)),
+                List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("쪽파", BaseUnit.BUNCH);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).contains("같은 재료 쪽파를 여러 줄로 나눠 적었어. 한 줄로 합쳐서 적어.")
+                .contains("지금 적은 값(16)이 너무 커");
+    }
+
+    @Test
+    void 장보기_요청에_재료가_없으면_재료를_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null, List.of(), List.of(), List.of());
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(Map.of()).orElseThrow(), Map.of());
+
+        // then
+        assertThat(correction).contains("SHOPPING_REQUEST면 ingredients를 1개 이상 20개 이하로 적어.");
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "intent | intent를 정해진 값 중 하나로 적어.",
+            "menuName | SHOPPING_REQUEST면 menuName을 비우지 마.",
+            "servings | servings는 1부터 20 사이로 적어.",
+            "budget | budget은 0 이상으로 적어. 말하지 않았으면 0이야.",
+    })
+    void 메뉴_인원_예산_의도_칸에_걸리면_그_칸의_규칙을_고칠_점으로_만든다(String field, String expected) {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("김치", 100, BaseUnit.G)), List.of(), List.of());
+
+        // when
+        String correction = plan.correction(field, Map.of("김치", BaseUnit.G));
+
+        // then
+        assertThat(correction).isEqualTo("직전 답이 서버 검증에 걸렸어. 아래를 지켜서 처음부터 다시 답해.\n- " + expected);
+    }
+
+    @Test
+    void 재료_이름이_비면_목록의_이름으로_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("", 100, BaseUnit.G)), List.of(), List.of());
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(Map.of()).orElseThrow(), Map.of());
+
+        // then
+        assertThat(correction).endsWith("- 재료 name을 비우지 말고 재료 목록에 있는 이름으로 적어.");
+    }
+
+    @Test
+    void 목록에_없는_재료의_단위가_비면_정해진_단위_중_하나로_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("트러플", 10, null)), List.of(), List.of());
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(Map.of()).orElseThrow(), Map.of());
+
+        // then
+        assertThat(correction).endsWith("- 트러플의 unit을 G, ML, EA, BUNCH 중 하나로 적어.");
+    }
+
+    @Test
+    void 양이_0이면_1_이상으로_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("계란", 0, BaseUnit.EA)), List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("계란", BaseUnit.EA);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).endsWith("- 계란의 amount는 1 이상으로 적어.");
+    }
+
+    @Test
+    void 그램_재료가_상한을_넘으면_그_단위_기준으로_줄이라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("밥", 200_000, BaseUnit.G)), List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("밥", BaseUnit.G);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).endsWith("- 밥의 amount는 G 기준인데 지금 적은 값(200000)이 너무 커. 100000 이하로 다시 적어.");
+    }
+
+    @Test
+    void 개수_재료가_상한을_넘으면_사는_개수로_다시_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("계란", 100, BaseUnit.EA)), List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("계란", BaseUnit.EA);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).endsWith("- 계란의 unit은 EA라서 amount는 그램이 아니라 사는 개 수야. 지금 적은 값(100)이 너무 커. 60 이하로 다시 적어.");
+    }
+
+    @Test
+    void 걸린_재료를_찾지_못하면_재료를_규칙에_맞게_다시_적으라고_고칠_점을_만든다() {
+        // given: 재료는 모두 맞는데 재료 칸 이름만 들어온 경우
+        MenuPlan plan = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("김치", 100, BaseUnit.G)), List.of(), List.of());
+        Map<String, BaseUnit> units = Map.of("김치", BaseUnit.G);
+
+        // when
+        String correction = plan.correction("ingredient.amount", units);
+        String mergedCorrection = plan.correction("merged.ingredient.amount", units);
+
+        // then
+        assertThat(correction).endsWith("- 재료 값을 재료 목록과 규칙에 맞게 다시 적어.");
+        assertThat(mergedCorrection).endsWith("- 같은 재료를 한 줄로 합쳐서 적어.");
+    }
+
+    @Test
+    void 재료_칸에_없는_이름이_들어오면_재료를_규칙에_맞게_다시_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlanIngredient ingredient = MenuPlanIngredient.of("김치", 100, BaseUnit.G);
+
+        // when
+        String correction = ingredient.correction("ingredient.other", Map.of("김치", BaseUnit.G));
+
+        // then
+        assertThat(correction).isEqualTo("재료 값을 재료 목록과 규칙에 맞게 다시 적어.");
+    }
 }

@@ -24,6 +24,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -112,11 +113,19 @@ public class ResilientLlmGateway implements LlmGateway {
         return quoteExplainPrompt.systemPrompt().equals(systemPrompt) ? LlmOperation.QUOTE_EXPLAIN : LlmOperation.CHAT_ANSWER;
     }
 
+    // 검증에 걸린 시도가 있으면 다음 시도의 system 프롬프트 끝에 무엇을 고칠지 붙인다.
+    // 같은 질문만 다시 보내면 같은 실수를 되풀이했다(대파 BUNCH에 그램 30 → 재시도에 20). 끝에 붙여 앞부분은 첫 시도와 같게 둔다
     @Override
     public LlmResult<MenuPlan> planMenu(String systemPrompt, List<ChatMessage> history, String userText,
                                         Map<String, BaseUnit> ingredientUnits) {
+        AtomicReference<String> correction = new AtomicReference<>();
         return call(LlmOperation.MENU_PLAN, model, () -> requireValidPlan(
-                llmGateway.planMenu(systemPrompt, history, userText, ingredientUnits), ingredientUnits));
+                llmGateway.planMenu(withCorrection(systemPrompt, correction.get()), history, userText, ingredientUnits),
+                ingredientUnits, correction));
+    }
+
+    private static String withCorrection(String systemPrompt, String correction) {
+        return correction == null ? systemPrompt : systemPrompt + "\n\n## 직전 답에서 고칠 점\n" + correction;
     }
 
     // 수정 계획만 받고 견적은 고치지 않으므로, 재시도해도 견적이 두 번 바뀌지 않는다
@@ -261,7 +270,8 @@ public class ResilientLlmGateway implements LlmGateway {
     }
 
     // LLM이 준 값은 믿지 않는다. 시도 안에서 검증해야 검증 실패도 형식 오류처럼 한 번 더 물어볼 수 있다
-    private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result, Map<String, BaseUnit> ingredientUnits) {
+    private LlmResult<MenuPlan> requireValidPlan(LlmResult<MenuPlan> result, Map<String, BaseUnit> ingredientUnits,
+                                                 AtomicReference<String> correction) {
         if (result == null || result.content() == null) {
             // 응답 본문이 비어 객체를 만들지 못한 경우. 문장 응답의 빈 답과 같게 본다
             throw new BusinessException(ErrorCode.AI_EMPTY_RESPONSE);
@@ -272,6 +282,7 @@ public class ResilientLlmGateway implements LlmGateway {
             // 예외 메시지는 사용자 응답에 쓰여서 여기서 한 번 남긴다. 응답 원문 대신 칸 이름과 의도만 남긴다
             log.warn("LLM 응답 검증 실패 operation={} intent={} field={}",
                     LlmOperation.MENU_PLAN, result.content().intent(), invalidField.get());
+            correction.set(result.content().correction(invalidField.get(), ingredientUnits));
             throw new BusinessException(ErrorCode.AI_INVALID_RESPONSE);
         }
         return result;

@@ -54,4 +54,31 @@ public record MenuPlanIngredient(
         }
         return Optional.empty();
     }
+
+    // 검증에 걸린 칸(findInvalidField의 값)을 LLM이 다시 고칠 수 있게 무엇이 틀렸는지 한 문장으로 만든다.
+    // 같은 질문만 다시 보내면 같은 실수를 되풀이해서(대파 BUNCH에 그램 30 → 재시도에 20) 재시도 요청에만 붙인다
+    public String correction(String field, Map<String, BaseUnit> ingredientUnits) {
+        return switch (field) {
+            case "ingredient.name" -> "재료 name을 비우지 말고 재료 목록에 있는 이름으로 적어.";
+            case "ingredient.unit", "ingredient.unitMismatch" -> ingredientUnits.containsKey(name)
+                    ? "%s의 unit은 재료 목록에 적힌 %s로 적고, amount도 그 단위에 맞게 다시 적어."
+                            .formatted(name, ingredientUnits.get(name))
+                    : "%s의 unit을 G, ML, EA, BUNCH 중 하나로 적어.".formatted(name);
+            case "ingredient.amount" -> amountCorrection();
+            default -> "재료 값을 재료 목록과 규칙에 맞게 다시 적어.";
+        };
+    }
+
+    private String amountCorrection() {
+        if (amount == null || amount <= 0) {
+            return "%s의 amount는 1 이상으로 적어.".formatted(name);
+        }
+        int maxAmount = MAX_AMOUNTS.get(unit);
+        if (unit == BaseUnit.EA || unit == BaseUnit.BUNCH) {
+            String counter = unit == BaseUnit.EA ? "개" : "단";
+            return "%s의 unit은 %s라서 amount는 그램이 아니라 사는 %s 수야. 지금 적은 값(%d)이 너무 커. %d 이하로 다시 적어."
+                    .formatted(name, unit, counter, amount, maxAmount);
+        }
+        return "%s의 amount는 %s 기준인데 지금 적은 값(%d)이 너무 커. %d 이하로 다시 적어.".formatted(name, unit, amount, maxAmount);
+    }
 }

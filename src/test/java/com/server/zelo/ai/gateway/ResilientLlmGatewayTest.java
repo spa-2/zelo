@@ -478,6 +478,26 @@ class ResilientLlmGatewayTest {
     }
 
     @Test
+    void 메뉴_계획이_검증에_걸리면_재시도_요청에만_고칠_점을_붙인다() {
+        // given: 대파는 BUNCH인데 그램으로 생각한 30을 적었다
+        MenuPlan gramsAsBunch = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("대파", 30, BaseUnit.BUNCH)), List.of(), List.of());
+        given(delegate.planMenu(anyString(), anyList(), anyString(), anyMap()))
+                .willReturn(planResult(gramsAsBunch))
+                .willReturn(planResult(validPlan()));
+
+        // when
+        LlmResult<MenuPlan> result = resilientLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS);
+
+        // then: 첫 시도는 프롬프트 그대로, 재시도는 끝에 고칠 점이 붙는다
+        assertThat(result.content()).isEqualTo(validPlan());
+        then(delegate).should(times(1)).planMenu("system", List.of(), "질문", INGREDIENT_UNITS);
+        then(delegate).should(times(1)).planMenu(
+                "system\n\n## 직전 답에서 고칠 점\n" + gramsAsBunch.correction("ingredient.amount", INGREDIENT_UNITS),
+                List.of(), "질문", INGREDIENT_UNITS);
+    }
+
+    @Test
     void 메뉴_계획의_재료_단위는_함께_받은_재료_목록으로_검증한다() {
         // given: 같은 답(김치 400G)이라도 재료 목록에서 김치가 EA면 단위가 틀린 답이다
         Map<String, BaseUnit> kimchiByEach = Map.of("김치", BaseUnit.EA);

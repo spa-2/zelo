@@ -87,4 +87,39 @@ public record MenuPlan(
         }
         return Optional.empty();
     }
+
+    // 검증에 걸린 칸을 LLM이 고칠 수 있게 무엇이 틀렸는지 적는다. 재시도 요청에만 붙이고 로그에는 남기지 않는다(재료 이름·양이 LLM 응답 값이라)
+    // 재시도 요청에는 직전 답이 들어가지 않으므로 "나머지는 그대로"라고 하지 않고 처음부터 다시 답하게 한다
+    public String correction(String field, Map<String, BaseUnit> ingredientUnits) {
+        String detail = switch (field) {
+            case "intent" -> "intent를 정해진 값 중 하나로 적어.";
+            case "menuName" -> "SHOPPING_REQUEST면 menuName을 비우지 마.";
+            case "servings" -> "servings는 %d부터 %d 사이로 적어.".formatted(MIN_SERVINGS, MAX_SERVINGS);
+            case "budget" -> "budget은 0 이상으로 적어. 말하지 않았으면 0이야.";
+            case "ingredients" -> "SHOPPING_REQUEST면 ingredients를 1개 이상 %d개 이하로 적어.".formatted(MAX_INGREDIENTS);
+            default -> ingredientCorrection(field, ingredientUnits);
+        };
+        return "직전 답이 서버 검증에 걸렸어. 아래를 지켜서 처음부터 다시 답해.\n- " + detail;
+    }
+
+    // findInvalidField와 같은 순서로 다시 돌며, 그 칸에 처음 걸린 재료를 찾아 그 재료 기준으로 적는다
+    private String ingredientCorrection(String field, Map<String, BaseUnit> ingredientUnits) {
+        String mergedPrefix = "merged.";
+        if (field.startsWith(mergedPrefix)) {
+            String ingredientField = field.substring(mergedPrefix.length());
+            Map<String, MenuPlanIngredient> merged = new LinkedHashMap<>();
+            ingredients.forEach(ingredient -> merged.merge(ingredient.name(), ingredient, MenuPlanIngredient::plus));
+            return merged.values().stream()
+                    .filter(ingredient -> ingredient.findInvalidField(ingredientUnits).filter(ingredientField::equals).isPresent())
+                    .findFirst()
+                    .map(ingredient -> "같은 재료 %s를 여러 줄로 나눠 적었어. 한 줄로 합쳐서 적어. ".formatted(ingredient.name())
+                            + ingredient.correction(ingredientField, ingredientUnits))
+                    .orElse("같은 재료를 한 줄로 합쳐서 적어.");
+        }
+        return ingredients.stream()
+                .filter(ingredient -> ingredient.findInvalidField(ingredientUnits).filter(field::equals).isPresent())
+                .findFirst()
+                .map(ingredient -> ingredient.correction(field, ingredientUnits))
+                .orElse("재료 값을 재료 목록과 규칙에 맞게 다시 적어.");
+    }
 }

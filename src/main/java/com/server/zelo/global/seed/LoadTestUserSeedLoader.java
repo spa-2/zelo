@@ -30,8 +30,8 @@ import java.util.stream.IntStream;
 public class LoadTestUserSeedLoader implements ApplicationRunner {
 
     private static final int USER_COUNT = 30_000;
-    // 이메일 사용자 70%(id 1~21000), 소셜 사용자 30%(id 21001~30000)
-    private static final int EMAIL_USER_COUNT = 21_000;
+    // id 끝자리 1~7은 이메일 사용자(70%), 8·9·0은 소셜 사용자(30%)
+    private static final int EMAIL_LAST_DIGIT_MAX = 7;
     private static final int BATCH_SIZE = 1_000;
     // k6가 로그인에 쓰는 공통 비밀번호. BCrypt는 느려서 한 번만 해시해 모든 사용자에게 같은 값을 넣음
     private static final String COMMON_PASSWORD = "Zelo1234!";
@@ -88,7 +88,10 @@ public class LoadTestUserSeedLoader implements ApplicationRunner {
         // FakeSocialLoginClient가 GOOGLE 하나로 응답하고 code를 providerId로 쓰므로 모두 GOOGLE로 넣음
         String sql = "insert into social_accounts (user_id, provider, provider_id, created_at, updated_at) "
                 + "values (?, 'GOOGLE', ?, ?, ?)";
-        List<Integer> socialUserIds = IntStream.rangeClosed(EMAIL_USER_COUNT + 1, USER_COUNT).boxed().toList();
+        List<Integer> socialUserIds = IntStream.rangeClosed(1, USER_COUNT)
+                .filter(id -> !isEmailUser(id))
+                .boxed()
+                .toList();
 
         jdbcTemplate.batchUpdate(sql, socialUserIds, BATCH_SIZE, (ps, id) -> {
             ps.setLong(1, id);
@@ -132,7 +135,8 @@ public class LoadTestUserSeedLoader implements ApplicationRunner {
     }
 
     private boolean isEmailUser(int userId) {
-        return userId <= EMAIL_USER_COUNT;
+        int lastDigit = userId % 10;
+        return lastDigit >= 1 && lastDigit <= EMAIL_LAST_DIGIT_MAX;
     }
 
     // k6가 소셜 로그인 code로 그대로 보내면 같은 사용자로 로그인됨 (fake는 code를 providerId로 사용)

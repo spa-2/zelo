@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { emailUserId } from '../common/user-id.js';
 import { check } from 'k6';
 import exec from 'k6/execution';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
@@ -13,7 +14,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 // ───────── 1. 설정값: 환경변수(-e 이름=값)로 바꿀 수 있고, 없으면 오른쪽 기본값을 쓴다 ─────────
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-// 더미 데이터에서 이메일 로그인 사용자는 1~21000번이다 (LoadTestUserSeedLoader 참고)
+// 더미 데이터에서 이메일 로그인 사용자는 id 끝자리 1~7인 21000명이다 (LoadTestUserSeedLoader 참고)
 const USER_COUNT = Number(__ENV.USER_COUNT || 21000);
 const PASSWORD = __ENV.PASSWORD || 'Zelo1234!';
 const WARMUP = __ENV.WARMUP || '20s';
@@ -44,12 +45,12 @@ export const options = {
 
 // ───────── 3. 실제 요청: VU가 반복해서 실행하는 부분 ─────────
 export default function () {
-    // 반복 번호로 사용자를 순서대로 고른다 (0번째 → load1@test.com, 1번째 → load2@test.com ...)
+    // 반복 번호로 사용자를 순서대로 고른다 (0번째 → load1@test.com, 6번째 → load7@test.com, 7번째 → load11@test.com ...)
     const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + 1;
 
     const res = http.post(
         `${BASE_URL}/api/users/login`,
-        JSON.stringify({ email: `load${userNumber}@test.com`, password: PASSWORD }),
+        JSON.stringify({ email: `load${emailUserId(userNumber)}@test.com`, password: PASSWORD }),
         {
             headers: { 'Content-Type': 'application/json' },
             // 결과를 API별로 나눠 볼 때 쓰는 이름표
@@ -125,7 +126,7 @@ function buildReport(data) {
         '## 조건',
         '',
         `- 가상 사용자(VU) 1명, 워밍업 ${WARMUP}(측정 제외) 후 ${DURATION} 동안 측정`,
-        `- 사용자: load1@test.com ~ load${USER_COUNT}@test.com 을 순서대로 로그인, 비밀번호는 공통`,
+        `- 사용자: 이메일 사용자(id 끝자리 1~7) ${USER_COUNT}명을 순서대로 로그인, 비밀번호는 공통`,
         '- 외부 서비스 호출 없음',
         '',
         '## 결과 (측정 구간만)',

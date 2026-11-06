@@ -31,7 +31,8 @@ const orders = new SharedArray('refund-orders', () => open('./data/refund-orders
     }));
 
 export function session() {
-    const order = orders[exec.scenario.iterationInTest];
+    // 시나리오마다 번호가 0부터 시작하므로, 시나리오가 여러 개면 env의 ORDER_OFFSET만큼 띄워서 시드 주문이 겹치지 않게 한다
+    const order = orders[Number(__ENV.ORDER_OFFSET || 0) + exec.scenario.iterationInTest];
     if (!order) {
         exec.test.abort('시드 주문을 다 씀');
     }

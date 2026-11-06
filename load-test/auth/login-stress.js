@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { emailUserId } from '../common/user-id.js';
 import { check, sleep } from 'k6';
 import { Trend } from 'k6/metrics';
 import exec from 'k6/execution';
@@ -137,7 +138,7 @@ export default function () {
 
     const res = http.post(
         `${BASE_URL}/api/users/login`,
-        JSON.stringify({ email: `load${userNumber}@test.com`, password: PASSWORD }),
+        JSON.stringify({ email: `load${emailUserId(userNumber)}@test.com`, password: PASSWORD }),
         {
             headers: { 'Content-Type': 'application/json' },
             // 서버가 막혀도 요청이 영원히 매달려 있지 않게 10초에서 실패로 끊는다
@@ -277,7 +278,7 @@ function buildReport(data) {
         `- 단계(RPS): ${RATES.join(' → ')}`,
         `- 한 단계 ${STEP_SECONDS}초(속도 올리는 구간 ${RAMP_SECONDS}초 포함), 시작 전 워밍업 ${WARMUP_SECONDS}초(결과 제외)`,
         `- 멈추는 기준: 단계별 p95 ${P95_LIMIT_MS}ms 초과, 실패율 ${(ERROR_LIMIT * 100).toFixed(1)}% 초과, 또는 응답 검사(check) 통과율 ${((1 - ERROR_LIMIT) * 100).toFixed(1)}% 이하`,
-        `- 사용자: load1@test.com ~ load${USER_COUNT}@test.com 을 순서대로 로그인, 비밀번호는 공통`,
+        `- 사용자: 이메일 사용자(id 끝자리 1~7) ${USER_COUNT}명을 순서대로 로그인, 비밀번호는 공통`,
         '- 외부 서비스 호출 없음',
         '',
         '## 한계 판정',

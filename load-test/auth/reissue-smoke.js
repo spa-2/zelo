@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { emailUserId } from '../common/user-id.js';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
@@ -13,7 +14,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 // ───────── 1. 설정값: 환경변수(-e 이름=값)로 바꿀 수 있고, 없으면 오른쪽 기본값을 쓴다 ─────────
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-// 준비 단계에서 로그인해서 토큰을 모아 둘 사용자 수 (load1@test.com ~ load{N}@test.com, LoadTestUserSeedLoader 참고)
+// 준비 단계에서 로그인해서 토큰을 모아 둘 사용자 수 (이메일 사용자 N명, LoadTestUserSeedLoader 참고)
 // 스모크는 VU가 1~2명이라 적게 둔다. VU 번호가 이 수보다 커지면 안 된다
 const SETUP_USERS = Number(__ENV.SETUP_USERS || 10);
 const SETUP_BATCH = 10;
@@ -60,14 +61,14 @@ export function setup() {
             requests.push([
                 'POST',
                 `${BASE_URL}/api/users/login`,
-                JSON.stringify({ email: `load${n}@test.com`, password: PASSWORD }),
+                JSON.stringify({ email: `load${emailUserId(n)}@test.com`, password: PASSWORD }),
                 { headers: { 'Content-Type': 'application/json' }, jar: new http.CookieJar(), timeout: '30s', tags: { name: 'setup-login' } },
             ]);
         }
         http.batch(requests).forEach((res, offset) => {
             const cookie = res.cookies.refreshToken;
             if (res.status !== 200 || !cookie || cookie.length === 0) {
-                throw new Error(`준비 단계 로그인 실패 (사용자 load${start + offset}@test.com, 상태 ${res.status}). 더미 데이터와 서버를 확인하세요`);
+                throw new Error(`준비 단계 로그인 실패 (사용자 load${emailUserId(start + offset)}@test.com, 상태 ${res.status}). 더미 데이터와 서버를 확인하세요`);
             }
             tokens.push(cookie[0].value);
         });
@@ -179,7 +180,7 @@ function buildReport(data) {
         '## 조건',
         '',
         `- 가상 사용자(VU) 1명, 워밍업 ${WARMUP}(측정 제외) 후 ${DURATION} 동안 측정`,
-        `- 준비: 시작 전에 load1@test.com ~ load${SETUP_USERS}@test.com 을 로그인해서 리프레시 토큰을 모음 (측정 제외)`,
+        `- 준비: 시작 전에 이메일 사용자(id 끝자리 1~7) ${SETUP_USERS}명을 로그인해서 리프레시 토큰을 모음 (측정 제외)`,
         '- 재발급 때마다 서버가 토큰을 새로 바꾸므로, 응답으로 받은 새 토큰으로 다음 재발급을 보낸다',
         '- 외부 서비스 호출 없음',
         '',

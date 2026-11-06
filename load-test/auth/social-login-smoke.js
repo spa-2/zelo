@@ -1,4 +1,5 @@
 import http from 'k6/http';
+import { socialUserId } from '../common/user-id.js';
 import { check } from 'k6';
 import exec from 'k6/execution';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
@@ -14,8 +15,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 // ───────── 1. 설정값: 환경변수(-e 이름=값)로 바꿀 수 있고, 없으면 오른쪽 기본값을 쓴다 ─────────
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-// 더미 데이터에서 소셜 사용자는 21001~30000번이고 code는 fake-load-{번호}다 (LoadTestUserSeedLoader 참고)
-const FIRST_USER_ID = Number(__ENV.FIRST_USER_ID || 21001);
+// 더미 데이터에서 소셜 사용자는 id 끝자리 8, 9, 0인 9000명이고 code는 fake-load-{번호}다 (LoadTestUserSeedLoader 참고)
 const USER_COUNT = Number(__ENV.USER_COUNT || 9000);
 const REDIRECT_URI = __ENV.REDIRECT_URI || 'http://localhost:3000/callback';
 const WARMUP = __ENV.WARMUP || '20s';
@@ -46,8 +46,8 @@ export const options = {
 
 // ───────── 3. 실제 요청: VU가 반복해서 실행하는 부분 ─────────
 export default function () {
-    // 반복 번호로 사용자를 순서대로 고른다 (0번째 → fake-load-21001, 1번째 → fake-load-21002 ...)
-    const userNumber = (exec.scenario.iterationInTest % USER_COUNT) + FIRST_USER_ID;
+    // 반복 번호로 사용자를 순서대로 고른다 (0번째 → fake-load-8, 1번째 → fake-load-9, 2번째 → fake-load-10, 3번째 → fake-load-18 ...)
+    const userNumber = socialUserId((exec.scenario.iterationInTest % USER_COUNT) + 1);
 
     const res = http.post(
         `${BASE_URL}/api/auth/social/google/login`,
@@ -128,7 +128,7 @@ function buildReport(data) {
         '## 조건',
         '',
         `- 가상 사용자(VU) 1명, 워밍업 ${WARMUP}(측정 제외) 후 ${DURATION} 동안 측정`,
-        `- 사용자: fake-load-${FIRST_USER_ID} ~ fake-load-${FIRST_USER_ID + USER_COUNT - 1} 을 순서대로 소셜(구글) 로그인`,
+        `- 사용자: 소셜 사용자(id 끝자리 8, 9, 0) ${USER_COUNT}명을 순서대로 소셜(구글) 로그인`,
         '- 외부 서비스: 소셜 서버는 fake이고 응답 시간만큼 서버가 대기한다 (평균 ms와 ±비율은 아래 환경에 적기)',
         '',
         '## 결과 (측정 구간만)',

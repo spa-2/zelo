@@ -15,6 +15,11 @@ zelo:
   social:
     # 외부 소셜 로그인 지연을 흉내 내 부하 측정이 실제와 비슷해지게 한다
     fake-latency-ms: 900
+  portone:
+    # 포트원 fake 응답 지연. 테스트 채널 실측 평균이다 (load-test/payment/README.md, load-test/refund/README.md)
+    fake-delay: 63ms
+    fake-billing-delay: 773ms
+    fake-cancel-delay: 807ms
 
 jwt:
   # 부하 테스트 중 토큰이 만료되지 않도록 base(10분)보다 길게 둔다

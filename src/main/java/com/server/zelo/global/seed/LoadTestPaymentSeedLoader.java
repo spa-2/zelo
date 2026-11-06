@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -30,8 +31,6 @@ public class LoadTestPaymentSeedLoader {
     // 다른 파트 VU와 같은 사용자를 쓰면 주문 상태가 서로 꼬이므로 팀에서 나눈 범위만 쓴다
     private static final int USER_FROM = 20_001;
     private static final int USER_COUNT = 5_000;
-    // 한계점 찾기까지 한 번에 쓸 수 있는 양. k6가 앞에서부터 하나씩 꺼내 쓴다
-    private static final int ORDER_COUNT = 100_000;
 
     private static final String INSERT_PAYMENT_METHOD = """
             insert into payment_methods (user_id, type, billing_key, display_name, created_at, updated_at)
@@ -46,6 +45,11 @@ public class LoadTestPaymentSeedLoader {
 
     private final LoadTestOrderSeedSupport loadTestOrderSeedSupport;
 
+    // 결제 대기 주문 수. 기본값은 결제 테스트가 한계점 찾기까지 한 번에 쓸 수 있는 양이다 (k6가 앞에서부터 하나씩 꺼내 쓴다)
+    // 결제 대기 주문이 있으면 새 주문이 ORDER_004로 막히므로, 같은 사용자로 주문부터 하는 통합 테스트는 0으로 켠다
+    @Value("${zelo.seed.load-test.payment-order-count:100000}")
+    private int orderCount;
+
     @EventListener(ApplicationReadyEvent.class)
     public void load() {
         List<SeedProduct> products = loadTestOrderSeedSupport.readProducts();
@@ -56,6 +60,10 @@ public class LoadTestPaymentSeedLoader {
         }
         loadTestOrderSeedSupport.deleteOrders(PREFIX);
         insertPaymentMethods();
+        if (orderCount <= 0) {
+            log.info("부하 테스트 결제 시드 저장 완료 orders=0 (결제수단만 저장)");
+            return;
+        }
 
         Map<Long, SeedAddress> addresses =
                 loadTestOrderSeedSupport.readDefaultAddresses(USER_FROM, USER_FROM + USER_COUNT - 1);
@@ -64,7 +72,7 @@ public class LoadTestPaymentSeedLoader {
                 chunk -> saveChunk(chunk, addresses, now));
 
         loadTestOrderSeedSupport.analyze("orders", "order_items", "payments", "inventories");
-        log.info("부하 테스트 결제 시드 저장 완료 orders={}", ORDER_COUNT);
+        log.info("부하 테스트 결제 시드 저장 완료 orders={}", orderCount);
     }
 
     // 가짜 포트원은 빌링키 끝 숫자를 발급 고객으로 보므로 사용자 id로 끝나게 만든다
@@ -75,8 +83,8 @@ public class LoadTestPaymentSeedLoader {
     }
 
     private List<PaymentOrder> buildOrders(ProductCursor cursor) {
-        List<PaymentOrder> orders = new ArrayList<>(ORDER_COUNT);
-        for (int number = 1; number <= ORDER_COUNT; number++) {
+        List<PaymentOrder> orders = new ArrayList<>(orderCount);
+        for (int number = 1; number <= orderCount; number++) {
             SeedOrder order = new SeedOrder(LoadTestOrderSeedSupport.quoteId(PREFIX, number),
                     USER_FROM + number % USER_COUNT, "PAYMENT_PENDING", "RESERVED",
                     cursor.items(1 + number % 2, number));

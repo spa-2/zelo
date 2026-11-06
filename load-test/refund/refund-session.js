@@ -11,8 +11,7 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 목표: 피크 2,000명 × 환불 2% × 1회 ÷ 7,200초 × 1.5 ≈ 0.01 RPS → 100초에 1건
 export const TARGET_SESSIONS_PER_100S = 1;
 
-// 사용자 시드에서 1~21,000은 이메일 가입, 그 뒤는 소셜 가입. 환불 범위(25,001~27,000)는 전부 소셜
-const EMAIL_USER_MAX = 21000;
+// 사용자 시드에서 id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입. 환불 범위(25,001~27,000)는 둘이 섞여 있다
 const PASSWORD = 'Zelo1234!';
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -54,12 +53,24 @@ export function session() {
 
 // 로그인은 환불 측정에서 빼려고 kind 태그를 붙이지 않는다
 function login(userId) {
-    const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
-    const res = userId <= EMAIL_USER_MAX
-        ? http.post(`${BASE_URL}/api/users/login`,
-            JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params)
-        : http.post(`${BASE_URL}/api/auth/social/google/login`,
-            JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }), params);
+    const [method, url, body, params] = loginRequest(userId);
+    const res = http.request(method, url, body, params);
     check(res, { '로그인 200': (r) => r.status === 200 });
     return res.status === 200 ? res.json('data.accessToken') : null;
+}
+
+// 한계 테스트의 setup이 http.batch로 미리 로그인할 때도 쓴다
+export function loginRequest(userId) {
+    const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
+    return isEmailUser(userId)
+        ? ['POST', `${BASE_URL}/api/users/login`,
+            JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params]
+        : ['POST', `${BASE_URL}/api/auth/social/google/login`,
+            JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }), params];
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

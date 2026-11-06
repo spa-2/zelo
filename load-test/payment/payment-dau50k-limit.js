@@ -13,7 +13,6 @@ const MULTIPLIERS = (__ENV.MULTIPLIERS || '10,50,100,150,200,250').split(',').ma
 const STAGE_SECONDS = Number(__ENV.STAGE_SECONDS || 60);
 const USER_FROM = 20001;
 const USER_COUNT = 5000;
-const EMAIL_USER_MAX = 21000;
 const PASSWORD = 'Zelo1234!';
 const LOGIN_BATCH = 50;
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -83,7 +82,7 @@ export function setup() {
 
 function loginRequest(userId) {
     const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
-    return userId <= EMAIL_USER_MAX
+    return isEmailUser(userId)
         ? ['POST', `${BASE_URL}/api/users/login`,
             JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params]
         : ['POST', `${BASE_URL}/api/auth/social/google/login`,
@@ -117,4 +116,10 @@ export function session(data) {
             JSON.stringify({ paymentMethodId: methods.json('data.0.paymentMethodId') }), params('payWithPaymentMethod'))
         : http.post(`${BASE_URL}/api/payments/${portoneId}/confirm`, null, params('confirmPayment'));
     check(pay, { '결제 PAID': (r) => r.status === 200 && r.json('data.status') === 'PAID' });
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

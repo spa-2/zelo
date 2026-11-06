@@ -11,10 +11,9 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 // 목표: 피크 2,000명 × 주문 20% × 3회 ÷ 7,200초 × 1.5 = 0.25 RPS → 세션 분당 5개 (0.25 ÷ 3 × 60)
 export const TARGET_SESSIONS_PER_MINUTE = 5;
 
-// 주문 범위는 15,001~20,000(이메일 가입) + 27,001~30,000(소셜 가입) 8,000명이다 (LoadTestOrderQuoteSeedLoader와 같게)
+// 주문 범위는 15,001~20,000 + 27,001~30,000 8,000명이다 (LoadTestOrderQuoteSeedLoader와 같게). id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입
 export const USER_RANGES = [[15001, 20000], [27001, 30000]];
 export const USER_COUNT = USER_RANGES.reduce((sum, [from, to]) => sum + to - from + 1, 0);
-const EMAIL_USER_MAX = 21000;
 // 주문 시드의 채팅방 ID는 이 값 + 사용자 ID, 견적 ID는 LT-ORD-{사용자 ID 7자리}
 const ROOM_ID_START = 90000000;
 const PASSWORD = 'Zelo1234!';
@@ -85,9 +84,15 @@ function login(userId) {
 // 한계 테스트의 setup이 http.batch로 미리 로그인할 때도 쓴다
 export function loginRequest(userId) {
     const params = { headers: JSON_HEADERS, tags: { name: 'login' } };
-    return userId <= EMAIL_USER_MAX
+    return isEmailUser(userId)
         ? ['POST', `${BASE_URL}/api/users/login`,
             JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }), params]
         : ['POST', `${BASE_URL}/api/auth/social/google/login`,
             JSON.stringify({ code: `fake-load-${userId}`, redirectUri: 'http://localhost' }), params];
+}
+
+// 사용자 시드: id 끝자리 1~7은 이메일 가입, 8·9·0은 소셜 가입 (LoadTestUserSeedLoader)
+function isEmailUser(userId) {
+    const lastDigit = userId % 10;
+    return lastDigit >= 1 && lastDigit <= 7;
 }

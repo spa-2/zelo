@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import exec from 'k6/execution';
 import { check, sleep } from 'k6';
-import { Counter } from 'k6/metrics';
+import { Counter, Rate } from 'k6/metrics';
 import { accessTokenOf, isEmailUser, login } from '../chat/users.js';
 
 // 통합 흐름(journeys/*.js)이 같이 쓰는 요청·태그·카운터 (계획서 docs/load-test/performance-test-plan.md 9장)
@@ -14,9 +14,17 @@ const TIMEOUT = __ENV.REQUEST_TIMEOUT || '40s';
 // 실패 원인을 남기려고 VU마다 처음 몇 건만 상태 코드와 X-Trace-Id를 찍는다 (계획서 7-2). 다 찍으면 로그가 넘친다
 const FAILURE_LOG_LIMIT = 3;
 let loggedFailures = 0;
+// 요청마다 보낸 시각 기준 태그를 더한다. 스트레스가 배수 단계(stage) 태그를 붙이는 데 쓴다 (integrated-stress.js)
+let requestTags = () => ({});
+
+export function useRequestTags(tagsOf) {
+    requestTags = tagsOf;
+}
 
 // 방문 상태 (계획서 9-1): started, completed, aborted(step). 시작하지 못한 방문은 dropped_iterations, 종료로 끊긴 방문은 k6의 interrupted
 const visit = new Counter('visit');
+// 방문 완료율 (계획서 4-1-2). 완료면 true, 오류 중단이면 false. HTTP는 성공했지만 업무 상태가 틀려 끊긴 방문(결제 200 + FAILED 등)도 여기서 실패로 잡힌다
+const visitCompleted = new Rate('visit_completed');
 // 구매 단계별 도달 건수 (계획서 9-2 C)
 const purchaseStep = new Counter('purchase_step');
 
@@ -26,10 +34,12 @@ export function startVisit() {
 
 export function completeVisit() {
     visit.add(1, { state: 'completed' });
+    visitCompleted.add(true);
 }
 
 export function abortVisit(step) {
     visit.add(1, { state: 'aborted', step });
+    visitCompleted.add(false, { step });
 }
 
 export function countPurchaseStep(step) {
@@ -51,9 +61,9 @@ export function pickUser(firstUserId, userCount) {
 // 소셜 fake는 외부 응답 대기(평균 900ms ±50%)가 있어 기준이 다르므로 loginType 태그로 나눠 판정한다 (계획서 4-1-1)
 export function loginUser(userId) {
     const loginType = isEmailUser(userId) ? 'email' : 'social';
-    const res = login(BASE_URL, userId, { headers: JSON_HEADERS, tags: { name: 'login', loginType }, timeout: TIMEOUT });
+    const res = login(BASE_URL, userId, { headers: JSON_HEADERS, tags: { name: 'login', loginType, ...requestTags() }, timeout: TIMEOUT });
     const token = accessTokenOf(res);
-    if (!check(res, { '로그인 200': () => token !== null })) {
+    if (!check(res, { '로그인 200': () => token !== null }, { kind: 'status' })) {
         logFailure('login', res);
     }
     return token;
@@ -69,19 +79,20 @@ export function withIdempotencyKey(headers) {
 }
 
 // tags: { name, api, kind?, intent? }. expected 상태 코드가 아니면 check 실패로 세고 처음 몇 건만 로그를 남긴다
+// 상태 코드 check는 kind:status로 모아 판정한다. 4xx·5xx는 http_req_failed에도 잡히지만, 기대 201인데 200처럼 2xx끼리 다른 것은 여기서만 잡힌다
 // 돌려주는 값: { ok, status, json(path) }
 export function get(path, tags, { headers = JSON_HEADERS, expected = 200 } = {}) {
-    return verify(http.get(`${BASE_URL}${path}`, { headers, tags, timeout: TIMEOUT }), tags.name, expected);
+    return verify(http.get(`${BASE_URL}${path}`, { headers, tags: { ...tags, ...requestTags() }, timeout: TIMEOUT }), tags.name, expected);
 }
 
 export function post(path, body, tags, { headers = JSON_HEADERS, expected = 200 } = {}) {
     const payload = body === null ? null : JSON.stringify(body);
-    return verify(http.post(`${BASE_URL}${path}`, payload, { headers, tags, timeout: TIMEOUT }), tags.name, expected);
+    return verify(http.post(`${BASE_URL}${path}`, payload, { headers, tags: { ...tags, ...requestTags() }, timeout: TIMEOUT }), tags.name, expected);
 }
 
 // k6 응답 객체에는 속성을 더할 수 없어서, 성공 여부와 본문 읽기를 담은 작은 객체로 돌려준다
 function verify(res, name, expected) {
-    const ok = check(res, { [`${name} ${expected}`]: (r) => r.status === expected });
+    const ok = check(res, { [`${name} ${expected}`]: (r) => r.status === expected }, { kind: 'status' });
     if (!ok) {
         logFailure(name, res);
     }

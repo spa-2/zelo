@@ -18,6 +18,8 @@ import { COUNT_DISPLAY, GRACEFUL_STOP, rate, SHARE, setupData, USER_COUNTS, VUS 
 //         --out csv=docs/load-test/results/integrated/load.csv load-test/integrated/integrated-load.js
 //   같이 돌릴 것: 서버 지표 수집(load-test/chat/record-metrics.sh, METRICS_URL=앱 9292 주소), 시작·끝 Prometheus 전체 저장(계획서 7-1)
 const MULTIPLIER = Number(__ENV.MULTIPLIER || 1);
+// 구매(C) 방문 완료율 기준 (계획서 4-1-2). 사전 확인(integrated-smoke.js) 결과를 보고 -e PURCHASE_COMPLETION_RATE로 바꾼다
+const PURCHASE_COMPLETION_RATE = Number(__ENV.PURCHASE_COMPLETION_RATE || 0.99);
 const WARMUP = __ENV.WARMUP || '5m';
 const STEADY = __ENV.STEADY || '20m';
 // 데우기는 3분 동안 절반까지, 2분 동안 목표까지 올린다 (WARMUP을 바꾸면 같은 비율로 나눈다)
@@ -68,6 +70,12 @@ export const options = {
     thresholds: {
         'http_req_failed{phase:steady}': ['rate<0.01'],
         'http_req_failed{phase:steady,kind:payment}': ['rate<0.001'],
+        // 결제 API는 실패도 200으로 돌려줘서 응답의 결제 상태로 따로 센다 (journeys/purchase.js)
+        'payment_failed{phase:steady}': ['rate<0.001'],
+        // 4xx·5xx는 http_req_failed가 잡고, 기대와 다른 2xx(예: 201 대신 200, 토큰 없는 로그인 200)는 상태 코드 check가 잡는다
+        'checks{phase:steady,kind:status}': ['rate>0.99'],
+        // HTTP는 성공했지만 업무 상태가 틀려 끊긴 구매(결제 FAILED, 결제 뒤 주문이 PAID 아님, 결제수단 없음)까지 잡는다
+        'visit_completed{phase:steady,journey:purchase}': [`rate>=${PURCHASE_COMPLETION_RATE}`],
         'http_req_duration{phase:steady,name:autocomplete}': ['p(95)<200'],
         'http_req_duration{phase:steady,api:read}': ['p(95)<500'],
         'http_req_duration{phase:steady,name:login,loginType:email}': ['p(95)<500'],

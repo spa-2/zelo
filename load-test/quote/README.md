@@ -42,6 +42,7 @@ if (issued) {
 - 사용자: 부하 테스트 사용자 시드의 채팅·견적 범위(5,001~15,000) 중 **10,001~15,000**
   - 채팅 테스트와 같이 돌려도 한 사용자가 1분에 10번(메시지 제한)을 넘기지 않게 뒤쪽 절반만 쓴다
   - 세션마다 다음 사용자로 넘어간다
+  - 로그인: 회원 시드 규칙(#431)대로 id 끝자리 1~7은 이메일, 8·9·0은 소셜(fake)로 로그인한다 (`chat/users.js`). 로그인은 측정에서 빠지지만 소셜 fake는 약 0.9초 걸려 세션 시간이 늘어난다
 - 스모크: VU 1 고정, 1분 → 세션 p95 측정
 - 부하: VU = 초당 세션(2.08) × 스모크 세션 p95(초), 올림 (최소 1), 5분. preAllocatedVUs = VU × 2 (최소 5), maxVUs = VU × 10
 - 스트레스: 부하 × 10 (분당 1,250세션, VU × 10), 5분
@@ -55,6 +56,7 @@ if (issued) {
    JWT_SECRET=... OPENAI_API_KEY=fake ./gradlew bootRun --args='--spring.profiles.active=performance --zelo.scheduler.enabled=false --zelo.llm.mode=fake --zelo.llm.fake.plan-intent=SHOPPING_REQUEST'
    ```
    - fake 메뉴 계획은 늘 "김치볶음밥 4인분(김치·밥·계란·대파), 맵지 않게"다
+3. 예전 회원 시드(1~21,000 이메일)가 남은 DB는 사용자 시드가 건너뛰어 소셜 번호 로그인이 실패한다. DB를 비우고 다시 넣는다
 
 ## 실행
 ```bash
@@ -65,6 +67,39 @@ k6 run -e VUS=1 --summary-export=docs/load-test/results/quote/stress-summary.jso
 k6 run --summary-export=docs/load-test/results/quote/limit-summary.json load-test/quote/quote-limit.js
 ```
 - k6를 도커로 돌리면 `-e BASE_URL=http://host.docker.internal:8080`을 넘긴다
+
+## AWS에서 돌리기 (성능 테스트 계획서 1단계)
+환경·시드·앱 설정은 `docs/load-test/performance-test-plan.md` 6장을 따른다. 견적만 다른 점은 아래와 같다
+- 앱은 **1대**로 한다. 아래 LLM 지연 끄기가 앱 한 대에만 적용된다
+- 다른 도메인 테스트와 **동시에 돌리지 않는다** (계획서 8-2)
+
+1. **LLM 지연 끄기.** AWS 앱은 fake 실측 지연(`zelo.llm.fake.mode=DELAY`)으로 떠 있다. 그대로 재면 견적 발급 시간에 LLM 대기(메뉴 계획 1.1\~3.6초 + 견적 안내 1.0\~1.8초)가 들어가 서버 쪽 견적 처리를 볼 수 없다 (계획서 8-2 "fake LLM으로 견적 처리만 잰다"). 견적 테스트 동안만 재시작 없이 API로 끈다
+   ```bash
+   BASE=http://<ALB 주소>
+   TOKEN=$(curl -s -X POST $BASE/api/users/login -H 'Content-Type: application/json' \
+     -d '{"email":"load10001@test.com","password":"Zelo1234!"}' | sed -E 's/.*"accessToken":"([^"]+)".*/\1/')
+   curl -X POST $BASE/api/fake/llm/mode -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"mode":"NORMAL","delayMillis":0,"delayMaxMillis":0}'
+   ```
+   - 끝나면 **꼭 되돌린다.** 작업별 지연(`operation-delays`)은 그대로라 모드만 DELAY로 바꾸면 된다 (6000·0은 앱 기본값). 앱을 다시 띄워도(`docker restart zelo`) 돌아온다
+   ```bash
+   curl -X POST $BASE/api/fake/llm/mode -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"mode":"DELAY","delayMillis":6000,"delayMaxMillis":0}'
+   ```
+2. **실행.** 부하기(k6 EC2)에 `load-test`를 복사하고 접속하는 방법은 `terraform/README.md` "부하기(k6)"를 따른다. 부하기에는 k6 대신 도커가 있어 `load-test/run-k6.sh`로 돌린다. 서버 지표는 ALB가 아니라 앱의 9292 포트에서 읽으므로 `METRICS_URL`을 꼭 넘긴다
+   ```bash
+   cd ~/zelo
+   METRICS=http://<앱 사설 IP>:9292/actuator/prometheus
+   OUT=docs/load-test/results/quote
+   mkdir -p $OUT
+   load-test/run-k6.sh load-test/quote/quote-smoke.js -e BASE_URL=$BASE -e METRICS_URL=$METRICS --summary-export=$OUT/aws-smoke-summary.json
+   load-test/run-k6.sh load-test/quote/quote-load.js -e BASE_URL=$BASE -e METRICS_URL=$METRICS -e VUS=<스모크로 계산> -e DURATION=10m --summary-export=$OUT/aws-load-summary.json
+   load-test/run-k6.sh load-test/quote/quote-limit.js -e BASE_URL=$BASE -e METRICS_URL=$METRICS -e STAGE_SECONDS=180 -e MULTIPLIERS=1,1.5,2,4,6,8,10 --summary-export=$OUT/aws-limit-summary.json
+   ```
+   - 부하는 계획서 8-1대로 10분 보낸다
+   - 스트레스는 `quote-stress.js`(×10 고정) 대신 `quote-limit.js`를 단계마다 3분으로 돌린다 (계획서 8-1: ×1부터 무너질 때까지 단계마다 3분 이상). ×1.5(결과에는 `x1_5`)는 스트레스 목표(계획서 4-2-2) 확인용이다
+3. **결과.** 파일 이름 앞에 `aws-`를 붙이고, 로컬 결과와 나란히 비교한다. 조건에 커밋 해시, 인스턴스 타입, Hikari 30(로컬은 10), fake LLM 지연 끔을 적는다
+   - 실패하거나 기준보다 느린 요청은 VU마다 처음 3건만 `traceId`와 함께 로그에 남는다. 서버 로그에서 그 traceId로 찾는다
 
 ## 볼 지표
 - k6:

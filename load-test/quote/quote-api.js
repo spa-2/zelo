@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
+import { accessTokenOf, login as loginByUserId } from '../chat/users.js';
 
 // 견적 API 요청 모음. 견적 부하 테스트와 다른 도메인·전체 시나리오가 같이 쓴다
 //   import { login, issueQuote, changeQuantity } from '../quote/quote-api.js';
@@ -10,21 +11,23 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
 // 부하 테스트 사용자 시드(LoadTestUserSeedLoader)의 채팅·견적 범위(5,001~15,000) 중 견적 테스트는 10,001~15,000을 쓴다
 // 채팅 테스트와 같이 돌려도 겹치는 사용자가 1분에 10번(메시지 제한)을 넘기지 않게 뒤쪽 절반만 쓴다
+// 회원 시드 규칙(#431): id 끝자리 1~7은 이메일, 8·9·0은 소셜 사용자라 이 범위도 이메일 70%, 소셜 30%로 로그인한다
 export const QUOTE_FIRST_USER_ID = 10001;
 export const QUOTE_USER_COUNT = 5000;
-const PASSWORD = 'Zelo1234!';
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 // 견적 발급이 막혀도 요청이 오래 매달리지 않게 끊는다 (k6 기본 60초)
 const TIMEOUT = __ENV.REQUEST_TIMEOUT || '30s';
 const FAILURE_LOG_LIMIT = 3;
+// 이보다 느린 요청도 실패처럼 traceId를 남긴다 (판정 기준과 같은 값)
+const SLOW_MILLIS = { issueQuote: 1000, changeQuantity: 300, removeItem: 300 };
 let loggedFailures = 0;
 
+// id 끝자리로 이메일·소셜(fake) 로그인을 고른다 (chat/users.js와 같은 규칙)
 export function login(userId) {
-    const res = http.post(`${BASE_URL}/api/users/login`,
-        JSON.stringify({ email: `load${userId}@test.com`, password: PASSWORD }),
-        { headers: JSON_HEADERS, tags: { name: 'login' } });
-    check(res, { '로그인 200': (r) => r.status === 200 });
-    return res.status === 200 ? res.json('data.accessToken') : null;
+    const res = loginByUserId(BASE_URL, userId, { headers: JSON_HEADERS, tags: { name: 'login' } });
+    const token = accessTokenOf(res);
+    check(res, { '로그인 성공': () => token !== null });
+    return token;
 }
 
 // 새 채팅방에서 첫 메시지로 견적을 받는다. 성공하면 { roomId, quote(카드 payload) }
@@ -77,10 +80,13 @@ function read(res, path) {
     }
 }
 
-// 실패 원인을 남기려고 VU마다 처음 몇 건만 상태 코드와 본문을 찍는다. 다 찍으면 로그가 넘친다
+// 실패하거나 느린 요청의 원인을 찾으려고 VU마다 처음 몇 건만 traceId·상태 코드·본문을 찍는다. 다 찍으면 로그가 넘친다
+// traceId(응답 헤더 X-Trace-Id)로 서버 로그에서 그 요청을 찾는다 (계획서 7-2)
 function logFailure(ok, name, res) {
-    if (!ok && loggedFailures < FAILURE_LOG_LIMIT) {
+    const slow = res.timings.duration > SLOW_MILLIS[name];
+    if ((!ok || slow) && loggedFailures < FAILURE_LOG_LIMIT) {
         loggedFailures++;
-        console.warn(`견적 요청 실패 name=${name} status=${res.status} error=${res.error} body=${String(res.body).slice(0, 200)}`);
+        console.warn(`견적 요청 ${ok ? '느림' : '실패'} name=${name} status=${res.status} duration=${Math.round(res.timings.duration)}ms `
+            + `traceId=${res.headers['X-Trace-Id']} error=${res.error} body=${String(res.body).slice(0, 200)}`);
     }
 }

@@ -2,6 +2,7 @@
 # jar는 CPU 종류와 무관하므로 빌드 실행 환경(BUILDPLATFORM)에서 그대로 돌려 arm64 에뮬레이션 없이 빠르게 만든다
 FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
 WORKDIR /app
+ENV TZ=Asia/Seoul
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle gradle
 # 소스보다 먼저 의존성을 받아 두면 소스만 바뀐 빌드에서 레이어 캐시가 재사용된다

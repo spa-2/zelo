@@ -60,7 +60,7 @@ variable "key_name" {
 
 variable "app_instance_type" {
   type    = string
-  default = "t4g.small"
+  default = "c7g.large"
 }
 
 variable "bastion_instance_type" {
@@ -184,4 +184,39 @@ variable "metrics_collector_security_group_id" {
 variable "spring_profile" {
   type    = string
   default = "performance"
+}
+
+# 성능 측정용 수집기(Prometheus + Grafana). 쓰지 않을 때는 false로 EC2와 고정 IP를 만들지 않는다
+variable "monitoring_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "monitoring_instance_type" {
+  type    = string
+  default = "t4g.small"
+}
+
+# 부하기(k6). 앱 VPC와 분리된 별도 VPC에 둔다. 쓰지 않을 때는 false로 EC2와 고정 IP를 만들지 않는다
+variable "loadgen_enabled" {
+  type    = bool
+  default = true
+}
+
+# 부하기가 병목이면 결과가 의미 없다. CPU가 넉넉한(2 vCPU 이상) 인스턴스를 쓰고 부하 중 CloudWatch로 CPU를 같이 본다
+variable "loadgen_instance_type" {
+  type    = string
+  default = "c7g.large"
+}
+
+# 앱 VPC(vpc_cidr)와 겹치지 않아야 한다
+variable "loadgen_vpc_cidr" {
+  type    = string
+  default = "10.100.0.0/16"
+}
+
+variable "readonly_user_name" {
+  description = "팀원이 함께 쓰는 읽기 전용 IAM 사용자 이름 (빈 문자열이면 만들지 않는다)"
+  type        = string
+  default     = "zelo"
 }

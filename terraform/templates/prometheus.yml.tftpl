@@ -1,0 +1,20 @@
+# 앱 서버를 태그로 자동 탐색한다(ec2_sd). 서버가 교체되거나 늘어나도 파일을 고칠 필요가 없다.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: zelo
+    metrics_path: /actuator/prometheus
+    ec2_sd_configs:
+      - region: ${region}
+        # 탐색된 서버의 사설 IP에 이 포트를 붙여 긁는다
+        port: ${management_port}
+        refresh_interval: 30s
+        filters:
+          - name: tag:Name
+            values: ["${app_name_tag}"]
+          - name: instance-state-name
+            values: ["running"]
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id

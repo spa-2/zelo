@@ -32,3 +32,32 @@ output "github_deploy_role_arn" {
 output "mail_from_address" {
   value = local.mail_from
 }
+
+output "grafana_url" {
+  value = var.monitoring_enabled ? "http://${aws_eip.monitoring[0].public_ip}:3000" : null
+}
+
+# Grafana 로그인 계정은 admin, 비밀번호는 아래 SSM 파라미터에서 읽는다
+output "grafana_password_parameter" {
+  value = local.grafana_password_parameter
+}
+
+# 부하기 접속 주소. 접속해서 load-test/ 폴더를 복사한 뒤 ALB 주소(alb_dns_name)로 k6를 실행한다
+output "loadgen_public_ip" {
+  value = var.loadgen_enabled ? aws_eip.loadgen[0].public_ip : null
+}
+
+output "readonly_console_login_url" {
+  description = "읽기 전용 계정이 로그인하는 콘솔 주소 (계정 ID, 사용자 이름, 비밀번호를 입력한다)"
+  value       = var.readonly_user_name != "" ? "https://${data.aws_caller_identity.current.account_id}.signin.aws.amazon.com/console" : null
+}
+
+output "readonly_user_name" {
+  value = var.readonly_user_name != "" ? aws_iam_user.readonly[0].name : null
+}
+
+output "readonly_password" {
+  description = "읽기 전용 계정의 비밀번호. terraform output -raw readonly_password"
+  value       = var.readonly_user_name != "" ? aws_iam_user_login_profile.readonly[0].password : null
+  sensitive   = true
+}

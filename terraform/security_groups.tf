@@ -90,6 +90,14 @@ resource "aws_security_group" "app" {
   }
 
   ingress {
+    description     = "Prometheus scrape from monitoring collector (monitoring.tf)"
+    from_port       = var.management_port
+    to_port         = var.management_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.monitoring.id]
+  }
+
+  ingress {
     description     = "SSH from bastion"
     from_port       = 22
     to_port         = 22

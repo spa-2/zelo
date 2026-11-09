@@ -4,3 +4,6 @@ key_name          = "zelo-dev-key"
 
 # SES 샌드박스 동안 테스트 메일을 받을 주소 (프로덕션 액세스 승인 후에는 비워도 된다)
 # mail_sandbox_recipients = ["me@example.com"]
+
+# 팀원이 함께 쓰는 읽기 전용 콘솔 계정 이름 (기본 zelo, 빈 문자열이면 만들지 않는다)
+# readonly_user_name = "zelo"

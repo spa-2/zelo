@@ -61,3 +61,22 @@ Bastion 없이도 `AmazonSSMManagedInstanceCore`가 붙어 있어서 Session Man
 - **state에 시크릿이 평문으로 남는다**: DB·Redis 비밀번호를 `random_password`로 생성하므로 `terraform.tfstate`에 들어간다. state와 `*.tfvars`는 커밋하지 않는다(`.gitignore` 처리됨). 여럿이 apply 하려면 암호화된 원격 state가 필요하다.
 - **Redis는 단일 EC2**: AOF로 재부팅에는 데이터가 남지만 인스턴스가 교체되면 사라진다. 그러면 모든 사용자가 로그아웃되고 진행 중이던 가입 번호표와 락이 없어진다.
 - **NAT 1대**: 2a AZ 장애 시 두 AZ의 아웃바운드(외부 API 호출 포함)가 막힌다.
+
+## 부하기(k6)
+
+앱 VPC와 분리된 별도 VPC(`loadgen.tf`)의 퍼블릭 서브넷에 EC2와 고정 IP로 만든다. 앱 환경과 같은 state라서 `destroy`하면 같이 지워진다. 쓰지 않을 때는 `loadgen_enabled = false`.
+
+```bash
+# 1. 부하기에 테스트 스크립트를 복사한다 (저장소 루트에서)
+scp -i <zeloKeyPair.pem> -r load-test ec2-user@$(terraform -chdir=terraform output -raw loadgen_public_ip):~/zelo/
+
+# 2. 접속해서 ALB 주소로 k6를 실행한다
+ssh -i <zeloKeyPair.pem> ec2-user@<loadgen_public_ip>
+cd ~/zelo && load-test/run-k6.sh load-test/auth/login-smoke.js -e BASE_URL=http://<alb_dns_name>
+
+# 3. 결과를 내려받는다
+scp -i <zeloKeyPair.pem> -r ec2-user@<loadgen_public_ip>:~/zelo/docs .
+```
+
+- 부하기가 병목이면 결과가 의미 없다. 부하 중 CloudWatch에서 부하기의 CPU와 네트워크를 같이 본다.
+- 부팅 때 Docker 설치와 `grafana/k6` 이미지 받기를 하므로 apply 직후 1~2분은 기다린다(`/var/log/zelo-loadgen-bootstrap.log`).

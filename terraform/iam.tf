@@ -25,6 +25,10 @@ locals {
     app     = [local.ssm_core, "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"]
     redis   = [local.ssm_core]
     bastion = [local.ssm_core]
+    # Prometheus가 앱 서버를 탐색하고 Grafana 비밀번호를 읽는다 (monitoring.tf)
+    monitoring = [local.ssm_core]
+    # k6 부하기. Session Manager로 접속할 수 있게만 한다 (loadgen.tf)
+    loadgen = [local.ssm_core]
   }
 
   role_attachments = merge([

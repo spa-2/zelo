@@ -21,9 +21,11 @@
 ## 실행과 수집
 
 1. 앱의 기존 프로필에 `performance`를 추가한다. 원문·SQL DEBUG/TRACE를 억제하며 DB 주소·시크릿은 변경하지 않는다. SSM 등 우선순위가 높은 설정에 의해 덮이는지 실제 로그로 확인한다.
+**AWS에서는 Terraform이 수집기(Prometheus + Grafana)를 만든다(`terraform/monitoring.tf`).** 앱 서버를 `Name` 태그로 자동 탐색(`ec2_sd`)하므로 아래 2~4번의 `targets.json` 작업은 필요 없다. 서버가 교체되거나 늘어나도 약 30초 안에 대상이 갱신된다. Grafana는 `terraform output grafana_url`의 3000번 포트(팀원 IP만 허용, 계정 `admin`, 비밀번호는 `terraform output grafana_password_parameter`의 SSM 파라미터)로 접속하고, 대시보드는 `monitoring/grafana/zelo-overview.json`이 자동으로 로드된다. 아래 2~4번은 **로컬이나 수집기를 직접 구성할 때**의 방법이다.
+
 2. `targets.example.json`을 `targets.json`으로 복사하고 앱 EC2의 **각 사설 IP:9292**를 넣는다. `prometheus.yml`과 같은 디렉터리에 마운트한다. Prometheus 데이터 디렉터리는 영속 볼륨에 저장한다.
 3. 별도 수집기라면 Terraform의 `metrics_collector_security_group_id`에 동일 VPC 수집기 SG를 지정한다. 기본 null은 기존 접근 정책을 유지한다. 배포/apply는 별도 수행한다.
-4. ASG 교체·증설 시 targets.json을 갱신한다. 이 구성은 file discovery이며 EC2 자동 탐색은 아니다. 실험 중 서버 수를 고정하거나 대상 갱신을 운영 절차에 포함한다. ALB 주소 하나를 scrape하지 않는다.
+4. ASG 교체·증설 시 targets.json을 갱신한다. 이 구성(file discovery)은 EC2 자동 탐색이 아니다. 자동 탐색은 위 Terraform 수집기가 쓴다. 실험 중 서버 수를 고정하거나 대상 갱신을 운영 절차에 포함한다. ALB 주소 하나를 scrape하지 않는다.
 5. 실험 전 각 서버에 정상 조회/채팅과 오류 시나리오를 한 번 실행하고 아래 검사기를 실행한다. Prometheus의 `up`이 모든 인스턴스에서 1인지 확인한다.
 
 ```bash

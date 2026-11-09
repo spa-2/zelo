@@ -107,6 +107,7 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    jvmArgs '-Duser.timezone=Asia/Seoul'
     //  테스트 끝나면 리포트 생성
     finalizedBy tasks.named('jacocoTestReport')
 }

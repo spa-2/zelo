@@ -12,7 +12,8 @@ const STAGE_SECONDS = Number(__ENV.STAGE_SECONDS || 60);
 const scenarios = {};
 const thresholds = {};
 MULTIPLIERS.forEach((multiplier, index) => {
-    const stage = `x${multiplier}`;
+    // k6 시나리오 이름에는 점을 못 써서 1.5배는 x1_5로 남긴다
+    const stage = `x${String(multiplier).replace('.', '_')}`;
     const perSecond = TARGET_SESSIONS_PER_MINUTE * multiplier / 60;
     const startTime = `${STAGE_SECONDS * index}s`;
     const duration = `${STAGE_SECONDS}s`;

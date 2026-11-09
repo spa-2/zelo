@@ -19,8 +19,9 @@ MULTIPLIERS.forEach((multiplier, index) => {
     const duration = `${STAGE_SECONDS}s`;
     scenarios[stage] = {
         executor: 'constant-arrival-rate',
-        rate: TARGET_SESSIONS_PER_MINUTE * multiplier,
-        timeUnit: '1m',
+        // k6 rate는 정수만 받는다. 1.5배면 분당 187.5세션이라 시간당 세션 수(11,250)로 넘긴다. 간격은 분 단위와 같다
+        rate: Math.round(TARGET_SESSIONS_PER_MINUTE * multiplier * 60),
+        timeUnit: '1h',
         duration,
         startTime,
         preAllocatedVUs: Math.ceil(perSecond * 2),

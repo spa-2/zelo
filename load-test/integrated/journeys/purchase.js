@@ -1,3 +1,4 @@
+import { Rate } from 'k6/metrics';
 import {
     abortVisit, authHeaders, completeVisit, countPurchaseStep, get, loginUser, pickUser, post, startVisit, think,
 } from '../common.js';
@@ -10,6 +11,9 @@ import { chat, purchaseMessages } from './chat.js';
 // 다른 번호대를 써야 하면 -e PURCHASE_FIRST_USER, -e PURCHASE_USER_COUNT로 준다 (결제수단·배송지가 있어야 한다)
 const FIRST_USER_ID = Number(__ENV.PURCHASE_FIRST_USER || 20001);
 const USER_COUNT = Number(__ENV.PURCHASE_USER_COUNT || 5000);
+// 결제 실패율 (계획서 4-1-2 결제 요청 < 0.1%). 결제 API는 실패·취소·확인 대기도 200으로 돌려줘서(PaymentController.payWithPaymentMethod)
+// http_req_failed만으로는 못 잡는다. HTTP 실패이거나 data.status가 PAID가 아니면 실패로 센다
+const paymentFailed = new Rate('payment_failed');
 
 export function purchase() {
     startVisit();
@@ -71,7 +75,9 @@ export function purchase() {
     countPurchaseStep('payment_tried');
     const payment = post(`/api/payments/${order.json('data.portoneId')}/payment-method`, { paymentMethodId },
         { name: 'payWithPaymentMethod', kind: 'payment' }, { headers });
-    if (!payment.ok || payment.json('data.status') !== 'PAID') {
+    const paid = payment.ok && payment.json('data.status') === 'PAID';
+    paymentFailed.add(!paid);
+    if (!paid) {
         abortVisit('payment');
         return;
     }

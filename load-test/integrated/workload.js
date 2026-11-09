@@ -12,9 +12,10 @@ export const GRACEFUL_STOP = '120s';
 // 사용자 번호대 크기 (계획서 3-5). 측정 시나리오는 이 절반부터 써서 데우기와 같은 사용자를 쓰지 않는다
 export const USER_COUNTS = { quoteChat: 10000, purchase: Number(__ENV.PURCHASE_USER_COUNT || 5000), myOrders: 2000 };
 
-// 방문 상태(계획서 9-1)와 구매 단계(9-2 C) 건수를 요약에 태그별로 보이게 하는 표시용 기준. 항상 통과한다
+// 방문 상태(계획서 9-1), 흐름별 방문 완료율, 구매 단계(9-2 C) 건수를 요약에 태그별로 보이게 하는 표시용 기준. 항상 통과한다
 export const COUNT_DISPLAY = Object.fromEntries([
     ...['started', 'completed', 'aborted'].map((state) => [`visit{state:${state}}`, ['count>=0']]),
+    ...Object.keys(SHARE).map((name) => [`visit_completed{journey:${name}}`, ['rate>=0']]),
     ...['started', 'quote_ready', 'order_tried', 'order_ok', 'payment_tried', 'payment_ok', 'completed']
         .map((step) => [`purchase_step{step:${step}}`, ['count>=0']]),
 ]);

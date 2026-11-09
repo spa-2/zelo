@@ -256,12 +256,12 @@
 
 | 대상 | 기준 | 비고 |
 |---|---|---|
-| 전체 요청 | `http_req_failed` < 1% | 5xx와 예상하지 못한 4xx |
-| 결제 요청 | < 0.1% | 돈이 걸린 요청이라 더 엄격하게 |
+| 전체 요청 | `http_req_failed` < 1%, 상태 코드 check(`checks{kind:status}`) > 99% | 5xx와 예상하지 못한 4xx. 기대와 다른 2xx(201 대신 200, 토큰 없는 로그인 200)는 `http_req_failed`에 안 잡혀서 상태 코드 check로 본다 |
+| 결제 요청 | < 0.1% (`http_req_failed{kind:payment}`, `payment_failed`) | 돈이 걸린 요청이라 더 엄격하게. 결제 API는 실패·취소·확인 대기도 200으로 돌려줘서(`PaymentController.payWithPaymentMethod`), 응답의 `data.status`가 `PAID`가 아니면 실패로 센다(`payment_failed`) |
 | 채팅 FALLBACK | < 1% | 503(AI_008), 504(AI_002)는 실패 안내라는 정상 응답이지만, 부하 테스트에서 1%를 넘으면 문제로 본다. fake에는 429가 없으므로, 생기면 시간 예산 초과나 서버 쪽 원인이다 (7장 지표로 나눈다) |
 | 견적 안내 생략 (DEGRADED) | < 5% | 카드는 저장되지만 안내가 고정 문구다. 지표 `zelo.chat.explain.degraded` (`BusinessMetric.CHAT_EXPLAIN_DEGRADED`) |
 | 응답 형식이 기대와 다름 | < 1% | fake는 문장별 의도를 정해 주므로 형식(카드·글 답변)이 바뀌면 서버나 스크립트 문제다 (3-2) |
-| 구매 완료율 (C) | 사전 확인에서 정한 값 이상 | 단계별 도달 건수(9-2 C)로 계산한다. 낮으면 주문·결제 요청이 목표보다 적게 들어간 것이라 주문·결제 결과를 "목표 부하를 처리했다"로 쓰지 않는다 |
+| 구매 완료율 (C) | 사전 확인에서 정한 값 이상 (`visit_completed{journey:purchase}`, 스크립트 기본 99%, `-e PURCHASE_COMPLETION_RATE`로 바꾼다) | 로그인부터 주문 상세까지 끝까지 간 방문의 비율이다. HTTP는 성공했지만 업무 상태가 틀려 끊긴 방문도 실패로 센다. 어디서 끊겼는지는 단계별 도달 건수(9-2 C)로 본다. 낮으면 주문·결제 요청이 목표보다 적게 들어간 것이라 주문·결제 결과를 "목표 부하를 처리했다"로 쓰지 않는다 |
 
 #### 4-1-3. 서버 상태
 

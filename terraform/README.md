@@ -80,3 +80,75 @@ scp -i <zeloKeyPair.pem> -r ec2-user@<loadgen_public_ip>:~/zelo/docs .
 
 - 부하기가 병목이면 결과가 의미 없다. 부하 중 CloudWatch에서 부하기의 CPU와 네트워크를 같이 본다.
 - 부팅 때 Docker 설치와 `grafana/k6` 이미지 받기를 하므로 apply 직후 1~2분은 기다린다(`/var/log/zelo-loadgen-bootstrap.log`).
+
+## 프론트 배포 (S3 + CloudFront)
+
+`frontend.tf`가 `https://zelo.wyshin.click` 하나로 화면과 API를 같이 서비스한다.
+
+```
+브라우저 ──HTTPS──▶ CloudFront ──▶ S3 (비공개 버킷)   /api/ 로 시작하지 않는 모든 경로
+                          └─────▶ ALB (백엔드)        /api/* (캐시 없음, 모든 메서드, 헤더와 쿠키 전달)
+```
+
+- 같은 도메인이라 CORS 설정이 필요 없다. 프론트는 API를 `/api/...` 상대 경로로 호출하면 된다.
+- 화면 경로를 새로고침해도 404가 나지 않는다. 확장자가 없는 경로(`/products/1` 등)는 CloudFront Function이 `/index.html`로 바꿔서 받는다. 이 함수는 `/api/*`에는 적용되지 않아서 API의 403, 404 응답은 그대로 전달된다.
+- CloudFront → ALB 구간은 아직 HTTP다. ALB에 HTTPS를 붙이면 `frontend.tf`의 ALB 오리진을 `https-only`로 바꾼다.
+- `terraform destroy`를 하면 버킷의 화면 파일도 같이 지워진다. 다시 apply한 뒤 프론트 저장소의 배포를 한 번 돌려야 한다.
+
+### 프론트 저장소(spa-2/zeloFront)에서 설정할 것
+
+`terraform output`으로 값을 확인해서 프론트 저장소의 Actions 변수(Settings → Secrets and variables → Variables)에 넣는다.
+
+| 변수 | 값 |
+|---|---|
+| `AWS_ROLE_ARN` | `terraform output -raw frontend_deploy_role_arn` |
+| `S3_BUCKET` | `terraform output -raw frontend_bucket` |
+| `CLOUDFRONT_DISTRIBUTION_ID` | `terraform output -raw frontend_distribution_id` |
+
+역할은 `dev` 브랜치에서 실행된 Actions만 받을 수 있다(`frontend_deploy_branch`). 다른 브랜치나 PR 실행은 거부된다.
+
+워크플로 예시(`.github/workflows/deploy.yml`). 빌드 결과 폴더가 `dist`가 아니면(`build` 등) 경로를 바꾼다.
+
+```yaml
+name: deploy
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  id-token: write   # OIDC로 AWS 역할을 받기 위해 필요하다
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-2
+
+      # 해시가 붙은 정적 파일은 오래 캐시하고, index.html은 항상 새로 받게 한다
+      - run: |
+          aws s3 sync dist s3://${{ vars.S3_BUCKET }} --delete \
+            --exclude index.html --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html s3://${{ vars.S3_BUCKET }}/index.html --cache-control "no-cache"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} --paths /index.html
+```
+
+## 서버 기본 설정 (user-data)
+
+모든 서버(앱, Redis, 수집기, 부하기)는 처음 부팅할 때 시간대를 `Asia/Seoul`로 맞추고 점검 도구(net-tools, nc, telnet, htop, sysstat, lsof, tcpdump, jq 등)를 설치한다. 실패해도 부팅은 계속된다.
+
+- user-data는 **처음 부팅할 때 한 번만** 실행된다. 이미 떠 있는 서버에는 `sudo timedatectl set-timezone Asia/Seoul`과 `sudo dnf install -y net-tools bind-utils nmap-ncat telnet htop sysstat lsof tcpdump jq`를 직접 실행한다.
+- 호스트의 시간대는 컨테이너에 이어지지 않는다. 앱(JVM)의 시간대는 이미지(Dockerfile)의 `TZ`로 정한다.
+- user-data가 바뀌면 수집기는 서버가 교체되고(Prometheus 데이터 삭제), 앱은 ASG가 인스턴스를 교체하고, Redis와 부하기는 서버가 중지됐다가 다시 시작된다. apply 전에 `terraform plan`으로 확인한다.

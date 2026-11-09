@@ -220,3 +220,28 @@ variable "readonly_user_name" {
   type        = string
   default     = "zelo"
 }
+
+# 프론트(S3 + CloudFront). 한 도메인에서 /api/*는 ALB로, 나머지는 S3로 보낸다 (frontend.tf)
+variable "frontend_domain" {
+  description = "프론트 접속 주소 (HTTPS)"
+  type        = string
+  default     = "zelo.wyshin.click"
+}
+
+variable "frontend_zone_name" {
+  description = "frontend_domain의 DNS가 있는 Route53 호스팅 존 이름"
+  type        = string
+  default     = "wyshin.click"
+}
+
+variable "frontend_github_repository" {
+  description = "S3에 프론트를 올리는(배포하는) GitHub 저장소 (조직/이름)"
+  type        = string
+  default     = "spa-2/zeloFront"
+}
+
+variable "frontend_deploy_branch" {
+  description = "이 브랜치에서 실행된 Actions만 프론트 배포 역할을 받을 수 있다"
+  type        = string
+  default     = "dev"
+}

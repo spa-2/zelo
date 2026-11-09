@@ -4,6 +4,10 @@
 exec > >(tee /var/log/zelo-monitoring-bootstrap.log) 2>&1
 set -euo pipefail
 
+# 기본 설정: 시간대(한국 시간)와 점검용 도구. 실패해도 서버 부팅은 계속되게 한다
+timedatectl set-timezone Asia/Seoul || echo "시간대 설정 실패(무시)"
+dnf install -y net-tools bind-utils nmap-ncat telnet htop sysstat lsof tcpdump jq || echo "기본 도구 설치 실패(무시)"
+
 dnf install -y docker
 systemctl enable --now docker
 

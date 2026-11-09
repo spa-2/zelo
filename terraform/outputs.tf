@@ -61,3 +61,22 @@ output "readonly_password" {
   value       = var.readonly_user_name != "" ? aws_iam_user_login_profile.readonly[0].password : null
   sensitive   = true
 }
+
+output "frontend_url" {
+  value = "https://${var.frontend_domain}"
+}
+
+output "frontend_bucket" {
+  description = "프론트 저장소의 Actions가 화면 파일을 올리는 S3 버킷"
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_distribution_id" {
+  description = "배포 후 캐시를 무효화할 CloudFront 배포 ID"
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "frontend_deploy_role_arn" {
+  description = "프론트 저장소 Actions가 OIDC로 받는 역할 (저장소 변수 AWS_ROLE_ARN에 넣는다)"
+  value       = aws_iam_role.frontend_deploy.arn
+}

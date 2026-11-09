@@ -32,3 +32,17 @@ provider "aws" {
 locals {
   name = "${var.project}-${var.environment}"
 }
+
+# CloudFront에 붙이는 인증서(ACM)는 반드시 버지니아 북부(us-east-1)에 있어야 한다 (frontend.tf)
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Project     = var.project
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
+}

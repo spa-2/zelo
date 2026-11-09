@@ -36,7 +36,7 @@ class LoadTestExtraStockSeedLoaderTest {
     }
 
     @Test
-    void 추가_재고를_주면_재고와_가용_재고에_같은_수만큼_더한다() {
+    void 추가_재고를_주면_재고를_그_값으로_맞춘다() {
         // given
         ReflectionTestUtils.setField(loadTestExtraStockSeedLoader, "extraStock", 100_000);
 

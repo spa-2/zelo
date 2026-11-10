@@ -48,11 +48,6 @@ locals {
 
   # 부하 테스트 전용. 운영에서는 만들지 않는다(var.test_seed_parameters = false)
   test_parameters = var.test_seed_parameters ? {
-    # 결제 테스트용 결제 대기 주문 시드 개수. 0이면 결제수단만 저장하고 주문은 만들지 않는다(앱 기본값은 100000).
-    # 주문부터 하는 통합 테스트는 결제 대기 주문이 있으면 ORDER_004로 막혀서 0이어야 한다. 결제 한계 테스트 때만 값을 올린다(시드는 앱이 뜰 때 돈다)
-    "zelo.seed.load-test.payment-order-count" = "0"
-    # 부하 테스트 상품의 재고에 더해 주는 추가 재고(앱 시드가 사용). 재고 부족으로 테스트가 끊기지 않게 넉넉히 둔다
-    "zelo.seed.load-test.extra-stock" = "100000"
     # 통합 부하 테스트용 fake LLM 설정(앱의 FakeLlmGateway). LLM_MODE=fake일 때만 쓰이고 real이면 무시된다.
     # 실측 지연을 랜덤으로 흉내 내고(DELAY), 견적까지 가는 의도로 돌려서 부하가 실제와 비슷해지게 한다. 통합 테스트가 끝나면 지운다
     "zelo.llm.fake.mode"             = "DELAY"

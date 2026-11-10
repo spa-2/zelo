@@ -28,7 +28,9 @@ public final class LlmErrorClassifier {
     private static final Set<ErrorCode> NOT_CIRCUIT_FAILURES = Set.of(
             ErrorCode.AI_REQUEST_REJECTED,
             // 엄격 모드라 형식 오류는 거의 없고, 대부분 "30명"처럼 사용자 말 때문에 검증 범위를 벗어난 경우다
-            ErrorCode.AI_INVALID_RESPONSE);
+            ErrorCode.AI_INVALID_RESPONSE,
+            // 우리가 정한 출력 토큰 상한에 걸린 것이라 OpenAI 장애가 아니다. 같은 요청을 다시 보내도 또 잘려서 재시도 대상(RETRYABLE)에도 넣지 않는다
+            ErrorCode.AI_RESPONSE_TRUNCATED);
 
     private LlmErrorClassifier() {
     }

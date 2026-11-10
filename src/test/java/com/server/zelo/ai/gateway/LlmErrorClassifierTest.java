@@ -113,6 +113,17 @@ class LlmErrorClassifierTest {
     }
 
     @Test
+    void 출력_토큰_상한에_걸려_잘린_답은_재시도하지_않고_서킷_실패로도_세지_않는다() {
+        // given: 같은 요청을 다시 보내도 또 잘리고, 우리가 정한 상한에 걸린 것이라 OpenAI 장애가 아니다
+        BusinessException truncated = new BusinessException(ErrorCode.AI_RESPONSE_TRUNCATED);
+
+        // when & then
+        assertThat(LlmErrorClassifier.classify(truncated)).isEqualTo(ErrorCode.AI_RESPONSE_TRUNCATED);
+        assertThat(LlmErrorClassifier.isRetryable(truncated)).isFalse();
+        assertThat(LlmErrorClassifier.isCircuitFailure(truncated)).isFalse();
+    }
+
+    @Test
     void 알_수_없는_예외는_AI_RESPONSE_FAILED이고_재시도하지_않는다() {
         // given
         IllegalStateException exception = new IllegalStateException("bug");

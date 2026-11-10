@@ -14,6 +14,8 @@ public enum ErrorCode {
     TIMEOUT_EXCEPTION(HttpStatus.CONFLICT, "COMMON_003", "요청이 처리 중입니다. 잠시 후 다시 시도해 주세요."),
     // 기능별 전용 코드(AI_001, AUTH_004)가 없는 곳에서 Redis 같은 인프라가 일시적으로 안 될 때 쓰는 공통 코드
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "COMMON_004", "일시적으로 요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+    NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON_005", "요청한 경로를 찾을 수 없습니다."),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON_006", "지원하지 않는 요청 방식입니다."),
 
     // Member
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_001", "회원을 찾을 수 없습니다."),

@@ -1,6 +1,4 @@
 package com.server.zelo.common.exception;
-
-
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.monitoring.BusinessMetric;
 import com.server.zelo.common.monitoring.BusinessMetrics;
@@ -13,7 +11,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -126,6 +125,25 @@ public class GlobalExceptionHandler {
         countError(ErrorCode.SERVICE_UNAVAILABLE);
         return ResponseEntity.status(ErrorCode.SERVICE_UNAVAILABLE.getStatus())
                 .body(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE));
+    }
+
+    // 스캐너가 없는 경로(/wp-login.php 등)를 찔러도 서버 오류(500)로 집계되지 않게 404로 응답한다
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException e) {
+        log.info("없는 경로 요청 path={}", e.getResourcePath());
+        countError(ErrorCode.NOT_FOUND);
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
+                .body(ApiResponse.error(ErrorCode.NOT_FOUND));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.info("지원하지 않는 요청 방식 method={}", e.getMethod());
+        countError(ErrorCode.METHOD_NOT_ALLOWED);
+        // 405 응답은 허용된 메서드를 Allow 헤더로 알려야 한다
+        return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
+                .headers(e.getHeaders())
+                .body(ApiResponse.error(ErrorCode.METHOD_NOT_ALLOWED));
     }
 
     /**

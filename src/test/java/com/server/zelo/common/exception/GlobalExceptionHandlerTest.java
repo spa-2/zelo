@@ -1,8 +1,8 @@
 package com.server.zelo.common.exception;
-
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.redisson.client.RedisConnectionException;
 import org.redisson.client.RedisException;
@@ -10,7 +10,9 @@ import org.redisson.client.RedisTimeoutException;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class GlobalExceptionHandlerTest {
@@ -118,6 +120,31 @@ class GlobalExceptionHandlerTest {
 
         // then
         assertThat(errorCount(ErrorCode.SERVICE_UNAVAILABLE)).isEqualTo(1);
+    }
+
+    @Test
+    void 없는_경로_요청은_500이_아니라_404와_COMMON_005를_반환한다() {
+        // when
+        ResponseEntity<ApiResponse<Void>> response = handler.handleNoResource(
+                new NoResourceFoundException(HttpMethod.GET, "/.git/config", ".git/config"));
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().code()).isEqualTo(ErrorCode.NOT_FOUND.getCode());
+        assertThat(errorCount(ErrorCode.NOT_FOUND)).isEqualTo(1);
+    }
+
+    @Test
+    void 지원하지_않는_요청_방식은_405와_COMMON_006을_반환한다() {
+        // when
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleMethodNotSupported(new HttpRequestMethodNotSupportedException("DELETE", List.of("GET", "POST")));
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(response.getHeaders().getAllow()).containsExactlyInAnyOrder(HttpMethod.GET, HttpMethod.POST);
+        assertThat(response.getBody().code()).isEqualTo(ErrorCode.METHOD_NOT_ALLOWED.getCode());
+        assertThat(errorCount(ErrorCode.METHOD_NOT_ALLOWED)).isEqualTo(1);
     }
 
     private double errorCount(ErrorCode code) {

@@ -5,6 +5,7 @@ import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.util.StringUtils;
 
 public record MenuPlanIngredient(
@@ -20,6 +21,11 @@ public record MenuPlanIngredient(
             BaseUnit.ML, 100_000,
             BaseUnit.EA, 60,
             BaseUnit.BUNCH, 10);
+    // #449에서 EA·BUNCH → G로 바꾼 채소. 개수로 세는 습관이 남아 LLM이 "오이 2개"를 2G로 적는다(오이무침 2인분 5회 중 1회, 2026-11-10).
+    // G 상한만으로는 걸리지 않고 견적에서 1팩으로 올림되므로, 이 채소만 그램 최솟값을 둔다. 소금·마늘처럼 몇 그램만 쓰는 재료는 넣지 않는다
+    private static final Set<String> GRAM_VEGETABLES = Set.of(
+            "당근", "브로콜리", "파프리카", "양배추", "양파", "대파", "배추", "쪽파", "오이", "애호박", "단호박");
+    private static final int MIN_VEGETABLE_GRAMS = 10;
 
     public static MenuPlanIngredient of(String name, Integer amount, BaseUnit unit) {
         return new MenuPlanIngredient(name, amount, unit);
@@ -52,6 +58,9 @@ public record MenuPlanIngredient(
         if (expectedUnit != null && expectedUnit != unit) {
             return Optional.of("ingredient.unitMismatch");
         }
+        if (isVegetableCountAsGrams()) {
+            return Optional.of("ingredient.amount");
+        }
         return Optional.empty();
     }
 
@@ -73,6 +82,10 @@ public record MenuPlanIngredient(
         if (amount == null || amount <= 0) {
             return "%s의 amount는 1 이상으로 적어.".formatted(name);
         }
+        if (isVegetableCountAsGrams()) {
+            return "%s의 unit은 G라서 amount는 개수가 아니라 그램이야. 지금 적은 값(%d)이 너무 작아. 개수로 생각했다면 그램으로 바꿔 %d 이상으로 다시 적어."
+                    .formatted(name, amount, MIN_VEGETABLE_GRAMS);
+        }
         int maxAmount = MAX_AMOUNTS.get(unit);
         if (unit == BaseUnit.EA || unit == BaseUnit.BUNCH) {
             String counter = unit == BaseUnit.EA ? "개" : "단";
@@ -80,5 +93,9 @@ public record MenuPlanIngredient(
                     .formatted(name, unit, counter, amount, maxAmount);
         }
         return "%s의 amount는 %s 기준인데 지금 적은 값(%d)이 너무 커. %d 이하로 다시 적어.".formatted(name, unit, amount, maxAmount);
+    }
+
+    private boolean isVegetableCountAsGrams() {
+        return unit == BaseUnit.G && GRAM_VEGETABLES.contains(name) && amount != null && amount < MIN_VEGETABLE_GRAMS;
     }
 }

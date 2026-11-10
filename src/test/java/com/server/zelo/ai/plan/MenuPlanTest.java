@@ -226,6 +226,42 @@ class MenuPlanTest {
         assertInvalid(menuPlan);
     }
 
+    @ParameterizedTest
+    @CsvSource({"오이, 2", "양파, 1", "대파, 9"})
+    void 그램_단위_채소를_10그램_미만으로_적으면_개수를_적은_것으로_보고_실패한다(String name, int amount) {
+        // given: 실측에서 오이무침 2인분의 오이 2개를 2G로 적었다
+        MenuPlan menuPlan = shopping(2, null, List.of(MenuPlanIngredient.of(name, amount, BaseUnit.G)));
+
+        // when & then
+        assertThat(menuPlan.findInvalidField(Map.of(name, BaseUnit.G))).contains("ingredient.amount");
+    }
+
+    @Test
+    void 그램_단위_채소가_10그램이거나_몇_그램만_쓰는_양념이면_통과한다() {
+        // given: 쪽파 10G(고명)는 실측에 나온 정상 값이고, 소금·마늘은 채소 최솟값 대상이 아니다
+        MenuPlan menuPlan = shopping(2, null, List.of(
+                MenuPlanIngredient.of("쪽파", 10, BaseUnit.G),
+                MenuPlanIngredient.of("소금", 3, BaseUnit.G),
+                MenuPlanIngredient.of("마늘", 5, BaseUnit.G)));
+        Map<String, BaseUnit> units = Map.of("쪽파", BaseUnit.G, "소금", BaseUnit.G, "마늘", BaseUnit.G);
+
+        // when & then
+        assertThatCode(() -> menuPlan.validate(units)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 그램_단위_채소에_개수를_적으면_그램으로_바꿔_다시_적으라고_고칠_점을_만든다() {
+        // given
+        MenuPlan plan = shopping(2, null, List.of(MenuPlanIngredient.of("오이", 2, BaseUnit.G)));
+        Map<String, BaseUnit> units = Map.of("오이", BaseUnit.G);
+
+        // when
+        String correction = plan.correction(plan.findInvalidField(units).orElseThrow(), units);
+
+        // then
+        assertThat(correction).contains("오이의 unit은 G라서 amount는 개수가 아니라 그램이야. 지금 적은 값(2)이 너무 작아. 개수로 생각했다면 그램으로 바꿔 10 이상으로 다시 적어.");
+    }
+
     @Test
     void 검증을_통과하면_걸린_칸이_없다() {
         // given

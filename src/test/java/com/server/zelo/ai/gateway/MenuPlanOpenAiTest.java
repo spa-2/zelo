@@ -34,6 +34,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 class MenuPlanOpenAiTest {
 
     private static final int UNIT_REPEATS = 5;
+    private static final int CUCUMBER_REPEATS = 10;
     private static final int MIN_VEGETABLE_GRAMS = 10;
     private static final int MAX_EACH_PER_SERVING = 3;
     // #449에서 EA·BUNCH → G로 바꾼 채소 (ingredients.csv)
@@ -169,6 +170,20 @@ class MenuPlanOpenAiTest {
         // then: 채소가 아예 안 나오면 확인한 게 아니므로 나왔는지도 본다
         assertThat(wrongPlans).isEmpty();
         assertThat(seenVegetables).contains("배추", "쪽파", "오이", "단호박", "브로콜리", "파프리카", "양배추");
+    }
+
+    // 오이무침에서 오이 2개를 2G로 적은 적이 있다(5회 중 1회). 그램 최솟값 검증 → 고칠 점을 붙인 재시도로 고쳐지는지 본다. OpenAI 10회(검증에 걸리면 재시도 1회씩 더)
+    @Test
+    void 개수로_세던_채소를_그램_칸에_개수로_적어도_재시도로_그램이_된다() {
+        // given
+        Set<String> seenVegetables = new HashSet<>();
+
+        // when
+        List<String> wrongPlans = unitConfusions(List.of("오이무침 2인분 재료 준비해 줘"), CUCUMBER_REPEATS, seenVegetables);
+
+        // then
+        assertThat(wrongPlans).isEmpty();
+        assertThat(seenVegetables).contains("오이");
     }
 
     private List<String> unitConfusions(List<String> userTexts, int repeats, Set<String> seenVegetables) {

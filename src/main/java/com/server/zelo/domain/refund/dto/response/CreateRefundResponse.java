@@ -2,7 +2,7 @@ package com.server.zelo.domain.refund.dto.response;
 
 import com.server.zelo.domain.refund.entity.RefundStatus;
 
-// 프론트는 message를 그대로 띄운다. REQUESTED면 포트원 결과를 기다리는 중이라 웹훅으로 마저 반영된다
+// 프론트는 message를 그대로 띄운다. REQUESTED면 웹훅으로 마저 반영된다
 public record CreateRefundResponse(
         Long refundId,
         RefundStatus status,

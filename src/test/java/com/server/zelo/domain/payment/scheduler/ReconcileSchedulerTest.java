@@ -117,4 +117,32 @@ class ReconcileSchedulerTest {
         // then
         then(paymentFacade).should().closeConfirmPending("payment-21");
     }
+
+    @Test
+    void 오래된_결제_전_결제도_포트원에_확인한다() {
+        // given
+        given(paymentService.findReadyPayments(any(), anyLong()))
+                .willReturn(List.of(new PaymentFindTarget(3L, "payment-3")));
+        given(paymentFacade.closeReady("payment-3")).willReturn(PaymentStatus.PAID);
+
+        // when
+        scheduler.reconcile();
+
+        // then
+        then(paymentFacade).should().closeReady("payment-3");
+    }
+
+    @Test
+    void 결제_전_결제_확인_중_포트원이_응답하지_않으면_환불_동기화를_다음_실행으로_미룬다() {
+        // given
+        given(paymentService.findReadyPayments(any(), anyLong()))
+                .willReturn(List.of(new PaymentFindTarget(3L, "payment-3")));
+        willThrow(new BusinessException(ErrorCode.PG_TIMEOUT)).given(paymentFacade).closeReady("payment-3");
+
+        // when
+        scheduler.reconcile();
+
+        // then
+        then(refundService).should(never()).findRequestedRefunds(any(), anyLong());
+    }
 }

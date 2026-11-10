@@ -53,7 +53,7 @@ public record PortOnePayment(
                 response.methodName(), response.failureReason(), cancellations);
     }
 
-    // 환불 요청 뒤에 같은 금액으로 들어온 취소 중 가장 최근 것. 이전 환불의 취소는 요청 시각이 더 빨라 걸러진다
+    // 환불 요청 뒤 같은 금액으로 들어온 가장 최근 취소. 이전 환불의 취소는 요청 시각으로 걸러진다
     public Optional<PortOneCancellation> findCancellation(Long amount, LocalDateTime requestedSince) {
         return cancellations.stream()
                 .filter(cancellation -> amount.equals(cancellation.amount()))

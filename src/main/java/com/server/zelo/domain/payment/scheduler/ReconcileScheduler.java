@@ -20,6 +20,8 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.LongFunction;
 
 // 웹훅이 오지 않아 결과를 모른 채 남은 결제·환불을 포트원에 다시 조회해 맞춘다
 @Slf4j
@@ -31,10 +33,11 @@ import java.util.List;
         matchIfMissing = true
 )
 public class ReconcileScheduler {
-    // 늦게 오는 웹훅을 기다리되, 주문 만료(30분) 전에 정리돼 재결제·취소·만료가 가능하도록 짧게 둔다
+    // 늦은 웹훅을 기다리되 주문 만료(30분) 전에 정리되도록 짧게 둔다
     private static final int STALE_MINUTES = 10;
     private long paymentCursor;
     private long refundCursor;
+    private long readyCursor;
 
     private final RefundFacade refundFacade;
     private final PaymentFacade paymentFacade;
@@ -45,43 +48,66 @@ public class ReconcileScheduler {
     @Scheduled(fixedDelayString = "${zelo.reconciliation.scheduler.fixed-delay:60000}")
     public void reconcile() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(STALE_MINUTES);
-        // 포트원이 응답하지 않으면 환불도 같은 결과라, 다른 스케줄러와 같이 쓰는 스레드를 붙잡지 않도록 환불은 건너뛴다
-        if (reconcilePayments(cutoff)) {
+        // 포트원이 응답하지 않으면 남은 대사도 같은 결과라 건너뛴다
+        if (reconcileConfirmPending(cutoff) && reconcileReady(cutoff)) {
             reconcileRefunds(cutoff);
         }
     }
 
-    // 포트원 타임아웃으로 중간에 멈추면 false를 돌려준다
-    private boolean reconcilePayments(LocalDateTime cutoff) {
+    private boolean reconcileConfirmPending(LocalDateTime cutoff) {
+        PaymentRun run = reconcilePayments("PAYMENT", paymentCursor,
+                cursor -> paymentService.findConfirmPendingPayments(cutoff, cursor), paymentFacade::closeConfirmPending);
+        paymentCursor = run.cursor();
+        return run.completed();
+    }
+
+    // 주문 만료는 READY 결제를 포트원에 묻지 않아서 만료 전에 확인한다
+    private boolean reconcileReady(LocalDateTime cutoff) {
+        PaymentRun run = reconcilePayments("PAYMENT_READY", readyCursor,
+                cursor -> paymentService.findReadyPayments(cutoff, cursor), paymentFacade::closeReady);
+        readyCursor = run.cursor();
+        return run.completed();
+    }
+
+    // 포트원 타임아웃으로 중간에 멈추면 completed가 false다
+    private PaymentRun reconcilePayments(String target, long cursor,
+                                         LongFunction<List<PaymentFindTarget>> finder,
+                                         Function<String, PaymentStatus> closer) {
         long start = System.nanoTime();
-        List<PaymentFindTarget> targets = paymentService.findConfirmPendingPayments(cutoff, paymentCursor);
+        List<PaymentFindTarget> payments = finder.apply(cursor);
         // 끝까지 봤으면 처음부터 다시 본다
-        if (targets.isEmpty() && paymentCursor > 0) {
-            paymentCursor = 0;
-            targets = paymentService.findConfirmPendingPayments(cutoff, paymentCursor);
+        if (payments.isEmpty() && cursor > 0) {
+            cursor = 0;
+            payments = finder.apply(cursor);
         }
         boolean completed = true;
-        for (PaymentFindTarget target : targets) {
+        for (PaymentFindTarget payment : payments) {
             try {
-                PaymentStatus status = paymentFacade.closeConfirmPending(target.portoneId());
-                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", status.name());
+                countResult(target, closer.apply(payment.portoneId()).name());
             } catch (BusinessException e) {
                 if (e.getErrorCode() == ErrorCode.PG_TIMEOUT) {
-                    log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", target.portoneId());
+                    log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 target={} portoneId={}", target, payment.portoneId());
                     completed = false;
                     break;
                 }
-                log.warn("결제 정합성 대사 실패 portoneId={} code={}", target.portoneId(), e.getErrorCode().getCode());
-                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", e.getErrorCode().name());
+                log.warn("결제 정합성 대사 실패 target={} portoneId={} code={}", target, payment.portoneId(), e.getErrorCode().getCode());
+                countResult(target, e.getErrorCode().name());
             } catch (RuntimeException e) {
                 // 한 건의 실패가 나머지 정리를 막지 않도록 함
-                log.error("결제 정합성 대사 실패 portoneId={}", target.portoneId(), e);
-                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT", "result", "ERROR");
+                log.error("결제 정합성 대사 실패 target={} portoneId={}", target, payment.portoneId(), e);
+                countResult(target, "ERROR");
             }
-            paymentCursor = target.paymentId();
+            cursor = payment.paymentId();
         }
-        recordRun("PAYMENT", targets.size(), start);
-        return completed;
+        recordRun(target, payments.size(), start);
+        return new PaymentRun(cursor, completed);
+    }
+
+    private void countResult(String target, String result) {
+        businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", target, "result", result);
+    }
+
+    private record PaymentRun(long cursor, boolean completed) {
     }
 
     private void reconcileRefunds(LocalDateTime cutoff) {

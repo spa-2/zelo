@@ -753,6 +753,68 @@ class PaymentCommandServiceTest {
         then(paymentService).should(never()).fail(any(), any());
     }
 
+    @Test
+    void 결제_전_결제가_포트원에서_결제됐으면_완료로_반영한다() {
+        // given
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        givenPaid();
+        givenOrderedBy();
+
+        // when
+        PaymentStatus status = paymentCommandService.closeReady(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.PAID);
+        then(orderCommandService).should().completePayment(ORDER_ID);
+    }
+
+    @Test
+    void 결제_전_결제가_포트원에서_결제되지_않았고_주문이_결제_대기면_그대로_둔다() {
+        // given
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID))
+                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.READY, AMOUNT, null));
+        givenOrderStatus(OrderStatus.PAYMENT_PENDING);
+
+        // when
+        PaymentStatus status = paymentCommandService.closeReady(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.READY);
+        then(paymentService).should(never()).startConfirm(any());
+        then(paymentService).should(never()).fail(any(), any());
+    }
+
+    @Test
+    void 결제_전_결제의_주문이_닫혔고_포트원에_기록이_없으면_실패로_끝낸다() {
+        // given
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(Payment.of(ORDER_ID, PORTONE_ID, AMOUNT));
+        given(portOneClient.getPayment(PORTONE_ID)).willThrow(new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        givenOrderStatus(OrderStatus.CANCELED);
+
+        // when
+        PaymentStatus status = paymentCommandService.closeReady(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.FAILED);
+        then(paymentService).should().fail(PORTONE_ID, "결제 대기 시간 만료");
+    }
+
+    @Test
+    void 이미_처리된_결제면_포트원을_조회하지_않는다() {
+        // given
+        Payment payment = Payment.of(ORDER_ID, PORTONE_ID, AMOUNT);
+        payment.startConfirm();
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(payment);
+
+        // when
+        PaymentStatus status = paymentCommandService.closeReady(PORTONE_ID);
+
+        // then
+        assertThat(status).isEqualTo(PaymentStatus.CONFIRM_PENDING);
+        then(portOneClient).shouldHaveNoInteractions();
+    }
+
     private Order givenRetryOrder(Long ownerId) {
         Order order = mock(Order.class);
         User user = mock(User.class);

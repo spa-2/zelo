@@ -46,7 +46,7 @@ public class RefundCommandService {
     private static final String CANCEL_KEY_PREFIX = "refund-cancel-";
     private static final String EXTERNAL_CANCEL_REASON = "포트원에서 직접 취소";
 
-    // 포트원 취소는 외부 HTTP 호출이라 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
+    // 포트원 취소는 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
     public CreateRefundResponse createRefund(Long userId, Long orderId, String reason,
                                              Map<Long, Integer> cancelQuantities) {
         RefundTarget target = Objects.requireNonNull(transactionOperations.execute(
@@ -77,7 +77,7 @@ public class RefundCommandService {
             failRefund(orderId, target.refundId());
             return RefundStatus.FAILED;
         }
-        // 취소가 확정되기 전에 완료하면 돈은 그대로인데 주문과 재고만 취소되므로 요청됨으로 둔다
+        // 취소 확정 전에 완료하면 돈은 그대로인데 주문만 취소되므로 요청됨으로 둔다
         if (cancellation != PortOneCancellationStatus.SUCCEEDED) {
             log.warn("포트원 취소 처리 중 refundId={} status={}", target.refundId(), cancellation);
             countResult(RefundStatus.REQUESTED);
@@ -87,7 +87,7 @@ public class RefundCommandService {
         transactionOperations.executeWithoutResult(status -> {
             refundService.complete(target.refundId(), LocalDateTime.now());
             orderCommandService.cancelItems(orderId, target.cancelQuantities());
-            // 남은 상품이 없으면 보낼 것도 없으므로 결제와 배송을 취소하고, 남아 있으면 보류만 풀어 출고되게 한다
+            // 남은 상품이 없으면 결제와 배송을 취소하고, 있으면 보류만 풀어 출고되게 한다
             if (target.cancelsAll()) {
                 paymentService.cancel(target.portoneId(), target.pgAmount());
                 deliveryService.cancelDelivery(orderId);

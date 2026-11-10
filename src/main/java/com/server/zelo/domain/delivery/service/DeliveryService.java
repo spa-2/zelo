@@ -22,13 +22,12 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class DeliveryService {
 
-    // 한 트랜잭션에서 처리할 최대 건수. 밀린 배송은 스케줄러가 이 단위로 반복해서 처리한다
+    // 한 트랜잭션 최대 건수. 밀린 배송은 스케줄러가 이 단위로 반복 처리한다
     public static final int BATCH_SIZE = 100;
 
     private final DeliveryRepository deliveryRepository;
 
-    // 배송지는 결제 완료 시점의 기본 배송지를 복사해 둔다. 이후 사용자가 배송지를 바꾸거나 지워도 이미 접수된 배송은 바뀌지 않는다
-    // 주문할 때 복사해 둔 배송지로 배송을 만든다. 주문 후 사용자가 기본 배송지를 바꾸거나 지워도 주문 때 주소로 배송된다
+    // 주문 때 복사한 배송지로 만들어, 이후 기본 배송지를 바꿔도 주문 때 주소로 배송된다
     public Delivery createDelivery(Long orderId, ShippingAddress address) {
         Delivery delivery = deliveryRepository.save(Delivery.of(orderId, address.getRecipientName(),
                 address.getRecipientPhone(), address.getZipCode(), address.getAddress(), null));
@@ -55,7 +54,7 @@ public class DeliveryService {
         getDelivery(orderId).hold();
     }
 
-    // 부분 환불이 끝났거나 환불이 실패하면 배송은 취소하지 않고 보류만 풀어 원래대로 출고되게 한다
+    // 부분 환불이 끝났거나 실패하면 보류만 풀어 원래대로 출고되게 한다
     public void releaseHold(Long orderId) {
         getDelivery(orderId).release();
     }
@@ -82,8 +81,7 @@ public class DeliveryService {
                 status, before, Limit.of(BATCH_SIZE));
     }
 
-    // 출고 전이면 배송을 취소하고 true, 이미 출고됐으면 바꾸지 않고 false를 돌려준다.
-    // 배송이 아직 없으면 보낼 상품도 없으므로 true다
+    // 출고 전이면 취소하고 true, 출고됐으면 false. 배송이 아직 없으면 보낼 것도 없어 true다
     public boolean cancelDeliveryIfPossible(Long orderId) {
         Optional<Delivery> found = deliveryRepository.findByOrderId(orderId);
         if (found.isEmpty()) {

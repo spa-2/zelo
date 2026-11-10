@@ -35,6 +35,7 @@ public class PaymentCommandService {
     private static final String NO_REASON = "NONE";
     private static final String LATE_PAID_REASON = "실패 처리 후 늦게 승인된 결제";
     private static final String CONFIRM_REASON = "결제 결과를 확인하지 못했습니다";
+    private static final String EXPIRED_REASON = "결제 대기 시간 만료";
 
     private final BusinessMetrics businessMetrics;
     private final OrderService orderService;
@@ -53,7 +54,7 @@ public class PaymentCommandService {
         return confirmPayment(portoneId);
     }
 
-    // 포트원 조회와 환불은 외부 HTTP 호출이라 DB 커넥션을 붙잡지 않도록 트랜잭션 밖에서 하고, 상태 반영만 트랜잭션으로 묶는다
+    // 포트원 호출은 DB 커넥션을 붙잡지 않게 트랜잭션 밖에서 하고, 상태 반영만 트랜잭션으로 묶는다
     public PaymentStatus confirmPayment(String portoneId) {
         Payment payment = transactionOperations.execute(status -> paymentService.startConfirm(portoneId));
         if (payment.isPaid()) {
@@ -67,7 +68,7 @@ public class PaymentCommandService {
         Long orderId = payment.getOrderId();
 
         if (pgPayment.isPaid() && !isPaymentPending(orderId)) {
-            // 주문이 먼저 취소되어 결제를 반영할 수 없으므로, 이미 빠져나간 돈을 돌려주고 결제만 취소로 맞춘다
+            // 주문이 먼저 닫혀 반영할 수 없으니 돈을 돌려주고 결제만 취소로 맞춘다
             log.warn("닫힌 주문의 결제를 환불 portoneId={} orderId={}", portoneId, orderId);
             portOneClient.cancelPayment(portoneId, CLOSED_ORDER_REASON);
             transactionOperations.executeWithoutResult(
@@ -90,7 +91,7 @@ public class PaymentCommandService {
         }
 
         if (pgPayment.isPaid()) {
-            // 이미 돈이 빠져나간 상태라 실패 처리만 하면 고객 돈이 묶이므로 포트원에 환불을 먼저 요청한다
+            // 돈이 이미 빠져나갔으므로 실패 처리 전에 환불부터 요청한다
             log.error("결제 금액 불일치로 환불 portoneId={} orderId={} expected={} actual={}",
                     portoneId, orderId, payment.getAmount(), pgPayment.amount());
             portOneClient.cancelPayment(portoneId, AMOUNT_MISMATCH_REASON);
@@ -107,7 +108,7 @@ public class PaymentCommandService {
             return failPayment(portoneId, orderId, pgPayment.failureReason());
         }
 
-        // 결제창을 닫아도 같은 주문으로 재결제할 수 있도록 결제만 취소하고 주문과 재고 선점은 그대로 둔다
+        // 결제창을 닫아도 재결제할 수 있게 주문과 재고 선점은 그대로 둔다
         if (pgPayment.isCancelled()) {
             transactionOperations.executeWithoutResult(status -> paymentService.cancel(portoneId, pgPayment.amount()));
             createPaymentCard(orderId, PaymentStatus.CANCELED, PaymentCardPayload.USER_CANCELED, null, null);
@@ -116,12 +117,12 @@ public class PaymentCommandService {
             return PaymentStatus.CANCELED;
         }
 
-        // 그 외(결제창 진행 중 등)는 확인 대기로 남겨 두고 웹훅이나 스케줄러가 다시 확인한다
+        // 결제창 진행 중 등은 확인 대기로 두고 웹훅이나 스케줄러가 다시 확인한다
         return PaymentStatus.CONFIRM_PENDING;
 
     }
 
-    // 결제창 없이 서버가 빌링키로 결제하고, 결과는 일반 결제와 같이 포트원 재조회로 반영한다
+    // 빌링키로 결제하고 결과는 일반 결제처럼 포트원 재조회로 반영한다
     public PaymentStatus payWithPaymentMethod(Long userId, String portoneId, Long paymentMethodId) {
         Payment payment = paymentService.getPayment(portoneId);
         Long orderId = payment.getOrderId();
@@ -137,7 +138,7 @@ public class PaymentCommandService {
         try {
             portOneClient.payWithBillingKey(portoneId, paymentMethod.getBillingKey(), order.getOrderName(), payment.getAmount());
         } catch (BusinessException e) {
-            // 거절 응답만으로 실패를 기록하지 않고 포트원 결제 상태로 확인한다. 타임아웃 등은 결제됐을 수 있어 확인 대기로 남긴다
+            // 거절 응답만 믿지 않고 포트원 상태로 확인한다. 타임아웃은 결제됐을 수 있어 확인 대기로 둔다
             if (e.getErrorCode() == ErrorCode.PG_REQUEST_REJECTED) {
                 return confirmRejectedBilling(portoneId, orderId, (String) e.getData());
             }
@@ -149,13 +150,12 @@ public class PaymentCommandService {
         return orderService.getOrderWithItems(orderId).getStatus() == OrderStatus.PAYMENT_PENDING;
     }
 
-    // 결제가 완료된 주문은 주문할 때 저장한 배송지로 배송을 접수한다
+    // 주문할 때 저장한 배송지로 배송을 접수한다
     private void createDelivery(Long orderId) {
         Order order = orderService.getOrderWithItems(orderId);
         deliveryService.createDelivery(orderId, order.getShippingAddress());
     }
 
-    // paidAmount는 실제로 돈이 나간 경우(결제 완료, 환불)에만 넘긴다
     private void createPaymentCard(Long orderId, PaymentStatus paymentStatus, String reason,
                                    Long paidAmount, LocalDateTime paidAt) {
         createPaymentCard(orderId, paymentStatus, reason, paidAmount, paidAt, null);
@@ -186,7 +186,7 @@ public class PaymentCommandService {
                 .map(Payment::getPortoneId);
     }
 
-    // 실패 원인은 다양해서 원인 대신 최신 결제 상태로 다시 결제할 결제를 정한다
+    // 실패 원인 대신 최신 결제 상태로 재결제할 결제를 정한다
     public RetryPaymentResponse retryPayment(Long userId, Long orderId) {
         return transactionOperations.execute(status -> {
             Order order = orderService.getOrderWithItemsForUpdate(orderId);
@@ -214,7 +214,7 @@ public class PaymentCommandService {
         });
     }
 
-    // 실패·결제창 닫음으로 끝난 결제가 포트원에서 늦게 승인되면 재결제와 겹쳐 돈이 두 번 나갈 수 있어 돌려준다
+    // 끝난 결제가 늦게 승인되면 재결제와 겹쳐 두 번 결제될 수 있어 돌려준다
     private PaymentStatus refundIfLatePaid(Payment payment) {
         String portoneId = payment.getPortoneId();
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
@@ -250,6 +250,37 @@ public class PaymentCommandService {
         }
         log.warn("확인 대기가 오래된 결제를 실패 처리 portoneId={}", portoneId);
         return failPayment(portoneId, paymentService.getPayment(portoneId).getOrderId(), CONFIRM_REASON);
+    }
+
+    // 확인 요청과 웹훅이 모두 오지 않은 결제를 포트원에 다시 확인한다
+    public PaymentStatus closeReady(String portoneId) {
+        Payment payment = paymentService.getPayment(portoneId);
+        // 락 대기 중 이미 처리됐을 수 있다
+        if (!payment.isReady()) {
+            return payment.getStatus();
+        }
+        // confirmPayment는 확인 대기로 먼저 바꾸므로 결제됐을 때만 넘긴다
+        if (isPaidInPortOne(portoneId)) {
+            return confirmPayment(portoneId);
+        }
+        // 결제창이 열려 있을 수 있어 주문이 닫힌 뒤에만 정리한다
+        if (isPaymentPending(payment.getOrderId())) {
+            return PaymentStatus.READY;
+        }
+        transactionOperations.executeWithoutResult(status -> paymentService.fail(portoneId, EXPIRED_REASON));
+        return PaymentStatus.FAILED;
+    }
+
+    private boolean isPaidInPortOne(String portoneId) {
+        try {
+            return portOneClient.getPayment(portoneId).isPaid();
+        } catch (BusinessException e) {
+            // 결제창을 열지 않은 결제는 포트원에 기록이 없다
+            if (e.getErrorCode() == ErrorCode.PAYMENT_NOT_FOUND) {
+                return false;
+            }
+            throw e;
+        }
     }
 
     // 재조회가 끊기면 결과를 모르는 상태라 확인 대기로 두고 정합성 대사가 정리한다

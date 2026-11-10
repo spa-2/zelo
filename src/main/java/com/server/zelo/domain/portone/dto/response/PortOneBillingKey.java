@@ -23,7 +23,7 @@ public record PortOneBillingKey(
         return new PortOneBillingKey(billingKey, type, displayName, customerId);
     }
 
-    // 삭제됐거나 카드가 아닌 빌링키는 등록하지 않는다. 계좌 빌링키는 PG 계약이 필요해 지금은 받지 않는다
+    // 삭제됐거나 카드가 아닌 빌링키는 받지 않는다 (계좌는 PG 계약 필요)
     public static PortOneBillingKey from(PortOneBillingKeyResponse response) {
         List<PortOneBillingKeyResponse.Method> methods = response.methods();
         if (!ISSUED.equals(response.status()) || methods == null || methods.isEmpty()) {

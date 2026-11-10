@@ -37,8 +37,8 @@ public class DeliveryScheduler {
         }
     }
 
-    // 한 번에 BATCH_SIZE건씩 끊어서 커밋하고, 꽉 차게 가져왔으면 남은 배송이 있으므로 이어서 처리한다
-    // 한 단계가 실패해도 다른 단계는 진행되게 하고, 실패 전에 커밋한 건수는 그대로 센다
+    // BATCH_SIZE건씩 커밋하고, 꽉 차게 가져왔으면 남은 배송이 있어 이어서 처리한다
+    // 한 단계가 실패해도 다른 단계는 진행하고, 이미 커밋한 건수는 센다
     private int progress(DeliveryStatus target, IntSupplier batch) {
         int total = 0;
         try {
@@ -48,7 +48,7 @@ public class DeliveryScheduler {
                 total += processed;
             } while (processed == DeliveryService.BATCH_SIZE);
         } catch (RuntimeException e) {
-            // 스케줄러 예외는 GlobalExceptionHandler에 닿지 않으므로 여기서 남기고 센다. 남은 배송은 다음 실행에서 다시 처리한다
+            // 스케줄러 예외는 GlobalExceptionHandler에 닿지 않아 여기서 남기고 센다
             log.error("배송 상태 자동 진행 실패 status={}, processed={}", target, total, e);
             businessMetrics.count(BusinessMetric.DELIVERY_SCHEDULER_FAILED, "status", target.name());
         }

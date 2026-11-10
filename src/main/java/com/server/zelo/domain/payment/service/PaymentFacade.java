@@ -16,7 +16,7 @@ public class PaymentFacade {
     private final LockDistributeService lockDistributeService;
     private final PaymentCommandService paymentCommandService;
 
-    // 웹훅 재전송, 결제 완료 확인 요청, 스케줄러가 같은 결제를 동시에 처리하지 않도록 결제 단위로 락을 건다
+    // 웹훅·확인 요청·스케줄러가 같은 결제를 동시에 처리하지 않게 결제 단위로 락을 건다
     public PaymentStatus confirmPayment(String portoneId){
         return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
                 () -> paymentCommandService.confirmPayment(portoneId));
@@ -27,13 +27,13 @@ public class PaymentFacade {
                 () -> paymentCommandService.confirmPayment(userId, portoneId));
     }
 
-    // 결제 확인과 같은 락 키를 써서 빌링키 결제 중에 웹훅·스케줄러가 같은 결제를 처리하지 않게 한다
+    // 빌링키 결제 중에도 웹훅·스케줄러와 겹치지 않게 결제 확인 락을 쓴다
     public PaymentStatus payWithPaymentMethod(Long userId, String portoneId, Long paymentMethodId) {
         return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
                 () -> paymentCommandService.payWithPaymentMethod(userId, portoneId, paymentMethodId));
     }
 
-    // 재결제 연타를 주문 단위로 막고, 확인 대기 결제는 웹훅과 겹치지 않도록 결제 확인 락 안에서 포트원에 다시 조회한 뒤 재결제한다
+    // 재결제 연타는 주문 단위로 막고, 확인 대기 결제는 결제 확인 락 안에서 다시 조회한 뒤 재결제한다
     public RetryPaymentResponse retryPayment(Long userId, Long orderId) {
         return lockDistributeService.execute(LockKey.retryPayment(orderId), () -> {
             paymentCommandService.findConfirmPendingPortoneId(userId, orderId).ifPresent(this::recheckConfirmPending);
@@ -46,7 +46,12 @@ public class PaymentFacade {
                 () -> paymentCommandService.closeConfirmPending(portoneId));
     }
 
-    // 포트원 조회가 실패하면 결과를 여전히 모르는 상태라 PG 오류 대신 확인 대기로 응답한다. 다른 오류는 그대로 둔다
+    public PaymentStatus closeReady(String portoneId) {
+        return lockDistributeService.execute(LockKey.confirmPayment(portoneId),
+                () -> paymentCommandService.closeReady(portoneId));
+    }
+
+    // 다시 조회해도 결과를 모르면 PG 오류 대신 확인 대기로 응답한다
     private void recheckConfirmPending(String portoneId) {
         try {
             confirmPayment(portoneId);

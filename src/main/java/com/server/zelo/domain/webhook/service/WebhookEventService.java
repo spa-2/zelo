@@ -15,7 +15,7 @@ public class WebhookEventService {
 
     private final WebhookEventRepository webhookEventRepository;
 
-    // 포트원이 재전송한 웹훅은 새로 저장하지 않고 기존 이벤트를 돌려줘 처리 여부를 보고 판단하게 한다
+    // 재전송된 웹훅은 새로 저장하지 않고 기존 이벤트를 돌려준다
     public WebhookEvent receive(String webhookId, WebhookRequest request, String payload) {
         return webhookEventRepository.findByWebhookId(webhookId)
                 .orElseGet(() -> webhookEventRepository.save(

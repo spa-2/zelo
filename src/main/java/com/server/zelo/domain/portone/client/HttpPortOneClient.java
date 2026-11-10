@@ -99,7 +99,7 @@ public class HttpPortOneClient implements PortOneClient {
             throw new BusinessException(ErrorCode.PG_REQUEST_FAILED);
         }
     }
-    // 이미 지워졌거나 없는 빌링키는 삭제 목표를 이룬 것이므로 성공으로 본다 (포트원 삭제 후 DB 삭제가 실패해 다시 시도하는 경우)
+    // 이미 없는 빌링키는 삭제 목표를 이룬 것이라 성공으로 본다
     @Override
     public void deleteBillingKey(String billingKey) {
         try {
@@ -148,7 +148,7 @@ public class HttpPortOneClient implements PortOneClient {
             throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
                     ErrorCode.PG_REQUEST_REJECTED.getMessage(), rejectReason(e));
         } catch (RestClientResponseException e) {
-            // 포트원은 PG사가 결제를 거절하면 502(PG_PROVIDER)로 응답한다. 결제되지 않은 게 확인된 거절이라 사유와 함께 거절로 넘긴다
+            // PG사 거절(502 PG_PROVIDER)은 결제되지 않은 게 확인된 거절이라 사유와 함께 넘긴다
             if (e.getStatusCode().value() == 502 && isErrorType(e, PG_PROVIDER)) {
                 log.info("포트원 빌링키 결제 PG 거절 portoneId={}", portoneId);
                 throw new BusinessException(ErrorCode.PG_REQUEST_REJECTED,
@@ -184,7 +184,7 @@ public class HttpPortOneClient implements PortOneClient {
         return PortOneCancellationStatus.from(response.cancellation().status());
     }
 
-    // 전액 취소는 이미 취소된 결제면 목표를 이룬 것이지만, 금액 지정 취소는 이번 금액이 취소된 게 아니므로 실패로 본다
+    // 금액 지정 취소는 이미 취소된 결제여도 이번 금액이 취소된 게 아니라 실패로 본다
     private PortOneCancelResponse cancel(String portoneId, String idempotencyKey, PortOneCancelRequest request,
                                          boolean alreadyCancelledIsSuccess) {
         try {
@@ -270,7 +270,7 @@ public class HttpPortOneClient implements PortOneClient {
         }
     }
 
-    // 카드 거절 사유를 결제 실패 사유로 남기려고 꺼낸다. PG 문구가 없거나 비어 있으면 포트원 사유를, 본문을 읽을 수 없으면 null을 쓴다
+    // 카드 거절 사유를 꺼낸다. PG 문구가 없으면 포트원 사유를, 본문을 못 읽으면 null을 쓴다
     private String rejectReason(RestClientResponseException e) {
         try {
             PortOneErrorResponse error = e.getResponseBodyAs(PortOneErrorResponse.class);

@@ -21,7 +21,7 @@ public class PaymentController {
 
     private final PaymentFacade paymentFacade;
 
-    // 결제창이 닫힌 뒤 프론트가 호출한다. 프론트가 받은 결제 결과는 믿지 않고 서버가 포트원에 다시 조회해 반영한다
+    // 프론트가 받은 결제 결과는 믿지 않고 포트원에 다시 조회해 반영한다
     @PostMapping("/{portoneId}/confirm")
     public ResponseEntity<ApiResponse<PaymentConfirmResponse>> confirmPayment(@Auth AuthUser authUser,
                                                                               @PathVariable String portoneId) {
@@ -29,7 +29,7 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.ok(PaymentConfirmResponse.of(portoneId, status)));
     }
 
-    // 등록한 카드로 결제창 없이 결제한다. 응답은 결제 확인과 같은 형식이라 프론트가 같은 방식으로 처리한다
+    // 등록한 카드로 결제창 없이 결제한다. 응답은 결제 확인과 같은 형식이다
     @PostMapping("/{portoneId}/payment-method")
     public ResponseEntity<ApiResponse<PaymentConfirmResponse>> payWithPaymentMethod(
             @Auth AuthUser authUser,
@@ -39,7 +39,7 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.ok(PaymentConfirmResponse.of(portoneId, status)));
     }
 
-    // 결제가 끝나지 않은 주문을 다시 결제한다. 결제할 결제 ID를 돌려주고, 이미 결제됐으면 PAID를 돌려준다
+    // 결제할 결제 ID를 돌려주고, 이미 결제됐으면 PAID를 돌려준다
     @PostMapping
     public ResponseEntity<ApiResponse<RetryPaymentResponse>> retryPayment(@Auth AuthUser authUser,
                                                                           @Valid @RequestBody RetryPaymentRequest request) {

@@ -19,8 +19,17 @@ permissions:
   contents: read
 
 jobs:
+  # 같은 커밋의 테스트가 통과해야 배포한다 (이미지 빌드는 테스트를 건너뛰므로 여기서 확인한다)
+  ci:
+    name: CI
+    # deploy와 같은 조건: 배포가 꺼져 있으면 테스트도 돌리지 않는다
+    if: ${{ (github.ref_name == 'main' && vars.DEPLOY_ENABLED_PROD == 'true') || (github.ref_name != 'main' && vars.DEPLOY_ENABLED == 'true') }}
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+
   deploy:
     name: Build image and deploy
+    needs: ci
     # main은 운영(prod), dev는 부하 테스트 환경(dev)에 배포한다. 환경별 저장소 변수가 true일 때만 배포한다 (인프라를 내려 둔 동안 실패 알림이 쌓이지 않게)
     #   dev: DEPLOY_ENABLED, AWS_DEPLOY_ROLE_ARN / main: DEPLOY_ENABLED_PROD, AWS_DEPLOY_ROLE_ARN_PROD
     if: ${{ (github.ref_name == 'main' && vars.DEPLOY_ENABLED_PROD == 'true') || (github.ref_name != 'main' && vars.DEPLOY_ENABLED == 'true') }}

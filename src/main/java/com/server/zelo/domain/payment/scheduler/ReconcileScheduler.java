@@ -31,10 +31,11 @@ import java.util.List;
         matchIfMissing = true
 )
 public class ReconcileScheduler {
-    // 늦게 오는 웹훅을 기다리되, 주문 만료(30분) 전에 정리돼 재결제·취소·만료가 가능하도록 짧게 둔다
+    // 늦은 웹훅을 기다리되 주문 만료(30분) 전에 정리되도록 짧게 둔다
     private static final int STALE_MINUTES = 10;
     private long paymentCursor;
     private long refundCursor;
+    private long readyCursor;
 
     private final RefundFacade refundFacade;
     private final PaymentFacade paymentFacade;
@@ -45,8 +46,8 @@ public class ReconcileScheduler {
     @Scheduled(fixedDelayString = "${zelo.reconciliation.scheduler.fixed-delay:60000}")
     public void reconcile() {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(STALE_MINUTES);
-        // 포트원이 응답하지 않으면 환불도 같은 결과라, 다른 스케줄러와 같이 쓰는 스레드를 붙잡지 않도록 환불은 건너뛴다
-        if (reconcilePayments(cutoff)) {
+        // 포트원이 응답하지 않으면 남은 대사도 같은 결과라 건너뛴다
+        if (reconcilePayments(cutoff) && reconcileReadyPayments(cutoff)) {
             reconcileRefunds(cutoff);
         }
     }
@@ -81,6 +82,37 @@ public class ReconcileScheduler {
             paymentCursor = target.paymentId();
         }
         recordRun("PAYMENT", targets.size(), start);
+        return completed;
+    }
+
+    // 주문 만료는 READY 결제를 포트원에 묻지 않아서 만료 전에 확인한다
+    private boolean reconcileReadyPayments(LocalDateTime cutoff) {
+        long start = System.nanoTime();
+        List<PaymentFindTarget> targets = paymentService.findReadyPayments(cutoff, readyCursor);
+        if (targets.isEmpty() && readyCursor > 0) {
+            readyCursor = 0;
+            targets = paymentService.findReadyPayments(cutoff, readyCursor);
+        }
+        boolean completed = true;
+        for (PaymentFindTarget target : targets) {
+            try {
+                PaymentStatus status = paymentFacade.closeReady(target.portoneId());
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT_READY", "result", status.name());
+            } catch (BusinessException e) {
+                if (e.getErrorCode() == ErrorCode.PG_TIMEOUT) {
+                    log.warn("포트원 응답 지연으로 정합성 대사를 다음 실행으로 미룸 portoneId={}", target.portoneId());
+                    completed = false;
+                    break;
+                }
+                log.warn("결제 전 결제 대사 실패 portoneId={} code={}", target.portoneId(), e.getErrorCode().getCode());
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT_READY", "result", e.getErrorCode().name());
+            } catch (RuntimeException e) {
+                log.error("결제 전 결제 대사 실패 portoneId={}", target.portoneId(), e);
+                businessMetrics.count(BusinessMetric.RECONCILE_RESULT, "target", "PAYMENT_READY", "result", "ERROR");
+            }
+            readyCursor = target.paymentId();
+        }
+        recordRun("PAYMENT_READY", targets.size(), start);
         return completed;
     }
 

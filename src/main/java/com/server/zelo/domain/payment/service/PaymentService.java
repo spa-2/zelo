@@ -23,7 +23,7 @@ public class PaymentService {
     private static final int STALE_CONFIRM_BATCH_SIZE = 20;
     private final PaymentRepository paymentRepository;
 
-    // 포트원 결제창을 띄우기 전에 서버가 결제 ID를 발급해야 웹훅이 와도 어느 주문의 결제인지 찾을 수 있다
+    // 웹훅이 와도 주문을 찾을 수 있게 결제창 전에 서버가 결제 ID를 발급한다
     public Payment createPayment(Long orderId, Long amount) {
         String portoneId = PORTONE_ID_PREFIX + UUID.randomUUID().toString().replace("-", "");
         return paymentRepository.save(Payment.of(orderId, portoneId, amount));
@@ -48,7 +48,16 @@ public class PaymentService {
                 .toList();
     }
 
-    // 이전 확인이 중간에 끊겨 이미 확인 대기인 결제는 상태를 바꾸지 않고 그대로 다시 확인한다
+    @Transactional(readOnly = true)
+    public List<PaymentFindTarget> findReadyPayments(LocalDateTime cutoff, Long afterId) {
+        return paymentRepository.findByStatusAndUpdatedAtBeforeAndIdGreaterThanOrderByIdAsc(
+                        PaymentStatus.READY, cutoff, afterId, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
+                .stream()
+                .map(PaymentFindTarget::from)
+                .toList();
+    }
+
+    // 이전 확인이 끊겨 확인 대기인 결제는 그대로 다시 확인한다
     public Payment startConfirm(String portoneId) {
         Payment payment = getPayment(portoneId);
         if (payment.isReady()) {

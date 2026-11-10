@@ -1,10 +1,13 @@
 package com.server.zelo.domain.product.controller;
 
 import com.server.zelo.common.api.ApiResponse;
+import com.server.zelo.domain.product.dto.request.AddStockRequest;
 import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.UpdateProductRequest;
+import com.server.zelo.domain.product.dto.response.AddStockResponse;
 import com.server.zelo.domain.product.dto.response.CreateProductResponse;
 import com.server.zelo.domain.product.dto.response.UpdateProductResponse;
+import com.server.zelo.domain.product.service.ProductCommandService;
 import com.server.zelo.domain.product.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,12 +27,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminProductController {
 
     private final ProductService productService;
+    private final ProductCommandService productCommandService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<CreateProductResponse>> createProduct(
             @Valid @RequestBody CreateProductRequest request) {
-        CreateProductResponse response = CreateProductResponse.from(productService.createProduct(request));
+        CreateProductResponse response = productCommandService.createProduct(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
+    // 입고. 보낸 수량만큼 재고를 늘림 (덮어쓰지 않음)
+    @PostMapping("/{productCode}/stock")
+    public ResponseEntity<ApiResponse<AddStockResponse>> addStock(
+            @PathVariable String productCode, @Valid @RequestBody AddStockRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(productCommandService.addStock(productCode, request.quantity())));
     }
 
     @PatchMapping("/{productCode}")

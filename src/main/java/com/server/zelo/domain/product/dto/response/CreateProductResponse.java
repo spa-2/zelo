@@ -12,12 +12,13 @@ public record CreateProductResponse(
         Integer contentAmount,
         String unitLabel,
         String categoryName,
-        ProductStatus status
+        ProductStatus status,
+        Integer stockQuantity
 ) {
 
-    public static CreateProductResponse from(Product product) {
+    public static CreateProductResponse of(Product product, Integer stockQuantity) {
         return new CreateProductResponse(product.getProductCode(), product.getBrand(), product.getName(),
                 product.getDescription(), product.getPrice(), product.getContentAmount(), product.getUnitLabel(),
-                product.getCategory().getName(), product.getStatus());
+                product.getCategory().getName(), product.getStatus(), stockQuantity);
     }
 }

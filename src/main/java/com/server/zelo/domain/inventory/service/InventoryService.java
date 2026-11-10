@@ -4,6 +4,7 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.repository.InventoryRepository;
+import com.server.zelo.domain.product.entity.Product;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,23 @@ public class InventoryService {
     public void restore(Long productId, Integer requestedQuantity) {
         Inventory inventory = findInventory(productId);
         inventory.restore(requestedQuantity);
+    }
+
+    // ** 상품 등록 때 재고 행 생성 **
+    public Inventory create(Product product, Integer stockQuantity) {
+        return inventoryRepository.save(Inventory.of(product, stockQuantity));
+    }
+
+    // ** 관리자 입고 **
+    // 재고 행 없이 등록된 상품(재고를 같이 만들기 전에 등록한 상품)은 입고 수량으로 새로 만든다
+    public Inventory addStock(Product product, Integer quantity) {
+        return inventoryRepository.findInventoryByProduct_Id(product.getId())
+                .map(inventory -> {
+                    // 입고도 실재고·가용을 같이 늘려서 복원과 계산이 같음
+                    inventory.restore(quantity);
+                    return inventory;
+                })
+                .orElseGet(() -> create(product, quantity));
     }
 
     // 상품별 가용수량 모두 조회

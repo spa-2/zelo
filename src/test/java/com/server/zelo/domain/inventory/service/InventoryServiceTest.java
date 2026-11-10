@@ -19,7 +19,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class InventoryServiceTest {
@@ -133,6 +136,38 @@ class InventoryServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_STOCK));
         assertQuantities(inventory, Integer.MAX_VALUE, 0, Integer.MAX_VALUE);
+    }
+
+    @Test
+    void 입고하면_실재고와_가용_수량을_늘리고_선점은_유지한다() {
+        // given
+        Inventory inventory = Inventory.of(product, 10);
+        inventory.reserve(4);
+        given(product.getId()).willReturn(7L);
+        given(inventoryRepository.findInventoryByProduct_Id(7L)).willReturn(Optional.of(inventory));
+
+        // when
+        Inventory result = inventoryService.addStock(product, 5);
+
+        // then
+        assertThat(result).isSameAs(inventory);
+        assertQuantities(inventory, 15, 4, 11);
+        then(inventoryRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 재고_행이_없는_상품에_입고하면_입고_수량으로_재고_행을_만든다() {
+        // given
+        given(product.getId()).willReturn(7L);
+        given(inventoryRepository.findInventoryByProduct_Id(7L)).willReturn(Optional.empty());
+        given(inventoryRepository.save(any(Inventory.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        Inventory result = inventoryService.addStock(product, 5);
+
+        // then
+        assertThat(result.getProduct()).isSameAs(product);
+        assertQuantities(result, 5, 0, 5);
     }
 
     private void execute(String operation, Long productId, Integer quantity) {

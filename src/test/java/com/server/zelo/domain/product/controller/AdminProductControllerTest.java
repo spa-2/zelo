@@ -13,11 +13,15 @@ import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.common.exception.ErrorCode;
 import com.server.zelo.common.exception.GlobalExceptionHandler;
 import com.server.zelo.common.monitoring.BusinessMetrics;
+import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.product.dto.request.UpdateProductRequest;
+import com.server.zelo.domain.product.dto.response.AddStockResponse;
+import com.server.zelo.domain.product.dto.response.CreateProductResponse;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Category;
 import com.server.zelo.domain.product.entity.Ingredient;
 import com.server.zelo.domain.product.entity.Product;
+import com.server.zelo.domain.product.service.ProductCommandService;
 import com.server.zelo.domain.product.service.ProductService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +42,9 @@ class AdminProductControllerTest {
     @Mock
     private ProductService productService;
 
+    @Mock
+    private ProductCommandService productCommandService;
+
     @InjectMocks
     private AdminProductController adminProductController;
 
@@ -55,33 +62,62 @@ class AdminProductControllerTest {
     @Test
     void 상품을_등록하면_201을_반환한다() throws Exception {
         // given
-        given(productService.createProduct(any())).willReturn(
-                Product.of("P-NEW", kimchi, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg"));
+        given(productCommandService.createProduct(any())).willReturn(CreateProductResponse.of(
+                Product.of("P-NEW", kimchi, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg"), 10));
 
         // when & then
         mockMvc.perform(post("/api/admin/products")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"productCode":"P-NEW","ingredientId":3,"brand":"브랜드 A","name":"백김치 1kg",
-                                "price":8900,"contentAmount":1000,"unitLabel":"1kg"}"""))
+                                "price":8900,"contentAmount":1000,"unitLabel":"1kg","stockQuantity":10}"""))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.productCode").value("P-NEW"))
                 .andExpect(jsonPath("$.data.categoryName").value("김치·젓갈"))
-                .andExpect(jsonPath("$.data.status").value("ON_SALE"));
+                .andExpect(jsonPath("$.data.status").value("ON_SALE"))
+                .andExpect(jsonPath("$.data.stockQuantity").value(10));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "{\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}",
-            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":-1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}",
-            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":0,\"unitLabel\":\"1kg\"}",
-            "{\"productCode\":\"A/B\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}"
+            "{\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\",\"stockQuantity\":1}",
+            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":-1,\"contentAmount\":1,\"unitLabel\":\"1kg\",\"stockQuantity\":1}",
+            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":0,\"unitLabel\":\"1kg\",\"stockQuantity\":1}",
+            "{\"productCode\":\"A/B\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\",\"stockQuantity\":1}",
+            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\"}",
+            "{\"productCode\":\"P\",\"ingredientId\":3,\"brand\":\"A\",\"name\":\"김치\",\"price\":1,\"contentAmount\":1,\"unitLabel\":\"1kg\",\"stockQuantity\":-1}"
     })
     void 등록_요청이_잘못되면_400을_반환한다(String body) throws Exception {
         // when & then
         mockMvc.perform(post("/api/admin/products").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
-        verifyNoInteractions(productService);
+        verifyNoInteractions(productService, productCommandService);
+    }
+
+    @Test
+    void 입고하면_늘어난_재고를_돌려준다() throws Exception {
+        // given
+        Inventory inventory = Inventory.of(Product.of("P-1", kimchi, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg"), 15);
+        inventory.reserve(5);
+        given(productCommandService.addStock("P-1", 10)).willReturn(AddStockResponse.of("P-1", inventory));
+
+        // when & then
+        mockMvc.perform(post("/api/admin/products/P-1/stock")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":10}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stockQuantity").value(15))
+                .andExpect(jsonPath("$.data.reservedQuantity").value(5))
+                .andExpect(jsonPath("$.data.availableQuantity").value(10));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"quantity\":0}", "{\"quantity\":-3}"})
+    void 입고_수량이_1보다_작으면_400을_반환한다(String body) throws Exception {
+        // when & then
+        mockMvc.perform(post("/api/admin/products/P-1/stock").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(productCommandService);
     }
 
     @Test

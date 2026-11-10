@@ -173,6 +173,7 @@ resource "aws_instance" "monitoring" {
     alert_webhook_parameter = local.alert_webhook_parameter
     dashboard_json          = local.overview_dashboard_json
     k6_dashboard_json       = file("${path.module}/../monitoring/grafana/zelo-k6.json")
+    ai_dashboard_json       = file("${path.module}/../monitoring/grafana/zelo-ai.json")
     # 부하기가 있을 때만 밖으로 열고 k6 지표를 받는다
     prometheus_listen_address = var.loadgen_enabled ? "0.0.0.0:9090" : "127.0.0.1:9090"
     remote_write_enabled      = var.loadgen_enabled

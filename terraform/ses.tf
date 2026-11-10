@@ -15,30 +15,36 @@ locals {
 
 # 이미 Route53에 만들어 둔 호스팅 존을 읽는다 (새로 만들지 않는다)
 data "aws_route53_zone" "mail" {
+  count = var.ses_enabled ? 1 : 0
+
   name         = var.mail_domain
   private_zone = false
 }
 
 # SES에 도메인을 등록한다. 등록하면 DKIM(서명) 토큰 3개가 발급된다
 resource "aws_sesv2_email_identity" "mail" {
+  count = var.ses_enabled ? 1 : 0
+
   email_identity = var.mail_domain
 }
 
 # DKIM 검증용 CNAME 3개. SES가 이 레코드를 DNS에서 확인하면 도메인이 Verified가 된다(보통 몇 분)
 resource "aws_route53_record" "ses_dkim" {
-  count = 3
+  count = var.ses_enabled ? 3 : 0
 
-  zone_id = data.aws_route53_zone.mail.zone_id
-  name    = "${aws_sesv2_email_identity.mail.dkim_signing_attributes[0].tokens[count.index]}._domainkey.${var.mail_domain}"
+  zone_id = data.aws_route53_zone.mail[0].zone_id
+  name    = "${aws_sesv2_email_identity.mail[0].dkim_signing_attributes[0].tokens[count.index]}._domainkey.${var.mail_domain}"
   type    = "CNAME"
   ttl     = 600
-  records = ["${aws_sesv2_email_identity.mail.dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"]
+  records = ["${aws_sesv2_email_identity.mail[0].dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"]
 }
 
 # DMARC: p=none은 "검증에 실패해도 막지 말고 그대로 전달"이라서 일단 영향 없이 시작한다.
 # 발송이 안정되면 quarantine(스팸함), reject(거부)로 강화한다
 resource "aws_route53_record" "dmarc" {
-  zone_id = data.aws_route53_zone.mail.zone_id
+  count = var.ses_enabled ? 1 : 0
+
+  zone_id = data.aws_route53_zone.mail[0].zone_id
   name    = "_dmarc.${var.mail_domain}"
   type    = "TXT"
   ttl     = 600
@@ -48,7 +54,7 @@ resource "aws_route53_record" "dmarc" {
 # 샌드박스 동안 메일을 받을 수 있는 주소(내 메일 등). 등록하면 해당 주소로 인증 메일이 가고, 받은 링크를 눌러야 인증된다.
 # 프로덕션 액세스가 승인되면 필요 없다. 값은 terraform.tfvars에 넣는다(커밋되지 않는다)
 resource "aws_sesv2_email_identity" "sandbox_recipient" {
-  for_each = toset(var.mail_sandbox_recipients)
+  for_each = var.ses_enabled ? toset(var.mail_sandbox_recipients) : toset([])
 
   email_identity = each.value
 }

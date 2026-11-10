@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - dev
+      - main
     paths-ignore:
       - 'terraform/**'
       - '**.md'
@@ -10,7 +11,7 @@ on:
 # 배포가 겹치면 진행 중인 배포는 끝까지 두고, 기다리는 배포는 가장 최근 하나만 남긴다
 # (cancel-in-progress를 켜면 서버 교체가 중간에 끊겨 태그와 서버 상태가 어긋날 수 있다)
 concurrency:
-  group: deploy
+  group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -20,15 +21,17 @@ permissions:
 jobs:
   deploy:
     name: Build image and deploy
-    # 저장소 변수 DEPLOY_ENABLED가 true일 때만 배포한다 (인프라를 내려 둔 동안 실패 알림이 쌓이지 않게)
-    if: vars.DEPLOY_ENABLED == 'true'
+    # main은 운영(prod), dev는 부하 테스트 환경(dev)에 배포한다. 환경별 저장소 변수가 true일 때만 배포한다 (인프라를 내려 둔 동안 실패 알림이 쌓이지 않게)
+    #   dev: DEPLOY_ENABLED, AWS_DEPLOY_ROLE_ARN / main: DEPLOY_ENABLED_PROD, AWS_DEPLOY_ROLE_ARN_PROD
+    if: ${{ (github.ref_name == 'main' && vars.DEPLOY_ENABLED_PROD == 'true') || (github.ref_name != 'main' && vars.DEPLOY_ENABLED == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       AWS_REGION: ap-northeast-2
       ECR_REPOSITORY: zelo
-      ASG_NAME: zelo-dev-app-asg
-      IMAGE_TAG_PARAMETER: /zelo/dev/deploy/image_tag
+      # 이미지 저장소(ECR)는 두 환경이 공유하고, 환경마다 이미지 태그 파라미터와 서버 그룹이 따로 있다
+      ASG_NAME: zelo-${{ github.ref_name == 'main' && 'prod' || 'dev' }}-app-asg
+      IMAGE_TAG_PARAMETER: /zelo/${{ github.ref_name == 'main' && 'prod' || 'dev' }}/deploy/image_tag
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -36,7 +39,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ github.ref_name == 'main' && vars.AWS_DEPLOY_ROLE_ARN_PROD || vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR

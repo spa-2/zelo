@@ -6,6 +6,8 @@
 # 올리는 권한은 아래 frontend_deploy 역할(OIDC)만 갖는다. 사용법은 README의 "프론트 배포" 참고.
 
 data "aws_route53_zone" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   name         = var.frontend_zone_name
   private_zone = false
 }
@@ -14,12 +16,16 @@ data "aws_route53_zone" "frontend" {
 # 버킷은 공개하지 않고 CloudFront(OAC)만 읽게 한다. destroy할 때 파일이 있어도 지워지도록 force_destroy를 켠다
 # (화면 파일은 프론트 저장소에서 다시 올리면 되는 복원 가능한 데이터다).
 resource "aws_s3_bucket" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   bucket        = "${local.name}-frontend-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
-  bucket                  = aws_s3_bucket.frontend.id
+  count = var.frontend_enabled ? 1 : 0
+
+  bucket                  = aws_s3_bucket.frontend[0].id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -27,6 +33,8 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   name                              = "${local.name}-frontend"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -34,9 +42,11 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
 }
 
 data "aws_iam_policy_document" "frontend_bucket" {
+  count = var.frontend_enabled ? 1 : 0
+
   statement {
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.frontend.arn}/*"]
+    resources = ["${aws_s3_bucket.frontend[0].arn}/*"]
 
     principals {
       type        = "Service"
@@ -47,20 +57,24 @@ data "aws_iam_policy_document" "frontend_bucket" {
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.frontend.arn]
+      values   = [aws_cloudfront_distribution.frontend[0].arn]
     }
   }
 }
 
 resource "aws_s3_bucket_policy" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
-  policy = data.aws_iam_policy_document.frontend_bucket.json
+  count = var.frontend_enabled ? 1 : 0
 
-  depends_on = [aws_s3_bucket_public_access_block.frontend]
+  bucket = aws_s3_bucket.frontend[0].id
+  policy = data.aws_iam_policy_document.frontend_bucket[0].json
+
+  depends_on = [aws_s3_bucket_public_access_block.frontend[0]]
 }
 
 # ───────── HTTPS 인증서 (CloudFront용은 us-east-1에 있어야 한다) ─────────
 resource "aws_acm_certificate" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   provider          = aws.us_east_1
   domain_name       = var.frontend_domain
   validation_method = "DNS"
@@ -71,15 +85,15 @@ resource "aws_acm_certificate" "frontend" {
 }
 
 resource "aws_route53_record" "frontend_cert_validation" {
-  for_each = {
-    for option in aws_acm_certificate.frontend.domain_validation_options : option.domain_name => {
+  for_each = var.frontend_enabled ? {
+    for option in aws_acm_certificate.frontend[0].domain_validation_options : option.domain_name => {
       name   = option.resource_record_name
       type   = option.resource_record_type
       record = option.resource_record_value
     }
-  }
+  } : {}
 
-  zone_id         = data.aws_route53_zone.frontend.zone_id
+  zone_id         = data.aws_route53_zone.frontend[0].zone_id
   name            = each.value.name
   type            = each.value.type
   records         = [each.value.record]
@@ -88,8 +102,10 @@ resource "aws_route53_record" "frontend_cert_validation" {
 }
 
 resource "aws_acm_certificate_validation" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.frontend.arn
+  certificate_arn         = aws_acm_certificate.frontend[0].arn
   validation_record_fqdns = [for record in aws_route53_record.frontend_cert_validation : record.fqdn]
 }
 
@@ -112,6 +128,8 @@ data "aws_cloudfront_origin_request_policy" "all_viewer" {
 # /api/* 의 실제 403, 404 응답까지 index.html(200)로 덮어써서 API 오류가 사라지므로 쓰지 않는다.
 # 이 함수는 기본 경로(S3)에만 붙고 /api/* 에는 붙지 않는다.
 resource "aws_cloudfront_function" "spa_fallback" {
+  count = var.frontend_enabled ? 1 : 0
+
   name    = "${local.name}-spa-fallback"
   runtime = "cloudfront-js-2.0"
   publish = true
@@ -128,6 +146,8 @@ resource "aws_cloudfront_function" "spa_fallback" {
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
+  count = var.frontend_enabled ? 1 : 0
+
   enabled             = true
   is_ipv6_enabled     = true
   http_version        = "http2and3"
@@ -139,8 +159,8 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   origin {
     origin_id                = "s3"
-    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+    domain_name              = aws_s3_bucket.frontend[0].bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend[0].id
   }
 
   # CloudFront → ALB 구간은 HTTP다 (AWS가 인터넷으로 보내는 구간이라 임시 구성이다).
@@ -170,7 +190,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.spa_fallback.arn
+      function_arn = aws_cloudfront_function.spa_fallback[0].arn
     }
   }
 
@@ -193,7 +213,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate_validation.frontend.certificate_arn
+    acm_certificate_arn      = aws_acm_certificate_validation.frontend[0].certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -201,25 +221,29 @@ resource "aws_cloudfront_distribution" "frontend" {
 
 # 도메인 → CloudFront (IPv4, IPv6)
 resource "aws_route53_record" "frontend_a" {
-  zone_id = data.aws_route53_zone.frontend.zone_id
+  count = var.frontend_enabled ? 1 : 0
+
+  zone_id = data.aws_route53_zone.frontend[0].zone_id
   name    = var.frontend_domain
   type    = "A"
 
   alias {
-    name                   = aws_cloudfront_distribution.frontend.domain_name
-    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    name                   = aws_cloudfront_distribution.frontend[0].domain_name
+    zone_id                = aws_cloudfront_distribution.frontend[0].hosted_zone_id
     evaluate_target_health = false
   }
 }
 
 resource "aws_route53_record" "frontend_aaaa" {
-  zone_id = data.aws_route53_zone.frontend.zone_id
+  count = var.frontend_enabled ? 1 : 0
+
+  zone_id = data.aws_route53_zone.frontend[0].zone_id
   name    = var.frontend_domain
   type    = "AAAA"
 
   alias {
-    name                   = aws_cloudfront_distribution.frontend.domain_name
-    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    name                   = aws_cloudfront_distribution.frontend[0].domain_name
+    zone_id                = aws_cloudfront_distribution.frontend[0].hosted_zone_id
     evaluate_target_health = false
   }
 }
@@ -227,6 +251,8 @@ resource "aws_route53_record" "frontend_aaaa" {
 # ───────── 프론트 저장소(zeloFront)의 배포 권한 (OIDC, 저장된 액세스 키 없음) ─────────
 # 백엔드 배포 역할(github_oidc.tf)과 같은 방식이고, 저장소와 브랜치가 다르므로 역할을 따로 둔다.
 data "aws_iam_policy_document" "frontend_deploy_assume" {
+  count = var.frontend_enabled ? 1 : 0
+
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
@@ -251,30 +277,36 @@ data "aws_iam_policy_document" "frontend_deploy_assume" {
 }
 
 resource "aws_iam_role" "frontend_deploy" {
+  count = var.frontend_enabled ? 1 : 0
+
   name               = "${local.name}-frontend-deploy"
-  assume_role_policy = data.aws_iam_policy_document.frontend_deploy_assume.json
+  assume_role_policy = data.aws_iam_policy_document.frontend_deploy_assume[0].json
 }
 
 # 화면 버킷에 올리고 지우는 권한과 캐시 무효화 권한만 준다
 data "aws_iam_policy_document" "frontend_deploy" {
+  count = var.frontend_enabled ? 1 : 0
+
   statement {
     actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.frontend.arn]
+    resources = [aws_s3_bucket.frontend[0].arn]
   }
 
   statement {
     actions   = ["s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.frontend.arn}/*"]
+    resources = ["${aws_s3_bucket.frontend[0].arn}/*"]
   }
 
   statement {
     actions   = ["cloudfront:CreateInvalidation"]
-    resources = [aws_cloudfront_distribution.frontend.arn]
+    resources = [aws_cloudfront_distribution.frontend[0].arn]
   }
 }
 
 resource "aws_iam_role_policy" "frontend_deploy" {
+  count = var.frontend_enabled ? 1 : 0
+
   name   = "frontend-deploy"
-  role   = aws_iam_role.frontend_deploy.id
-  policy = data.aws_iam_policy_document.frontend_deploy.json
+  role   = aws_iam_role.frontend_deploy[0].id
+  policy = data.aws_iam_policy_document.frontend_deploy[0].json
 }

@@ -55,7 +55,7 @@ data "aws_iam_policy_document" "github_deploy" {
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
     ]
-    resources = [aws_ecr_repository.app.arn]
+    resources = [local.ecr_repository_arn]
   }
 
   # 배포할 태그를 담은 파라미터 하나만 읽고 쓴다

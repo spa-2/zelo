@@ -5,7 +5,7 @@ output "alb_dns_name" {
 }
 
 output "ecr_repository_url" {
-  value = aws_ecr_repository.app.repository_url
+  value = local.ecr_repository_url
 }
 
 output "bastion_public_ip" {
@@ -17,7 +17,7 @@ output "rds_endpoint" {
 }
 
 output "redis_private_ip" {
-  value = local.redis_private_ip
+  value = local.redis_host
 }
 
 output "ssm_prefix" {
@@ -63,20 +63,25 @@ output "readonly_password" {
 }
 
 output "frontend_url" {
-  value = "https://${var.frontend_domain}"
+  value = var.frontend_enabled ? "https://${var.frontend_domain}" : null
 }
 
 output "frontend_bucket" {
   description = "프론트 저장소의 Actions가 화면 파일을 올리는 S3 버킷"
-  value       = aws_s3_bucket.frontend.bucket
+  value       = var.frontend_enabled ? aws_s3_bucket.frontend[0].bucket : null
 }
 
 output "frontend_distribution_id" {
   description = "배포 후 캐시를 무효화할 CloudFront 배포 ID"
-  value       = aws_cloudfront_distribution.frontend.id
+  value       = var.frontend_enabled ? aws_cloudfront_distribution.frontend[0].id : null
 }
 
 output "frontend_deploy_role_arn" {
   description = "프론트 저장소 Actions가 OIDC로 받는 역할 (저장소 변수 AWS_ROLE_ARN에 넣는다)"
-  value       = aws_iam_role.frontend_deploy.arn
+  value       = var.frontend_enabled ? aws_iam_role.frontend_deploy[0].arn : null
+}
+
+output "prometheus_remote_write_url" {
+  description = "부하기에서 k6 지표를 보낼 주소. PROM_RW_URL=<이 값> load-test/run-k6.sh ..."
+  value       = var.monitoring_enabled && var.loadgen_enabled ? "http://${aws_eip.monitoring[0].public_ip}:9090/api/v1/write" : null
 }

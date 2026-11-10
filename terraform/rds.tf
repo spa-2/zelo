@@ -26,12 +26,17 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
-  multi_az               = false
+  multi_az               = var.db_multi_az
 
-  backup_retention_period    = 1
+  backup_retention_period    = var.db_backup_retention_days
   auto_minor_version_upgrade = true
   apply_immediately          = true
-  deletion_protection        = false
+  deletion_protection        = var.db_deletion_protection
+
+  # Performance Insights: 어떤 SQL이 DB 시간을 쓰는지, 대기가 CPU인지 락인지 I/O인지 보여 준다(콘솔 → RDS → 성능 개선 도우미).
+  # 보관 7일은 무료이고, 7일보다 길게 잡으면 요금이 붙는다. 켜고 끄는 데 재부팅은 필요 없다
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
 
   skip_final_snapshot = var.db_skip_final_snapshot
   # skip_final_snapshot을 나중에 false로 바꿔도 destroy가 스냅샷 이름을 갖도록 항상 지정한다 (random_id는 한 번 만들면 plan마다 바뀌지 않는다)

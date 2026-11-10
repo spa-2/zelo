@@ -2,5 +2,7 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
+# 환경별 값 파일(envs/)에는 비밀이 없고 팀이 같이 써야 해서 커밋한다. 개인 값(팀원 IP, 키 페어)은 terraform.tfvars에 둔다
+!envs/*.tfvars
 !*.tfvars.example
 crash.log

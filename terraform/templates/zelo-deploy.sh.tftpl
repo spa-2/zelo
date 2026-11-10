@@ -23,8 +23,17 @@ if docker inspect zelo > /dev/null 2>&1; then
   docker rename zelo zelo-old
 fi
 
+%{ if log_group != "" ~}
+# 컨테이너 로그를 CloudWatch Logs로 보낸다. 서버마다 로그 스트림이 따로 생기도록 인스턴스 ID를 이름으로 쓴다
+# (서버 역할에 logs:CreateLogStream, logs:PutLogEvents 권한이 있어야 컨테이너가 시작된다)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+%{ endif ~}
 # 설정(DB, Redis, 시크릿)은 앱이 기동할 때 Spring Cloud AWS가 SSM에서 직접 읽는다
 docker run -d --name zelo --restart unless-stopped \
+%{ if log_group != "" ~}
+  --log-driver awslogs --log-opt awslogs-region="$REGION" --log-opt awslogs-group="${log_group}" --log-opt awslogs-stream="$INSTANCE_ID" \
+%{ endif ~}
   -e SPRING_CONFIG_IMPORT="aws-parameterstore:$PREFIX/" \
   -e SPRING_CLOUD_AWS_REGION_STATIC="$REGION" \
   -e SPRING_PROFILES_ACTIVE="${spring_profile}" \

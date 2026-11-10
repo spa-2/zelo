@@ -125,7 +125,7 @@ variable "certificate_arn" {
 
 variable "db_instance_class" {
   type    = string
-  default = "db.t4g.micro"
+  default = "db.m7g.large"
 }
 
 variable "db_allocated_storage" {
@@ -235,13 +235,130 @@ variable "frontend_zone_name" {
 }
 
 variable "frontend_github_repository" {
-  description = "S3에 프론트를 올리는(배포하는) GitHub 저장소 (조직/이름)"
+  # 프론트 저장소도 OIDC 불변 subject를 써서 sub가 "소유자@ID/저장소@ID" 형식이다 (github_repository 주석 참고)
+  # 값은 gh api repos/spa-2/zeloFront/actions/oidc/customization/sub 의 sub_claim_prefix에서 "repo:"를 뺀 것
+  description = "S3에 프론트를 올리는(배포하는) GitHub 저장소 (소유자@ID/저장소@ID)"
   type        = string
-  default     = "spa-2/zeloFront"
+  default     = "spa-2@342884922/zeloFront@1439170934"
 }
 
 variable "frontend_deploy_branch" {
   description = "이 브랜치에서 실행된 Actions만 프론트 배포 역할을 받을 수 있다"
   type        = string
   default     = "dev"
+}
+
+# ───────── 환경 분리(dev: 부하 테스트용 / prod: 운영). 값은 envs/*.tfvars에 둔다 ─────────
+variable "create_ecr" {
+  description = "false면 이미지 저장소를 만들지 않고 이미 있는 저장소를 쓴다(환경이 하나의 저장소를 공유할 때). 이미지는 한 번만 빌드해서 두 환경이 태그로 가져다 쓴다"
+  type        = bool
+  default     = true
+}
+
+variable "frontend_enabled" {
+  description = "S3 + CloudFront(프론트 호스팅)를 만들지. 부하 테스트 환경에서는 필요 없다"
+  type        = bool
+  default     = true
+}
+
+variable "test_seed_parameters" {
+  description = "부하 테스트 전용 SSM 파라미터(시드 개수, fake LLM 지연)를 만들지. 운영에서는 false"
+  type        = bool
+  default     = true
+}
+
+variable "mode_initial_value" {
+  description = "LLM/PORTONE/MAIL/SOCIAL_MODE의 처음 값. 운영은 CHANGE_ME로 두면 실제 값을 넣기 전에는 앱이 시작하지 않는다(prod 프로필은 mode 기본값이 없다)"
+  type        = string
+  default     = "fake"
+}
+
+# ───────── 데이터 계층 가용성 ─────────
+variable "db_multi_az" {
+  description = "RDS 대기(standby) 서버를 다른 AZ에 둔다. 장애 때 자동 전환되고 비용은 약 2배"
+  type        = bool
+  default     = false
+}
+
+variable "db_backup_retention_days" {
+  type    = number
+  default = 1
+}
+
+variable "db_deletion_protection" {
+  type    = bool
+  default = false
+}
+
+variable "redis_mode" {
+  description = "ec2: EC2 한 대에 Redis 컨테이너(부하 테스트용), elasticache: 관리형 ElastiCache(운영)"
+  type        = string
+  default     = "ec2"
+
+  validation {
+    condition     = contains(["ec2", "elasticache"], var.redis_mode)
+    error_message = "ec2 또는 elasticache만 가능하다."
+  }
+}
+
+variable "redis_node_type" {
+  type    = string
+  default = "cache.t4g.micro"
+}
+
+variable "redis_replicas" {
+  description = "ElastiCache 복제본 수(0이면 단일 노드). 1 이상이면 자동 장애 전환과 Multi-AZ가 켜진다"
+  type        = number
+  default     = 1
+}
+
+variable "redis_engine" {
+  description = "redis 또는 valkey(Redis 호환). 앱이 쓰는 Redisson과의 호환을 확인하기 전에는 redis를 쓴다"
+  type        = string
+  default     = "redis"
+
+  validation {
+    condition     = contains(["redis", "valkey"], var.redis_engine)
+    error_message = "redis 또는 valkey만 가능하다."
+  }
+}
+
+# ───────── 로그와 알림 ─────────
+variable "log_backend" {
+  description = "loki: 수집기 EC2의 Loki + 앱 서버 Alloy(부하 테스트용), cloudwatch: CloudWatch Logs(운영용, 서버 운영 없이 보관 기간만 정책으로)"
+  type        = string
+  default     = "loki"
+
+  validation {
+    condition     = contains(["loki", "cloudwatch"], var.log_backend)
+    error_message = "loki 또는 cloudwatch만 가능하다."
+  }
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 30
+}
+
+variable "alarm_email" {
+  description = "CloudWatch 알람을 받을 이메일(비우면 알람은 만들지만 알림 주소는 없다). 구독 확인 메일의 링크를 눌러야 한다"
+  type        = string
+  default     = ""
+}
+
+variable "alert_channel" {
+  description = "Grafana 알림을 보낼 곳(slack 또는 discord 웹훅)"
+  type        = string
+  default     = "slack"
+
+  validation {
+    condition     = contains(["slack", "discord"], var.alert_channel)
+    error_message = "slack 또는 discord만 가능하다."
+  }
+}
+
+variable "ses_enabled" {
+  description = "SES 도메인 인증과 DNS 레코드를 만들지. 도메인 인증은 계정과 리전에 하나뿐이라 한 환경(운영)만 만든다. 부하 테스트 환경은 메일이 fake라 필요 없다"
+  type        = bool
+  default     = true
 }

@@ -1,0 +1,474 @@
+{
+  "uid": "zelo-k6",
+  "title": "Zelo k6 부하기 (흐름별)",
+  "tags": [
+    "k6"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "요청 수/초 (흐름별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (journey) (rate(k6_http_reqs_total{journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}[1m]))",
+          "legendFormat": "{{journey}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "description": "부하기가 보낸 요청 수. journey와 phase(warmup, steady)로 거른다"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "실패 요청 비율 (흐름별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (journey) (rate(k6_http_reqs_total{expected_response=\"false\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}[1m])) / sum by (journey) (rate(k6_http_reqs_total{journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}[1m]))",
+          "legendFormat": "{{journey}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "description": "기대한 상태 코드가 아닌 응답의 비율(expected_response=false)"
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "API별 p95 (부하기에서 본 값)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (name) ({__name__=\"k6_http_req_duration_seconds_p95\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"})",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (name) ({__name__=\"k6_http_req_duration_p95\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}) / 1000",
+          "legendFormat": "{{name}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "k6가 미리 계산해서 보낸 값이라 흐름 전체의 p95로 합칠 수 없다. API(name)별로 본다. 구간별인지 누적인지는 k6 요약의 p95와 비교해서 확인한다"
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "API별 p99 (부하기에서 본 값)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (name) ({__name__=\"k6_http_req_duration_seconds_p99\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"})",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (name) ({__name__=\"k6_http_req_duration_p99\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}) / 1000",
+          "legendFormat": "{{name}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "흐름별 평균 응답 시간",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg by (journey) ({__name__=\"k6_http_req_duration_seconds_avg\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"})",
+          "legendFormat": "{{journey}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg by (journey) ({__name__=\"k6_http_req_duration_avg\",journey=~\"$journey\",phase=~\"$phase\",testid=~\"$testid\"}) / 1000",
+          "legendFormat": "{{journey}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "평균은 서로 합쳐도 되는 값이라 흐름 단위로 보여 준다"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "못 보낸 요청 (dropped_iterations)/초",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (scenario) (rate(k6_dropped_iterations_total{testid=~\"$testid\"}[1m]))",
+          "legendFormat": "{{scenario}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "0이 아니면 서버가 아니라 부하기가 목표 속도를 못 낸 것이다 (VU 부족 또는 부하기 CPU 포화)"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "가상 사용자 (VU)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "k6_vus{testid=~\"$testid\"}",
+          "legendFormat": "VU",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "k6_vus_max{testid=~\"$testid\"}",
+          "legendFormat": "VU 최대",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "서버가 본 p95 (앱 지표, 전체)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"zelo\"}[1m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "같은 시간대에 서버가 잰 값. 부하기가 본 값과의 차이는 네트워크와 ALB 구간이다"
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "서버 CPU (서버별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "process_cpu_usage{job=\"zelo\"}",
+          "legendFormat": "{{instance}} 앱",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "system_cpu_usage{job=\"zelo\"}",
+          "legendFormat": "{{instance}} 시스템",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Hikari 커넥션 (사용 중 / 대기)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "hikaricp_connections_active{job=\"zelo\"}",
+          "legendFormat": "{{instance}} active",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "hikaricp_connections_pending{job=\"zelo\"}",
+          "legendFormat": "{{instance}} pending",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "testid",
+        "label": "실행(testid)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(testid)",
+          "refId": "v_testid"
+        },
+        "definition": "label_values(testid)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "journey",
+        "label": "흐름(journey)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(journey)",
+          "refId": "v_journey"
+        },
+        "definition": "label_values(journey)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "phase",
+        "label": "구간(phase)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(phase)",
+          "refId": "v_phase"
+        },
+        "definition": "label_values(phase)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  }
+}

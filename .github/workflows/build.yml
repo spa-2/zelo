@@ -1,14 +1,11 @@
 name: SonarQube
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'terraform/**'
   pull_request:
     types: [opened, synchronize, reopened]
     paths-ignore:
       - 'terraform/**'
+  # main/dev에 머지되면 deploy.yml이 이 워크플로를 호출해 테스트하고, 통과해야 배포한다
+  workflow_call:
 
 jobs:
   build:

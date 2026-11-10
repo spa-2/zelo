@@ -11,8 +11,17 @@ locals {
   # 서브넷 안에서 주소를 고정해 두면 Redis 인스턴스를 교체해도 앱이 바라보는 호스트 값이 바뀌지 않는다
   redis_private_ip = cidrhost(aws_subnet.data[0].cidr_block, 10)
 
+  # Redis 접속 주소. EC2(부하 테스트용)는 서브넷 안의 고정 주소, ElastiCache(운영)는 기본(primary) 엔드포인트다.
+  # ElastiCache는 장애 전환이 일어나도 이 주소가 새 primary를 가리킨다
+  redis_host = var.redis_mode == "elasticache" ? aws_elasticache_replication_group.redis[0].primary_endpoint_address : local.redis_private_ip
+
+  # ElastiCache는 접속 비밀번호(AUTH)를 쓰려면 전송 구간 암호화(TLS)가 필수라서 앱이 TLS로 접속하게 한다
+  redis_ssl_parameters = var.redis_mode == "elasticache" ? {
+    "spring.data.redis.ssl.enabled" = { type = "String", value = "true" }
+  } : {}
+
   # 값은 콘솔이나 CLI로 직접 넣는다. 초기값 그대로면 앱이 기동하지 못하는 것이 의도다 (잘못된 값으로 조용히 뜨는 것보다 낫다)
-  manual_parameters = {
+  secret_parameters = {
     # 파라미터 이름은 application.yaml의 ${...} 이름과 대소문자까지 정확히 같아야 한다. 프로퍼티 소스에서는 대소문자를 구분한다
     JWT_SECRET             = "CHANGE_ME"
     OPENAI_API_KEY         = "CHANGE_ME"
@@ -23,18 +32,36 @@ locals {
     PORTONE_API_SECRET     = "CHANGE_ME"
     PORTONE_STORE_ID       = "CHANGE_ME"
     PORTONE_WEBHOOK_SECRET = "CHANGE_ME"
-    # real은 OpenAI를 호출하고 fake는 호출 없이 고정된 응답을 돌려주는 모드. 기본은 fake(부하 테스트·비용 방지)이고, 운영으로 쓸 때 real로 바꾼다
-    LLM_MODE = "fake"
-    # fake는 포트원 키 없이 동작하는 모드. 실제 결제를 붙일 때 real로 바꾼다
-    PORTONE_MODE = "fake"
-    # fake는 메일을 보내지 않고 로그에만 남기는 모드. SES 프로덕션 액세스 승인 후 real로 바꾼다
-    MAIL_MODE = "fake"
-    # fake는 구글, 카카오 호출 없이 "fake-*" code를 로그인으로 받아 주는 모드라 운영에서는 절대 쓰면 안 된다. 소셜 로그인을 실제로 켤 때 real로 바꾼다
-    SOCIAL_MODE = "fake"
+  }
+
+  # real은 외부 서비스를 실제로 호출하고 fake는 호출 없이 고정된 응답을 돌려주는 모드. 처음 값은 var.mode_initial_value다.
+  #   부하 테스트(dev)는 fake(외부 호출 없음, 비용 방지), 운영(prod)은 CHANGE_ME로 두고 실제 값(real)을 넣는다.
+  #   CHANGE_ME는 enum으로 읽을 수 없어서 값을 넣기 전에는 앱이 시작하지 않는다 (fake로 조용히 뜨는 것을 막는 안전장치).
+  #   LLM: real은 OpenAI 호출, PORTONE: real은 실제 결제, MAIL: real은 SES 발송(프로덕션 액세스 승인 후),
+  #   SOCIAL: fake는 "fake-*" code를 로그인으로 받아 주므로 운영에서 절대 쓰면 안 된다
+  mode_parameters = {
+    LLM_MODE     = var.mode_initial_value
+    PORTONE_MODE = var.mode_initial_value
+    MAIL_MODE    = var.mode_initial_value
+    SOCIAL_MODE  = var.mode_initial_value
+  }
+
+  # 부하 테스트 전용. 운영에서는 만들지 않는다(var.test_seed_parameters = false)
+  test_parameters = var.test_seed_parameters ? {
     # 결제 테스트용 결제 대기 주문 시드 개수. 0이면 결제수단만 저장하고 주문은 만들지 않는다(앱 기본값은 100000).
     # 주문부터 하는 통합 테스트는 결제 대기 주문이 있으면 ORDER_004로 막혀서 0이어야 한다. 결제 한계 테스트 때만 값을 올린다(시드는 앱이 뜰 때 돈다)
     "zelo.seed.load-test.payment-order-count" = "0"
-  }
+    # 부하 테스트 상품의 재고에 더해 주는 추가 재고(앱 시드가 사용). 재고 부족으로 테스트가 끊기지 않게 넉넉히 둔다
+    "zelo.seed.load-test.extra-stock" = "100000"
+    # 통합 부하 테스트용 fake LLM 설정(앱의 FakeLlmGateway). LLM_MODE=fake일 때만 쓰이고 real이면 무시된다.
+    # 실측 지연을 랜덤으로 흉내 내고(DELAY), 견적까지 가는 의도로 돌려서 부하가 실제와 비슷해지게 한다. 통합 테스트가 끝나면 지운다
+    "zelo.llm.fake.mode"             = "DELAY"
+    "zelo.llm.fake.plan-intent"      = "SHOPPING_REQUEST"
+    "zelo.llm.fake.operation-delays" = "MENU_PLAN:1100ms-3600ms,QUOTE_EXPLAIN:1000ms-1800ms,QUOTE_EDIT_PLAN:1100ms-2200ms,LOOKUP_ANSWER:2600ms-4100ms,CHAT_ANSWER:1400ms-2300ms"
+    "zelo.llm.fake.intent-keywords"  = "QUOTE_EDIT:빼,LOOKUP_QUESTION:리뷰,GENERAL_QUESTION:보관"
+  } : {}
+
+  manual_parameters = merge(local.secret_parameters, local.mode_parameters, local.test_parameters)
 }
 
 # DB와 Redis 비밀번호는 사람이 정하지 않고 생성한다. state에는 평문으로 남으므로 state 파일은 커밋하지 않는다
@@ -68,13 +95,13 @@ resource "aws_ssm_parameter" "redis_password" {
 }
 
 resource "aws_ssm_parameter" "generated" {
-  for_each = {
+  for_each = merge({
     "spring.datasource.url"      = { type = "String", value = "jdbc:postgresql://${aws_db_instance.main.address}:${aws_db_instance.main.port}/${var.db_name}" }
     "spring.datasource.username" = { type = "String", value = var.db_username }
     "spring.datasource.password" = { type = "SecureString", value = random_password.db.result }
-    "spring.data.redis.host"     = { type = "String", value = local.redis_private_ip }
+    "spring.data.redis.host"     = { type = "String", value = local.redis_host }
     "zelo.mail.from"             = { type = "String", value = local.mail_from }
-  }
+  }, local.redis_ssl_parameters)
 
   name  = "${local.ssm_prefix}/${each.key}"
   type  = each.value.type

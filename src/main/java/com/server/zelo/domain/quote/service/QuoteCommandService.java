@@ -375,13 +375,14 @@ public class QuoteCommandService {
         return (ingredient.amount() + product.getContentAmount() - 1) / product.getContentAmount();
     }
 
-    // 조건 키워드가 붙은 상품이 있으면 그중에서만 고름 (아이 있는 집인데 매운 김치가 점수로 이기면 안 돼서)
+    // 조건을 가장 많이 맞춘 상품들 중에서만 고름 (아이 있는 집인데 매운 김치가 점수로 이기면 안 돼서)
+    // 국산·유기농이면 국산만 맞는 상품이 판매량으로 둘 다 맞는 상품을 이기지 않게, 하나라도 맞는지가 아니라 몇 개 맞는지로 거름
     private Product pick(MenuPlanIngredient ingredient, List<Product> candidates, Set<Keyword> conditions,
                          Map<Long, Set<Keyword>> keywords, Map<Long, ProductReviewEvidence> reviews) {
-        List<Product> matched = candidates.stream()
-                .filter(product -> !Collections.disjoint(keywords.getOrDefault(product.getId(), Set.of()), conditions))
+        int maxMatched = candidates.stream().mapToInt(product -> matchedCount(product, conditions, keywords)).max().orElse(0);
+        List<Product> pool = candidates.stream()
+                .filter(product -> matchedCount(product, conditions, keywords) == maxMatched)
                 .toList();
-        List<Product> pool = matched.isEmpty() ? candidates : matched;
 
         int maxSales = pool.stream().mapToInt(Product::getSalesCount).max().orElse(0);
         long minTotal = pool.stream().mapToLong(product -> totalPrice(ingredient, product)).min().orElse(0);
@@ -392,6 +393,10 @@ public class QuoteCommandService {
                         .thenComparing(Product::getSalesCount)
                         .thenComparing(Product::getId, Comparator.reverseOrder()))
                 .orElseThrow();
+    }
+
+    private int matchedCount(Product product, Set<Keyword> conditions, Map<Long, Set<Keyword>> keywords) {
+        return (int) keywords.getOrDefault(product.getId(), Set.of()).stream().filter(conditions::contains).count();
     }
 
     // 판매량 40 + 리뷰 30 + 가격 30. 가격은 필요한 만큼 샀을 때 총액으로 비교

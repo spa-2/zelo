@@ -85,6 +85,43 @@ class QuoteCommandServiceTest {
     }
 
     @Test
+    void 조건이_여러_개면_더_많이_맞춘_상품을_판매량보다_먼저_고른다() {
+        // given (국산만 맞는 김치가 더 싸고 많이 팔림)
+        Product domestic = product(1L, kimchi, "국산 포기김치 1kg", 7000L, 1000, 500);
+        Product organic = product(2L, kimchi, "국산 유기농 포기김치 1kg", 12000L, 1000, 10);
+        givenProducts(List.of(domestic, organic), Map.of(1L, 10, 2L, 10),
+                Map.of(1L, Set.of(Keyword.DOMESTIC), 2L, Set.of(Keyword.DOMESTIC, Keyword.ORGANIC)));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(MenuPlanIngredient.of("김치", 1000, BaseUnit.G)),
+                List.of(Keyword.DOMESTIC, Keyword.ORGANIC)));
+
+        // then
+        assertThat(quote.items()).extracting(QuoteItem::productId).containsExactly(2L);
+        assertThat(quote.items().get(0).reason().matchedConditions())
+                .containsExactlyInAnyOrder(Keyword.DOMESTIC, Keyword.ORGANIC);
+    }
+
+    @Test
+    void 대신_고를_때도_조건을_더_많이_맞춘_상품을_먼저_고른다() {
+        // given (조건 둘 다 맞는 상품 하나가 품절)
+        Product soldOut = product(1L, kimchi, "국산 유기농 포기김치 1kg", 12000L, 1000, 100);
+        Product domestic = product(2L, kimchi, "국산 포기김치 1kg", 7000L, 1000, 500);
+        Product organic = product(3L, kimchi, "국산 유기농 백김치 1kg", 13000L, 1000, 10);
+        givenProducts(List.of(soldOut, domestic, organic), Map.of(1L, 0, 2L, 10, 3L, 10), Map.of(
+                1L, Set.of(Keyword.DOMESTIC, Keyword.ORGANIC),
+                2L, Set.of(Keyword.DOMESTIC),
+                3L, Set.of(Keyword.DOMESTIC, Keyword.ORGANIC)));
+
+        // when
+        Quote quote = quoteCommandService.createQuote(1L, 5L, menuPlan(List.of(MenuPlanIngredient.of("김치", 1000, BaseUnit.G)),
+                List.of(Keyword.DOMESTIC, Keyword.ORGANIC)));
+
+        // then
+        assertThat(quote.substitutes()).extracting(substitute -> substitute.item().productId()).containsExactly(3L);
+    }
+
+    @Test
     void 조건이_없으면_필요량_총액이_싼_상품을_고른다() {
         // given
         Product small = product(1L, kimchi, "포기김치 500g", 5900L, 500, 100);

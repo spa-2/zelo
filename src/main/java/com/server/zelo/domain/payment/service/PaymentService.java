@@ -41,17 +41,17 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public List<PaymentFindTarget> findConfirmPendingPayments(LocalDateTime cutoff, Long afterId) {
-        return paymentRepository.findByStatusAndUpdatedAtBeforeAndIdGreaterThanOrderByIdAsc(
-                        PaymentStatus.CONFIRM_PENDING, cutoff, afterId, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
-                .stream()
-                .map(PaymentFindTarget::from)
-                .toList();
+        return findStalePayments(PaymentStatus.CONFIRM_PENDING, cutoff, afterId);
     }
 
     @Transactional(readOnly = true)
     public List<PaymentFindTarget> findReadyPayments(LocalDateTime cutoff, Long afterId) {
+        return findStalePayments(PaymentStatus.READY, cutoff, afterId);
+    }
+
+    private List<PaymentFindTarget> findStalePayments(PaymentStatus status, LocalDateTime cutoff, Long afterId) {
         return paymentRepository.findByStatusAndUpdatedAtBeforeAndIdGreaterThanOrderByIdAsc(
-                        PaymentStatus.READY, cutoff, afterId, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
+                        status, cutoff, afterId, PageRequest.of(0, STALE_CONFIRM_BATCH_SIZE))
                 .stream()
                 .map(PaymentFindTarget::from)
                 .toList();

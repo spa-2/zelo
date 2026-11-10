@@ -16,4 +16,52 @@ ${deploy_script}
 DEPLOY_EOF
 chmod 755 /usr/local/bin/zelo-deploy.sh
 
+%{ if loki_host != "" ~}
+# 컨테이너 로그를 수집기의 Loki로 보내는 Alloy. 서버마다 instance_id 라벨을 붙여서 어느 서버의 로그인지 구분한다
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+
+mkdir -p /etc/alloy /var/lib/alloy-data
+cat > /etc/alloy/config.alloy <<ALLOY_EOF
+discovery.docker "zelo" {
+  host = "unix:///var/run/docker.sock"
+  filter {
+    name   = "name"
+    values = ["zelo"]
+  }
+}
+
+discovery.relabel "zelo" {
+  targets = []
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "zelo" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.zelo.targets
+  labels        = { job = "zelo", instance_id = "$INSTANCE_ID" }
+  relabel_rules = discovery.relabel.zelo.rules
+  forward_to    = [loki.write.monitoring.receiver]
+}
+
+loki.write "monitoring" {
+  endpoint {
+    url = "http://${loki_host}:3100/loki/api/v1/push"
+  }
+}
+ALLOY_EOF
+
+# Docker 소켓은 읽기 전용으로 연결한다. Loki가 아직 없어도 Alloy가 재시도하므로 앱 배포를 막지 않는다
+docker rm -f alloy 2>/dev/null || true
+docker run -d --name alloy --restart unless-stopped --user root \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /etc/alloy/config.alloy:/etc/alloy/config.alloy:ro \
+  -v /var/lib/alloy-data:/var/lib/alloy/data \
+  grafana/alloy:v1.5.1 run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy || echo "Alloy 시작 실패(무시)"
+
+%{ endif ~}
 /usr/local/bin/zelo-deploy.sh

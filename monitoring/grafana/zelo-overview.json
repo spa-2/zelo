@@ -628,6 +628,104 @@
       },
       "description": "컨테이너 메모리는 힙 + 이 영역 + 스레드 스택의 합. 힙만 보면 놓친다",
       "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "ERROR 로그 수/분 (서버별)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (instance_id) (count_over_time({job=\"zelo\"} |~ \"ERROR\" [1m]))",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{instance_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "로그에 ERROR가 찍힌 줄 수. 응답 시간이 꺾이는 시점과 같이 본다",
+      "id": 18
+    },
+    {
+      "type": "logs",
+      "title": "ERROR / WARN 로그",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"zelo\"} |~ \"ERROR|WARN\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "id": 19
+    },
+    {
+      "type": "logs",
+      "title": "전체 로그 (서버 구분은 instance_id)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"zelo\"}",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "id": 20
     }
   ],
   "templating": {

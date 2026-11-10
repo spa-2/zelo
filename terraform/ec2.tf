@@ -10,11 +10,12 @@ locals {
   deploy_script = templatefile("${path.module}/templates/zelo-deploy.sh.tftpl", {
     region            = var.region
     prefix            = local.ssm_prefix
-    repository_url    = aws_ecr_repository.app.repository_url
+    repository_url    = local.ecr_repository_url
     app_port          = var.app_port
     management_port   = var.management_port
     health_check_path = var.health_check_path
     spring_profile    = var.spring_profile
+    log_group         = var.log_backend == "cloudwatch" ? "/${var.project}/${var.environment}/app" : ""
   })
 }
 
@@ -55,6 +56,8 @@ resource "aws_eip" "bastion" {
 # 단일 인스턴스다. Redis가 죽으면 로그인 유지(refresh), 번호표, 락이 모두 영향을 받는다.
 # AOF를 켜서 재부팅에는 데이터가 남지만, 인스턴스를 교체하면 사라진다.
 resource "aws_instance" "redis" {
+  count = var.redis_mode == "ec2" ? 1 : 0
+
   ami                    = data.aws_ssm_parameter.al2023_ami.value
   instance_type          = var.redis_instance_type
   subnet_id              = aws_subnet.data[0].id
@@ -103,6 +106,8 @@ resource "aws_launch_template" "app" {
 
   user_data = base64encode(templatefile("${path.module}/templates/app_user_data.sh.tftpl", {
     deploy_script = local.deploy_script
+    # Loki를 쓸 때만 앱 서버에서 Alloy를 띄운다 (cloudwatch면 docker 로그 드라이버가 직접 보낸다)
+    loki_host = var.log_backend == "loki" ? local.loki_host : ""
   }))
 
   metadata_options {

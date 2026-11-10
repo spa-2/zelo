@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RefundFacade {
 
-    private final LockDistributeService lockDistributeService;
     private final RefundCommandService refundCommandService;
+    private final LockDistributeService lockDistributeService;
 
     public CreateRefundResponse createRefund(Long userId, Long orderId, CreateRefundRequest request) {
         return lockDistributeService.execute(LockKey.refund(orderId),

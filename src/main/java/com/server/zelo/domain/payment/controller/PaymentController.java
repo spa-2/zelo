@@ -15,8 +15,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/payments")
 @RequiredArgsConstructor
+@RequestMapping("/api/payments")
 public class PaymentController {
 
     private final PaymentFacade paymentFacade;

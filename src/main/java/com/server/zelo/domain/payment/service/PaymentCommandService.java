@@ -37,10 +37,10 @@ public class PaymentCommandService {
     private static final String CONFIRM_REASON = "결제 결과를 확인하지 못했습니다";
     private static final String EXPIRED_REASON = "결제 대기 시간 만료";
 
-    private final BusinessMetrics businessMetrics;
     private final OrderService orderService;
     private final PortOneClient portOneClient;
     private final PaymentService paymentService;
+    private final BusinessMetrics businessMetrics;
     private final DeliveryService deliveryService;
     private final ChatMessageService chatMessageService;
     private final OrderCommandService orderCommandService;

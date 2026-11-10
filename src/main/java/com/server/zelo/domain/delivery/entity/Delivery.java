@@ -38,20 +38,20 @@ public class Delivery extends BaseTimeEntity {
     @Column(name = "address", nullable = false, length = 200)
     private String address;
 
-    @Column(name = "address_detail", length = 200)
+    @Column(name = "address_detail", nullable = true, length = 200)
     private String addressDetail;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private DeliveryStatus status;
 
-    @Column(name = "shipped_at")
+    @Column(name = "shipped_at", nullable = true)
     private LocalDateTime shippedAt;
 
-    @Column(name = "delivered_at")
+    @Column(name = "delivered_at", nullable = true)
     private LocalDateTime deliveredAt;
 
-    @Column(name = "canceled_at")
+    @Column(name = "canceled_at", nullable = true)
     private LocalDateTime canceledAt;
 
     @Column(name = "on_hold", nullable = false, columnDefinition = "boolean default false")

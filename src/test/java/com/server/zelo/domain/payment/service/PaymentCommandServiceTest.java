@@ -83,8 +83,8 @@ class PaymentCommandServiceTest {
     // 트랜잭션 없이 콜백만 바로 실행해서 결제 확인 흐름만 검증한다
     @BeforeEach
     void setUp() {
-        paymentCommandService = new PaymentCommandService(new BusinessMetrics(new SimpleMeterRegistry()),
-                orderService, portOneClient, paymentService,
+        paymentCommandService = new PaymentCommandService(orderService, portOneClient, paymentService,
+                new BusinessMetrics(new SimpleMeterRegistry()),
                 deliveryService, chatMessageService, orderCommandService, paymentMethodService,
                 TransactionOperations.withoutTransaction());
     }

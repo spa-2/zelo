@@ -35,6 +35,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RefundCommandService {
 
+    private static final String CANCEL_KEY_PREFIX = "refund-cancel-";
+    private static final String EXTERNAL_CANCEL_REASON = "포트원에서 직접 취소";
+
     private final OrderService orderService;
     private final PortOneClient portOneClient;
     private final RefundService refundService;
@@ -43,8 +46,6 @@ public class RefundCommandService {
     private final DeliveryService deliveryService;
     private final OrderCommandService orderCommandService;
     private final TransactionOperations transactionOperations;
-    private static final String CANCEL_KEY_PREFIX = "refund-cancel-";
-    private static final String EXTERNAL_CANCEL_REASON = "포트원에서 직접 취소";
 
     // 포트원 취소는 트랜잭션 밖에서 하고, 요청 생성과 결과 반영만 각각 트랜잭션으로 묶는다
     public CreateRefundResponse createRefund(Long userId, Long orderId, String reason,

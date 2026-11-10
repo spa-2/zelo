@@ -23,8 +23,6 @@ import java.net.SocketTimeoutException;
 @ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 public class HttpPortOneClient implements PortOneClient {
 
-    private final RestClient portOneRestClient;
-    private final PortOneProperties portOneProperties;
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String IDEMPOTENCY_KEY_PREFIX = "cancel-";
     private static final String PG_PROVIDER = "PG_PROVIDER";
@@ -32,6 +30,9 @@ public class HttpPortOneClient implements PortOneClient {
     private static final String ALREADY_CANCELLED = "PAYMENT_ALREADY_CANCELLED";
     private static final String IDEMPOTENCY_OUTSTANDING = "IDEMPOTENCY_OUTSTANDING_REQUEST";
     private static final String BILLING_KEY_ALREADY_DELETED = "BILLING_KEY_ALREADY_DELETED";
+
+    private final RestClient portOneRestClient;
+    private final PortOneProperties portOneProperties;
 
 
 

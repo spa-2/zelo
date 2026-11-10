@@ -30,7 +30,7 @@ public class RefundService {
         return refundRepository.save(refund);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public Optional<Refund> findLatestRefund(Long paymentId) {
         return refundRepository.findTopByPaymentIdOrderByIdDesc(paymentId);
     }

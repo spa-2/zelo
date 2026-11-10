@@ -1,9 +1,13 @@
 package com.server.zelo.domain.product.service;
 
 import com.server.zelo.common.api.PageResponse;
+import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
+import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
+import com.server.zelo.domain.product.dto.response.AddStockResponse;
+import com.server.zelo.domain.product.dto.response.CreateProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.entity.*;
@@ -172,6 +176,38 @@ class ProductCommandServiceTest {
         // then
         assertThat(result).isEmpty();
         then(productService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 상품을_등록하면_재고_행도_같이_만든다() {
+        // given
+        CreateProductRequest request =
+                new CreateProductRequest("P-NEW", 3L, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg", 10);
+        Product product = product(1L, "백김치 1kg");
+        given(productService.createProduct(request)).willReturn(product);
+        given(inventoryService.create(product, 10)).willReturn(Inventory.of(product, 10));
+
+        // when
+        CreateProductResponse response = productCommandService.createProduct(request);
+
+        // then
+        assertThat(response.stockQuantity()).isEqualTo(10);
+        then(inventoryService).should().create(product, 10);
+    }
+
+    @Test
+    void 입고하면_상품_코드로_찾은_상품의_재고를_늘린다() {
+        // given
+        Product product = product(1L, "백김치 1kg");
+        Inventory inventory = Inventory.of(product, 15);
+        given(productService.getProduct("P-1")).willReturn(product);
+        given(inventoryService.addStock(product, 5)).willReturn(inventory);
+
+        // when
+        AddStockResponse response = productCommandService.addStock("P-1", 5);
+
+        // then
+        assertThat(response).isEqualTo(new AddStockResponse("P-1", 15, 0, 15));
     }
 
     private Product product(Long id, String name) {

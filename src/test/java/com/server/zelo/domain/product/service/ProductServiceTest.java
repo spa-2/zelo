@@ -329,7 +329,7 @@ class ProductServiceTest {
     }
 
     private CreateProductRequest createRequest() {
-        return new CreateProductRequest("P-NEW", 3L, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg");
+        return new CreateProductRequest("P-NEW", 3L, "브랜드 A", "백김치 1kg", null, 8900L, 1000, "1kg", 10);
     }
 
     private Product product(Long id) {

@@ -1,9 +1,13 @@
 package com.server.zelo.domain.product.service;
 
 import com.server.zelo.common.api.PageResponse;
+import com.server.zelo.domain.inventory.entity.Inventory;
 import com.server.zelo.domain.inventory.service.InventoryService;
 import com.server.zelo.domain.product.dto.request.AutocompleteCondition;
+import com.server.zelo.domain.product.dto.request.CreateProductRequest;
 import com.server.zelo.domain.product.dto.request.SearchProductCondition;
+import com.server.zelo.domain.product.dto.response.AddStockResponse;
+import com.server.zelo.domain.product.dto.response.CreateProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductResponse;
 import com.server.zelo.domain.product.dto.response.GetProductSummaryResponse;
 import com.server.zelo.domain.product.entity.Product;
@@ -80,5 +84,19 @@ public class ProductCommandService {
         ProductDetail detail = productService.getProductDetail(productCode);
         Integer stock = inventoryService.findAvailableQuantities(List.of(detail.productId())).getOrDefault(detail.productId(), 0);
         return GetProductResponse.of(detail, stock);
+    }
+
+    // 재고 행이 없으면 견적·주문에서 품절로 빠져서 상품과 재고를 같이 만듦
+    @Transactional
+    public CreateProductResponse createProduct(CreateProductRequest request) {
+        Product product = productService.createProduct(request);
+        Inventory inventory = inventoryService.create(product, request.stockQuantity());
+        return CreateProductResponse.of(product, inventory.getStockQuantity());
+    }
+
+    @Transactional
+    public AddStockResponse addStock(String productCode, Integer quantity) {
+        Product product = productService.getProduct(productCode);
+        return AddStockResponse.of(productCode, inventoryService.addStock(product, quantity));
     }
 }

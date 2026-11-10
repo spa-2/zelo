@@ -32,6 +32,10 @@ public record CreateProductRequest(
         Integer contentAmount,
         @NotBlank
         @Size(max = 20)
-        String unitLabel
+        String unitLabel,
+        // 처음 들여놓는 수량. 0이면 등록만 되고 품절로 보임
+        @NotNull
+        @Min(0)
+        Integer stockQuantity
 ) {
 }

@@ -264,6 +264,20 @@ class ResilientLlmGatewayTest {
     }
 
     @Test
+    void 출력_토큰_상한에_걸려_잘린_답은_재시도하지_않고_서킷_실패로도_세지_않는다() {
+        // given: SpringAiLlmGateway가 잘린 답(finish_reason=length)을 AI_010으로 바꿔 던진다
+        given(delegate.planMenu(anyString(), anyList(), anyString(), anyMap()))
+                .willThrow(new BusinessException(ErrorCode.AI_RESPONSE_TRUNCATED));
+
+        // when & then: 같은 요청은 또 잘리므로 한 번만 보낸다
+        assertThatThrownBy(() -> resilientLlmGateway.planMenu("system", List.of(), "질문", Map.of()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.AI_RESPONSE_TRUNCATED));
+        then(delegate).should(times(1)).planMenu(anyString(), anyList(), anyString(), anyMap());
+        assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isZero();
+    }
+
+    @Test
     void 빈_응답은_재시도하지_않고_AI_EMPTY_RESPONSE로_실패한다() {
         // given
         given(delegate.explain(anyString(), anyList(), anyString())).willReturn(LlmReply.of(" ", "gpt-test", 10, 0));

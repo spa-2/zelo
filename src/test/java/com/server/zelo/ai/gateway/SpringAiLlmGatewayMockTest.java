@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 
 import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
@@ -31,6 +32,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -53,12 +55,14 @@ class SpringAiLlmGatewayMockTest {
     private SpringAiLlmGateway springAiLlmGateway;
 
     private static final Duration TIMEOUT = Duration.ofSeconds(7);
+    private static final int MAX_COMPLETION_TOKENS = 300;
 
     @BeforeEach
     void setUp() {
         // ChatClient가 요청을 만들 때 모델의 기본 옵션을 복사하므로, 실제 OpenAiChatModel처럼 OpenAI 옵션을 준다
         given(chatModel.getOptions()).willReturn(OpenAiChatOptions.builder().build());
-        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel), TIMEOUT, "gpt-review", "medium");
+        springAiLlmGateway = new SpringAiLlmGateway(ChatClient.builder(chatModel), TIMEOUT, MAX_COMPLETION_TOKENS,
+                "gpt-review", "medium");
     }
 
     @Test
@@ -327,6 +331,67 @@ class SpringAiLlmGatewayMockTest {
     }
 
     @Test
+    void 설정한_출력_토큰_상한과_타임아웃을_모든_요청의_옵션에_넣는다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse(MENU_PLAN_JSON, "gpt-test", 1, 1))
+                .willReturn(chatResponse(QUOTE_EDIT_PLAN_JSON, "gpt-test", 1, 1))
+                .willReturn(chatResponse("답변", "gpt-test", 1, 1));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+
+        // when: 리뷰 요약은 요청 옵션을 따로 넣어 기본 옵션이 빠지는 길이라 함께 본다
+        springAiLlmGateway.planMenu("system", List.of(), "김치볶음밥 재료", INGREDIENT_UNITS);
+        springAiLlmGateway.planQuoteEdit("수정 계획 프롬프트", List.of(), "김치 빼줘", INGREDIENT_UNITS);
+        springAiLlmGateway.explain("system", List.of(), "질문");
+        springAiLlmGateway.summarizeReviews("리뷰 요약 프롬프트", "리뷰");
+
+        // then
+        then(chatModel).should(times(4)).call(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues()).allSatisfy(prompt -> assertThat(prompt.getOptions())
+                .isInstanceOfSatisfying(OpenAiChatOptions.class, options -> {
+                    assertThat(options.getMaxCompletionTokens()).isEqualTo(MAX_COMPLETION_TOKENS);
+                    assertThat(options.getTimeout()).isEqualTo(TIMEOUT);
+                }));
+    }
+
+    @Test
+    void 출력_토큰_상한에_걸려_잘린_메뉴_계획_JSON은_객체로_바꾸기_전에_AI_RESPONSE_TRUNCATED로_실패한다() {
+        // given: 잘린 JSON을 객체로 바꾸면 형식 오류(AI_009)가 되어 원인과 다른 문구가 나가고 같은 요청을 다시 보낸다
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("{\"intent\":\"SHOPPING_REQUEST\",\"menuName\":\"김치볶", "gpt-test", 1, 300, "LENGTH"));
+
+        // when & then
+        assertThatThrownBy(() -> springAiLlmGateway.planMenu("system", List.of(), "질문", INGREDIENT_UNITS))
+                .satisfies(exception -> assertThat(LlmErrorClassifier.classify(exception))
+                        .isEqualTo(ErrorCode.AI_RESPONSE_TRUNCATED));
+    }
+
+    @Test
+    void 출력_토큰_상한에_걸려_잘린_문장_답은_돌려주지_않고_AI_RESPONSE_TRUNCATED로_실패한다() {
+        // given: 끊긴 문장이 그대로 저장되면 화면에 중간에 끊긴 답이 나간다
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("김치볶음밥은 김치를 먼저 볶은 다음", "gpt-test", 1, 300, "LENGTH"));
+
+        // when & then
+        assertThatThrownBy(() -> springAiLlmGateway.explain("system", List.of(), "김치볶음밥 만드는 법"))
+                .satisfies(exception -> assertThat(LlmErrorClassifier.classify(exception))
+                        .isEqualTo(ErrorCode.AI_RESPONSE_TRUNCATED));
+    }
+
+    @Test
+    void 끝까지_쓴_답은_잘림으로_보지_않고_그대로_돌려준다() {
+        // given
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(chatResponse("김치와 밥이 필요해요.", "gpt-test", 1, 1, "STOP"));
+
+        // when
+        LlmReply reply = springAiLlmGateway.explain("system", List.of(), "질문");
+
+        // then
+        assertThat(reply.text()).isEqualTo("김치와 밥이 필요해요.");
+    }
+
+    @Test
     void 수정_계획에도_대화_기록을_system과_이번_말_사이에_넣는다() {
         // given
         given(chatModel.call(any(Prompt.class))).willReturn(chatResponse(QUOTE_EDIT_PLAN_JSON, "gpt-test", 1, 1));
@@ -362,6 +427,18 @@ class SpringAiLlmGatewayMockTest {
     private ChatResponse chatResponse(String text, String model, int promptTokens, int completionTokens) {
         return new ChatResponse(
                 List.of(new Generation(new AssistantMessage(text))),
+                ChatResponseMetadata.builder()
+                        .model(model)
+                        .usage(new DefaultUsage(promptTokens, completionTokens))
+                        .build());
+    }
+
+    // finishReason: OpenAI가 답을 끝낸 이유를 Spring AI가 옮긴 값 (STOP: 끝까지 씀, LENGTH: 출력 토큰 상한에 걸려 잘림)
+    private ChatResponse chatResponse(String text, String model, int promptTokens, int completionTokens,
+                                      String finishReason) {
+        return new ChatResponse(
+                List.of(new Generation(new AssistantMessage(text),
+                        ChatGenerationMetadata.builder().finishReason(finishReason).build())),
                 ChatResponseMetadata.builder()
                         .model(model)
                         .usage(new DefaultUsage(promptTokens, completionTokens))

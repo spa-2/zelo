@@ -41,10 +41,10 @@ public class WebhookEvent extends BaseCreatedEntity {
     @Column(name = "payload", nullable = false, columnDefinition = "text")
     private String payload;
 
-    @Column(name = "failure_reason", columnDefinition = "text")
+    @Column(name = "failure_reason", nullable = true, columnDefinition = "text")
     private String failureReason;
 
-    @Column(name = "processed_at")
+    @Column(name = "processed_at", nullable = true)
     private LocalDateTime processedAt;
 
     private WebhookEvent(String webhookId, String portoneId, String eventType, String payload) {

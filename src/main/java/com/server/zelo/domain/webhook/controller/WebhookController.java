@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 // 웹훅은 실제 포트원과 연결된 real 모드에서만 받는다
 @RestController
-@RequestMapping("/api/payments")
 @RequiredArgsConstructor
+@RequestMapping("/api/payments")
 @ConditionalOnProperty(name = "zelo.portone.mode", havingValue = "real")
 public class WebhookController {
 

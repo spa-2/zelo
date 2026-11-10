@@ -45,7 +45,7 @@ public class Refund extends BaseTimeEntity {
     private Long itemsAmount;
 
     // 포트원에서 환불이 완료된 시각. 완료 전에는 null이다
-    @Column(name = "refunded_at")
+    @Column(name = "refunded_at", nullable = true)
     private LocalDateTime refundedAt;
 
     @OneToMany(mappedBy = "refund", cascade = CascadeType.PERSIST)

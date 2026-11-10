@@ -39,20 +39,20 @@ public class Payment extends BaseTimeEntity {
     private Long amount;
 
     // 포트원 재조회로 확인한 실제 결제 금액. 결제 승인 전에는 null이다
-    @Column(name = "pg_amount")
+    @Column(name = "pg_amount", nullable = true)
     private Long pgAmount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private PaymentStatus status;
 
-    @Column(name = "paid_at")
+    @Column(name = "paid_at", nullable = true)
     private LocalDateTime paidAt;
 
-    @Column(name = "payment_method_name", length = 50)
+    @Column(name = "payment_method_name", nullable = true, length = 50)
     private String paymentMethodName;
 
-    @Column(name = "failure_reason", length = MAX_FAILURE_REASON_LENGTH)
+    @Column(name = "failure_reason", nullable = true, length = MAX_FAILURE_REASON_LENGTH)
     private String failureReason;
 
     private Payment(Long orderId, String portoneId, Long amount) {

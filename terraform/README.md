@@ -152,3 +152,82 @@ jobs:
 - user-data는 **처음 부팅할 때 한 번만** 실행된다. 이미 떠 있는 서버에는 `sudo timedatectl set-timezone Asia/Seoul`과 `sudo dnf install -y net-tools bind-utils nmap-ncat telnet htop sysstat lsof tcpdump jq`를 직접 실행한다.
 - 호스트의 시간대는 컨테이너에 이어지지 않는다. 앱(JVM)의 시간대는 이미지(Dockerfile)의 `TZ`로 정한다.
 - user-data가 바뀌면 수집기는 서버가 교체되고(Prometheus 데이터 삭제), 앱은 ASG가 인스턴스를 교체하고, Redis와 부하기는 서버가 중지됐다가 다시 시작된다. apply 전에 `terraform plan`으로 확인한다.
+
+## 로그 수집 (Loki)
+
+앱 서버의 컨테이너 로그를 수집기의 Loki로 모아서 Grafana에서 지표와 같이 본다.
+
+```
+앱 EC2(각 대) ─ Alloy ─▶ Loki(수집기 EC2, 3100) ◀─ Grafana(Loki 데이터소스)
+```
+
+- 앱 서버는 부팅할 때(user-data) Alloy 컨테이너를 띄운다. Docker 소켓에서 `zelo` 컨테이너 로그를 읽어 Loki로 보내며, 서버마다 `instance_id` 라벨이 붙는다. 앱 2대여도 한 곳에서 보고 `instance_id`로 구분한다.
+- Loki는 수집기 EC2에서 로그를 로컬 디스크에 7일 보관한다. 3100은 VPC 안쪽에서만 열려 있다.
+- 수집기의 사설 IP는 서브넷 안에서 고정(`cidrhost(...10)`)해서, 수집기를 교체해도 앱 설정이 바뀌지 않는다.
+- 대시보드 하단에 "ERROR 로그 수/분", "ERROR / WARN 로그", "전체 로그" 패널이 있다. Grafana의 Explore에서 `{job="zelo"}`로 직접 검색할 수도 있다. 서버 하나만 보려면 `{job="zelo", instance_id="i-..."}`.
+- 로그에 개인정보를 남기지 않는 규칙(AGENTS.md)은 여기서도 그대로 지켜야 한다. 모은 로그는 Grafana에 접속할 수 있는 사람이 모두 볼 수 있다.
+- 수집기나 앱의 user-data가 바뀌면 수집기는 교체되고(Prometheus와 Loki 데이터 삭제), 앱은 ASG가 인스턴스를 교체한다.
+
+## k6 지표를 Grafana로 (Prometheus remote write)
+
+부하기(k6)가 계산한 응답 시간, 실패율을 Prometheus로 보내서 Grafana의 "Zelo k6 부하기 (흐름별)" 대시보드에서 `journey`(흐름), `phase`(warmup, steady), `testid`(실행)로 거른다. 통합 테스트처럼 여러 흐름을 섞어 돌릴 때 어느 흐름이 느려졌는지 서버 지표와 같은 시간축에서 보려는 용도다. 부하기가 있을 때(`loadgen_enabled`)만 켜진다.
+
+```
+부하기(k6) ──9090, 부하기 고정 IP만 허용──▶ Prometheus(--web.enable-remote-write-receiver) ──▶ Grafana
+```
+
+- Prometheus는 부하기가 있으면 `0.0.0.0:9090`에서 듣고(없으면 `127.0.0.1`), 수집기 보안그룹이 부하기 EIP `/32`에서 오는 9090만 허용한다. 인증이 없으므로 다른 곳에는 열지 않는다. 쓰기와 조회 API가 모두 열린다.
+- 사용법은 `load-test/run-k6.sh`의 `PROM_RW_URL`(주소는 `terraform output prometheus_remote_write_url`).
+  ```bash
+  PROM_RW_URL=http://<수집기 IP>:9090/api/v1/write TESTID=run1 \
+    load-test/run-k6.sh load-test/integrated/integrated-load.js -e BASE_URL=http://<ALB 주소>
+  ```
+- k6의 `url` 태그는 뺀다(`--system-tags`). 주소에 상품 코드, 주문 번호가 들어가서 지표 종류가 수만 개로 불어나 수집기 메모리를 해친다. 요청 구분은 `name` 태그로 한다.
+- 처음 쓸 때는 Grafana의 p95를 k6 요약(`--summary-export`)의 p95와 비교한다. 미리 계산해서 보내는 p95가 구간별인지 누적인지 확인이 필요하고, 누적이면 네이티브 히스토그램(`K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true`와 Prometheus `--enable-feature=native-histograms`)으로 바꾼다.
+- 합격 판정은 지금처럼 k6 요약이 기준이다. Grafana는 실시간 관찰용이다.
+- 수집기의 user-data가 바뀌므로 apply하면 수집기가 교체된다(Prometheus와 Loki 데이터 삭제).
+
+## 환경 분리 (dev = 부하 테스트, prod = 운영)
+
+같은 코드로 환경 두 개를 만든다. 환경마다 값 파일(`envs/*.tfvars`)과 상태 파일(workspace)이 따로다. 리소스 이름과 SSM 경로에 환경 이름이 들어가서(`zelo-prod-*`, `/zelo/prod/...`) 두 환경이 동시에 떠 있어도 부딪히지 않는다.
+
+```bash
+# 운영
+terraform workspace new prod            # 이미 있으면 terraform workspace select prod
+terraform plan  -var-file=envs/prod.tfvars
+terraform apply -var-file=envs/prod.tfvars
+
+# 부하 테스트 (끝나면 destroy)
+terraform workspace new dev             # 이미 있으면 terraform workspace select dev
+terraform apply -var-file=envs/dev.tfvars
+```
+
+- **workspace를 반드시 확인하고 apply한다.** `terraform workspace show`가 `prod`인데 `envs/dev.tfvars`로 apply하면 운영이 바뀐다. 현재 상태 파일은 로컬 파일이라 팀원과 공유되지 않는다. 운영 전에 S3 백엔드(상태 파일 보관과 잠금)로 옮기는 것을 권한다.
+- 팀원 IP, 키 페어 같은 개인 값은 `terraform.tfvars`(커밋되지 않음)에 둔다. 환경 공통이다.
+- **순서: 운영 환경을 먼저 만든다.** 이미지 저장소(ECR)와 SES 도메인 인증은 계정에 하나뿐이라 운영이 만들고(`create_ecr`, `ses_enabled`), 부하 테스트 환경은 만들지 않고 같은 저장소를 읽는다. 운영 환경을 destroy하면 이미지도 같이 지워진다.
+
+| | dev (부하 테스트) | prod (운영) |
+|---|---|---|
+| 앱 프로필 | `performance` | `prod` |
+| 외부 서비스 모드 | fake | 처음 `CHANGE_ME`, 실제 값(real)을 넣어야 앱이 시작 |
+| 부하 테스트 시드, fake LLM 파라미터 | 있음 | 없음 |
+| 프론트(S3 + CloudFront) | 없음 | 있음 (`zelo.wyshin.click`) |
+| 로그 | 수집기의 Loki + Alloy | CloudWatch Logs (보관 30일) |
+| Redis | EC2 컨테이너 | ElastiCache (복제본 1, 자동 장애 전환) |
+| DB | 단일 AZ | Multi-AZ, 백업 7일, 삭제 보호, 최종 스냅샷 |
+| 부하기 | 있음 | 없음 |
+
+### 운영 환경을 처음 만들 때 할 일
+
+1. `terraform apply -var-file=envs/prod.tfvars` (인증서 검증, CloudFront, ElastiCache, Multi-AZ RDS 때문에 20~30분 걸릴 수 있다)
+2. SSM 시크릿 입력: `/zelo/prod/` 아래 `JWT_SECRET`(Base64 32바이트 이상), `OPENAI_API_KEY`, 구글/카카오 ID와 시크릿, 포트원 API 시크릿, 스토어 ID, 웹훅 시크릿
+3. 모드 입력: `LLM_MODE`, `PORTONE_MODE`, `MAIL_MODE`, `SOCIAL_MODE`를 `real`로. 값을 넣기 전에는 `CHANGE_ME`라서 앱이 시작하지 않는다. SES는 프로덕션 액세스 승인 후에 `MAIL_MODE=real`을 쓴다
+4. 이미지 배포: 저장소 변수 `DEPLOY_ENABLED_PROD=true`, `AWS_DEPLOY_ROLE_ARN_PROD`(= `terraform output github_deploy_role_arn`)를 넣고 `main`에 머지하면 CI가 빌드, 푸시, `image_tag` 변경, 서버 교체까지 한다
+5. 프론트 저장소 변수(`S3_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `AWS_ROLE_ARN`)를 운영 값으로 넣고 `main` 배포를 돌린다 (위 "프론트 배포" 참고)
+6. 알림: `alarm_email`을 넣고 오는 구독 확인 메일의 링크를 누른다. Grafana 알림은 웹훅 주소를 SSM `/zelo-monitoring/prod/alert_webhook_url`에 넣고 수집기에서 `sudo /usr/local/bin/zelo-alert-contact.sh`를 실행한다
+7. 소셜 로그인 리다이렉트 주소와 포트원 웹훅 주소를 운영 도메인(HTTPS)으로 바꾼다
+
+### 아직 안 된 것
+- ALB의 HTTPS(`certificate_arn`)와 CloudFront → ALB 구간의 HTTPS. 후자는 ALB용 도메인과 인증서가 필요하다.
+- 상태 파일 S3 백엔드, DB 스키마 마이그레이션 도구(운영 프로필도 `ddl-auto: update`).
+- 새 장애 전환 구성(RDS Multi-AZ, ElastiCache 복제본)이 실제 장애에서 의도대로 동작하는지 검증.

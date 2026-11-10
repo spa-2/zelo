@@ -46,7 +46,7 @@
         },
         "overrides": []
       },
-      "description": "재시도를 포함한 LLM 호출 1건 단위. outcome은 SUCCESS 또는 실패 종류(CLIENT_ERROR, SERVER_ERROR)"
+      "description": "재시도를 포함한 LLM 호출 1건 단위. outcome은 SUCCESS 또는 실패 코드(AI_xxx)"
     },
     {
       "id": 2,
@@ -178,7 +178,7 @@
         },
         "overrides": []
       },
-      "description": "1이면 재시도가 없다. 서킷 거절도 시도에 포함된다"
+      "description": "1이면 재시도가 없다. 서킷 거절은 시도에 포함되지만, 시간 예산 부족으로 건너뛴 호출은 시도 지표가 없어 1 미만이 될 수 있다"
     },
     {
       "id": 6,

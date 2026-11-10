@@ -1,0 +1,538 @@
+{
+  "uid": "zelo-ai",
+  "title": "Zelo 채팅·LLM",
+  "tags": [
+    "llm",
+    "chat"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "LLM 호출 수/초 (결과별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (rate(zelo_llm_call_seconds_count{operation=~\"$operation\"}[1m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "description": "재시도를 포함한 LLM 호출 1건 단위. outcome은 SUCCESS 또는 실패 종류(CLIENT_ERROR, SERVER_ERROR)"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "LLM 최종 실패율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(zelo_llm_call_seconds_count{outcome!=\"SUCCESS\",operation=~\"$operation\"}[1m])) / sum(rate(zelo_llm_call_seconds_count{operation=~\"$operation\"}[1m]))",
+          "legendFormat": "실패율",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "description": "재시도까지 끝낸 뒤의 최종 실패 비율. 호출이 없으면 값이 없다"
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "LLM 호출 p95 (작업별, 성공만)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zelo_llm_call_seconds_bucket{outcome=\"SUCCESS\",operation=~\"$operation\"}[1m])))",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "재시도를 포함한 최종 성공 호출 시간. 서버가 여러 대여도 버킷을 합쳐서 계산한다"
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "LLM 시도 1번 p95 (작업별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zelo_llm_attempt_seconds_bucket{operation=~\"$operation\"}[1m])))",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "재시도 하나하나의 시간. 호출 p95와 차이가 크면 재시도가 시간을 쓰고 있다는 뜻"
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "호출당 평균 시도 횟수 (재시도 지표)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(zelo_llm_attempt_seconds_count{operation=~\"$operation\"}[1m])) / sum(rate(zelo_llm_call_seconds_count{operation=~\"$operation\"}[1m]))",
+          "legendFormat": "시도/호출",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "1이면 재시도가 없다. 서킷 거절도 시도에 포함된다"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "토큰 사용량 (분당, 모델·종류별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (model, type) (rate(zelo_llm_tokens_total{operation=~\"$operation\"}[1m])) * 60",
+          "legendFormat": "{{model}} {{type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "성공으로 검증된 응답의 관측 사용량이다. 실패·타임아웃 비용 전체는 아니다. fake 모드에서는 가짜 값이다"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "시간 예산 초과로 건너뛴 시도/초",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (operation, stage) (rate(zelo_llm_time_budget_exceeded_total{operation=~\"$operation\"}[1m]))",
+          "legendFormat": "{{operation}} {{stage}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(zelo_llm_time_budget_exceeded_total[1m])) or vector(0)",
+          "legendFormat": "전체",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "메시지당 시간 예산(30초)이 모자라 LLM 시도를 건너뛰거나 짧게 끊은 횟수. 한 번도 없으면 시계열이 없어서 '전체'만 0으로 보인다"
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "채팅 답변 처리 p95 (의도별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, intent) (rate(zelo_chat_reply_seconds_bucket[1m])))",
+          "legendFormat": "{{intent}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "사용자 메시지 저장 이후 답변을 만드는 시간. 멱등 재응답은 제외"
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "채팅 답변 결과별 건수/초",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (result) (rate(zelo_chat_reply_seconds_count[1m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "description": "정상(NORMAL)과 대체(DEGRADED), 거절(BUSY) 등을 섞지 않고 결과별로 본다"
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "FALLBACK 문구 건수/초 (LLM 실패로 저장한 것)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code) (rate(zelo_chat_fallback_total[1m]))",
+          "legendFormat": "{{code}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(zelo_chat_fallback_total[1m])) or vector(0)",
+          "legendFormat": "전체",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "LLM이 실패해서 '다시 시도' 문구를 저장한 횟수. 한 번도 없으면 시계열이 없어서 '전체'만 0으로 보인다"
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "서킷 브레이커 상태 (서버별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (instance, name, state) (resilience4j_circuitbreaker_state{state=~\"open|half_open|forced_open\"})",
+          "legendFormat": "{{instance}} {{name}} {{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "description": "1이면 그 상태다(open: 호출 차단 중). 서버마다 독립 서킷이라 평균 내지 않고 서버별로 본다. 항상 닫혀 있으면 0으로 보인다"
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "서킷이 거절한 호출/초 (서버별)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance, name) (rate(resilience4j_circuitbreaker_not_permitted_calls_total[1m]))",
+          "legendFormat": "{{instance}} {{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "서킷이 열려서 실제 호출 없이 거절한 횟수"
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "진행 중 LLM 작업 / 채팅 요청",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(zelo_llm_inflight)",
+          "legendFormat": "LLM 작업",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(zelo_chat_inflight)",
+          "legendFormat": "채팅 요청",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "프로세스 로컬 값이라 서버가 종료되면 해당 시계열이 끊긴다. 짧은 작업은 수집 사이에 끝나 안 보일 수 있다"
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "채팅 요청 p95 (START/SEND/RETRY)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zelo_chat_request_seconds_bucket[1m])))",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "동기 HTTP 처리 전체. 네트워크와 ALB 대기는 k6로 본다"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "operation",
+        "label": "LLM 작업(operation)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(zelo_llm_call_seconds_count, operation)",
+          "refId": "v_operation"
+        },
+        "definition": "label_values(zelo_llm_call_seconds_count, operation)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  }
+}

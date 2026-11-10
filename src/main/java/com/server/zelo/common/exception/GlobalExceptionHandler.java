@@ -140,7 +140,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
         log.info("지원하지 않는 요청 방식 method={}", e.getMethod());
         countError(ErrorCode.METHOD_NOT_ALLOWED);
+        // 405 응답은 허용된 메서드를 Allow 헤더로 알려야 한다
         return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
+                .headers(e.getHeaders())
                 .body(ApiResponse.error(ErrorCode.METHOD_NOT_ALLOWED));
     }
 

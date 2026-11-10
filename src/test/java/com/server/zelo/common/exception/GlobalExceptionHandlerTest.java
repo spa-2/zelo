@@ -2,6 +2,7 @@ package com.server.zelo.common.exception;
 import com.server.zelo.common.api.ApiResponse;
 import com.server.zelo.common.monitoring.BusinessMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.redisson.client.RedisConnectionException;
 import org.redisson.client.RedisException;
@@ -137,10 +138,11 @@ class GlobalExceptionHandlerTest {
     void 지원하지_않는_요청_방식은_405와_COMMON_006을_반환한다() {
         // when
         ResponseEntity<ApiResponse<Void>> response =
-                handler.handleMethodNotSupported(new HttpRequestMethodNotSupportedException("DELETE"));
+                handler.handleMethodNotSupported(new HttpRequestMethodNotSupportedException("DELETE", List.of("GET", "POST")));
 
         // then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(response.getHeaders().getAllow()).containsExactlyInAnyOrder(HttpMethod.GET, HttpMethod.POST);
         assertThat(response.getBody().code()).isEqualTo(ErrorCode.METHOD_NOT_ALLOWED.getCode());
         assertThat(errorCount(ErrorCode.METHOD_NOT_ALLOWED)).isEqualTo(1);
     }

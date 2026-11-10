@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class RefundService {
-    //스케줄러 스레드를 같이 공유해 20건씩 처리 하는 상수
+    // 스케줄러 스레드를 같이 쓰므로 한 번에 20건씩 처리한다
     private static final int STALE_REQUESTED_BATCH_SIZE = 20;
     private final RefundRepository refundRepository;
 
@@ -58,7 +58,7 @@ public class RefundService {
         }
     }
 
-    // 부분 환불 뒤 포트원에 넘길 취소 가능 잔액을 계산하려고 완료된 환불 금액을 더한다
+    // 부분 환불 뒤 취소 가능 잔액을 구하려고 완료된 환불 금액을 더한다
     public long calculateRefundedAmount(Long paymentId) {
         return refundRepository.findAllByPaymentIdAndStatus(paymentId, RefundStatus.COMPLETED).stream()
                 .mapToLong(Refund::getItemsAmount)

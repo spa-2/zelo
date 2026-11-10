@@ -27,7 +27,7 @@ public class MockPortOneClient implements PortOneClient {
 
     private final PaymentRepository paymentRepository;
 
-    // 부하 테스트에서 포트원 응답을 기다리는 시간을 흉내 낸다. 기본 0이라 평소 로컬 개발에는 영향이 없다
+    // 부하 테스트용 포트원 응답 지연. 기본 0이라 로컬 개발에는 영향이 없다
     // 조회는 포트원만, 빌링키 결제는 PG사 승인까지 거쳐서 실측 시간이 크게 달라 따로 둔다 (load-test/payment/README.md)
     @Value("${zelo.portone.fake-delay:0ms}")
     private Duration fakeDelay = Duration.ZERO;
@@ -61,7 +61,7 @@ public class MockPortOneClient implements PortOneClient {
         return PortOneCancellationStatus.SUCCEEDED;
     }
 
-    // 가짜 모드에는 결제창이 없어 빌링키를 발급받을 수 없으므로, 빌링키 끝에 붙인 사용자 ID를 발급 고객으로 본다 (예: fake-billing-key-1)
+    // 가짜 모드는 결제창이 없어 빌링키 끝의 사용자 ID를 발급 고객으로 본다 (예: fake-billing-key-1)
     @Override
     public PortOneBillingKey getBillingKey(String billingKey) {
         delay(fakeDelay);

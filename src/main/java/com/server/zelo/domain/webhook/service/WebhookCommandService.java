@@ -29,8 +29,7 @@ public class WebhookCommandService {
     private final WebhookEventService webhookEventService;
     private final TransactionOperations transactionOperations;
 
-    // 결제 확인과 취소 동기화는 각 락이 전체를 감싸야 해서 Command가 Facade를 호출한다.
-    // 포트원 조회가 외부 HTTP 호출이라 이벤트 저장과 결과 기록만 각각 트랜잭션으로 묶는다
+    // 락이 전체를 감싸야 해서 Command가 Facade를 부르고, 포트원 조회 때문에 저장과 결과 기록만 각각 트랜잭션으로 묶는다
     public void handle(String webhookId, WebhookRequest request, String payload) {
         WebhookEvent webhookEvent = receiveEvent(webhookId, request, payload);
         if (webhookEvent.isProcessed()) {
@@ -56,8 +55,7 @@ public class WebhookCommandService {
                 status -> webhookEventService.process(webhookEvent.getId(), LocalDateTime.now()));
     }
 
-    // 결제창 단계의 결과(결제·실패·결제창 취소)는 결제 확인이 반영하고,
-    // 결제 완료 후의 취소는 결제 확인이 건너뛰므로 취소 동기화로 맞춘다
+    // 결제창 단계 결과는 결제 확인이, 결제 완료 후 취소는 취소 동기화가 맞춘다
     private void dispatch(WebhookRequest request) {
         String portoneId = request.data().paymentId();
         paymentFacade.confirmPayment(portoneId);
@@ -80,7 +78,7 @@ public class WebhookCommandService {
             return Objects.requireNonNull(
                     transactionOperations.execute(status -> webhookEventService.receive(webhookId, request, payload)));
         } catch (DataIntegrityViolationException e) {
-            // 같은 webhook-id가 동시에 먼저 저장됐으므로 롤백된 뒤 새 트랜잭션에서 그 행을 다시 조회한다
+            // 같은 webhook-id가 먼저 저장됐으므로 새 트랜잭션에서 그 행을 다시 조회한다
             return Objects.requireNonNull(
                     transactionOperations.execute(status -> webhookEventService.receive(webhookId, request, payload)));
         }

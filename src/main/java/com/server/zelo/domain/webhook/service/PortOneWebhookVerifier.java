@@ -24,17 +24,17 @@ public class PortOneWebhookVerifier {
 
     public PortOneWebhookVerifier(@Value("${zelo.portone.webhook-secret}") String webhookSecret,
                                   JsonMapper jsonMapper, Validator validator) {
-        // 시크릿이 없는 환경(CI, 로컬)에서도 앱은 떠야 하므로 시작 단계에서 막지 않고 웹훅 수신 시 거절한다
+        // 시크릿이 없는 환경(CI, 로컬)에서도 앱은 뜨게 하고 웹훅 수신 시 거절한다
         this.webhookVerifier = (webhookSecret == null || webhookSecret.isBlank()) ? null : new WebhookVerifier(webhookSecret);
         this.jsonMapper = jsonMapper;
         this.validator = validator;
     }
 
-    // 서명을 검증한 뒤 본문을 객체로 바꾼다. SDK 예외는 공통 에러코드로 바꿔 401로 응답한다
+    // SDK 예외는 공통 에러코드로 바꿔 401로 응답한다
     public WebhookRequest verify(String webhookId, String webhookTimestamp,
                                  String webhookSignature, String body) {
 
-        if (webhookVerifier == null) { // ★
+        if (webhookVerifier == null) {
             log.error("포트원 웹훅 시크릿이 설정되지 않아 웹훅을 거절합니다 webhookId={}", webhookId);
             throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);
         }
@@ -44,7 +44,7 @@ public class PortOneWebhookVerifier {
             log.warn("포트원 웹훅 서명 검증 실패 webhookId={}", webhookId);
             throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);
         } catch (IllegalArgumentException e) {
-            // SDK는 서명을 확인한 뒤 본문을 포트원 웹훅 형식으로 바꾸고, 형식이 맞지 않으면 SerializationException을 던진다
+            // SDK는 서명 확인 뒤 본문 형식이 맞지 않으면 SerializationException을 던진다
             log.warn("포트원 웹훅 본문 형식 오류 webhookId={}", webhookId);
             throw new BusinessException(ErrorCode.INVALID_INPUT, "웹훅 본문 형식이 올바르지 않습니다.");
         }

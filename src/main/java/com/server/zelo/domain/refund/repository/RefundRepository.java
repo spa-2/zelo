@@ -26,7 +26,7 @@ public interface RefundRepository extends JpaRepository<Refund, Long> {
 
     List<Refund> findAllByPaymentIdAndStatus(Long paymentId, RefundStatus status);
 
-    // 환불은 결제 ID만 갖고 있어서 결제를 ID로 이어 주문별 완료 환불 금액을 한 번에 더한다
+    // 결제 ID로 이어 주문별 완료 환불 금액을 한 번에 더한다
     @Query("""
             select new com.server.zelo.domain.refund.dto.response.OrderRefundAmount(p.orderId, sum(r.itemsAmount))
             from Refund r join Payment p on p.id = r.paymentId

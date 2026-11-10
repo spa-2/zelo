@@ -18,12 +18,12 @@ public interface DeliveryRepository extends JpaRepository<Delivery, Long> {
     // 상세 조회가 스케줄러·환불의 배송 상태 변경을 막지 않도록 잠금 없이 조회한다
     Optional<Delivery> findDeliveryByOrderId(Long orderId);
 
-    // 환불로 보류된 배송은 빼고, 상태가 바뀐 지 일정 시간이 지난 배송을 오래된 것부터 limit 건까지 찾는다
+    // 환불 보류된 배송은 빼고, 상태가 바뀐 지 오래된 순으로 limit건 찾는다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<Delivery> findByStatusAndOnHoldFalseAndUpdatedAtBeforeOrderByIdAsc(
             DeliveryStatus status, LocalDateTime before, Limit limit);
 
-    // 환불과 스케줄러가 같은 배송을 동시에 바꾸지 않도록 환불 쪽은 배송 행을 잠그고 조회한다
+    // 환불과 스케줄러가 같은 배송을 동시에 바꾸지 않게 행을 잠근다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Delivery> findByOrderId(Long orderId);
 }

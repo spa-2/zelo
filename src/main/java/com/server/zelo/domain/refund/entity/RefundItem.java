@@ -29,7 +29,7 @@ public class RefundItem extends BaseCreatedEntity {
     @JoinColumn(name = "refund_id", nullable = false, updatable = false)
     private Refund refund;
 
-    // 환불 수량을 주문 수량과 비교하고 주문 당시 단가를 가져와야 해서 주문 상품과 연결한다
+    // 주문 수량과 비교하고 주문 당시 단가를 쓰려고 주문 상품과 연결한다
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_item_id", nullable = false, updatable = false)
     private OrderItem orderItem;
@@ -37,7 +37,7 @@ public class RefundItem extends BaseCreatedEntity {
     @Column(name = "quantity", nullable = false, updatable = false)
     private Integer quantity;
 
-    // 주문 당시 단가 스냅샷. 상품 가격이 바뀌어도 환불 금액은 주문 때 금액 기준이어야 한다
+    // 주문 당시 단가. 상품 가격이 바뀌어도 환불은 주문 금액 기준이다
     @Column(name = "unit_price", nullable = false, updatable = false)
     private Long unitPrice;
 

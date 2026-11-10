@@ -63,7 +63,7 @@ public class Payment extends BaseTimeEntity {
     }
 
     public static Payment of(Long orderId, String portoneId, Long amount) {
-        return new Payment(orderId, portoneId, amount);   // 생성 시 status = READY
+        return new Payment(orderId, portoneId, amount);
     }
 
     public void startConfirm() {

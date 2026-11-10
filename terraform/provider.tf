@@ -3,17 +3,14 @@
 # locals.name(zelo-dev)은 다른 파일들이 리소스 이름 접두사로 같이 쓴다.
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.10" # use_lockfile이 1.10 이상 필요
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
+  backend "s3" {
+    bucket       = "zelo-tfstate-567378238963"
+    key          = "zelo/terraform.tfstate"
+    region       = "ap-northeast-2"
+    encrypt      = true
+    use_lockfile = true # S3 자체 잠금(DynamoDB 불필요)
   }
 }
 

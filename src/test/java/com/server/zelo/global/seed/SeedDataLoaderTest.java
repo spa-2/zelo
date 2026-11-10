@@ -145,7 +145,7 @@ class SeedDataLoaderTest {
         // given: 유림님 MenuPlanPrompt 임시 재료 목록 (#81). 이름이나 단위가 다르면 견적에서 수량 계산이 안 됨
         Map<String, BaseUnit> promptIngredients = Map.ofEntries(
                 Map.entry("김치", BaseUnit.G), Map.entry("밥", BaseUnit.G), Map.entry("계란", BaseUnit.EA),
-                Map.entry("대파", BaseUnit.BUNCH), Map.entry("양파", BaseUnit.EA), Map.entry("햄", BaseUnit.G),
+                Map.entry("대파", BaseUnit.G), Map.entry("양파", BaseUnit.G), Map.entry("햄", BaseUnit.G),
                 Map.entry("돼지고기", BaseUnit.G), Map.entry("두부", BaseUnit.EA), Map.entry("식용유", BaseUnit.ML),
                 Map.entry("간장", BaseUnit.ML), Map.entry("참기름", BaseUnit.ML), Map.entry("고추장", BaseUnit.G),
                 Map.entry("소주", BaseUnit.ML));
@@ -156,6 +156,23 @@ class SeedDataLoaderTest {
 
         // then
         assertThat(seedIngredients).containsAllEntriesOf(promptIngredients);
+    }
+
+    @Test
+    void 레시피에서_그램으로_재는_채소는_G이고_상품_양도_그램이다() {
+        // given: LLM이 그램으로 생각한 숫자를 개수 칸에 넣어(1인분에 대파 10단) 견적에 그대로 담겨서 G로 바꿨다
+        List<String> gramVegetables = List.of("당근", "브로콜리", "파프리카", "양배추", "양파", "대파", "배추", "쪽파",
+                "오이", "애호박", "단호박");
+        Map<String, BaseUnit> seedIngredients = SeedDataLoader.readRows("seed/ingredients.csv").stream()
+                .collect(Collectors.toMap(row -> row[1], row -> BaseUnit.valueOf(row[2])));
+
+        // when & then
+        assertThat(gramVegetables).allSatisfy(name -> assertThat(seedIngredients.get(name)).as(name).isEqualTo(BaseUnit.G));
+        // 개·단 수(1~10)가 남아 있으면 필요량 ÷ 내용량이 수백 개로 계산된다. 가장 작은 채소 1개(200g)보다 작으면 안 바꾼 것
+        assertThat(SeedDataLoader.readRows("seed/products.csv"))
+                .filteredOn(row -> gramVegetables.contains(row[1]))
+                .hasSize(88)
+                .allSatisfy(row -> assertThat(Integer.parseInt(row[5])).as(row[3]).isGreaterThanOrEqualTo(200));
     }
 
     @Test

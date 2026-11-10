@@ -26,7 +26,7 @@ public record CreateProductRequest(
         @NotNull
         @Min(0)
         Long price,
-        // 재료 기본 단위 기준 (김치 1kg이면 1000)
+        // 재료 기본 단위 기준 (김치 1kg이면 1000). 양파·대파 같은 채소도 G라서 개·단 수가 아니라 무게를 넣는다 (대파 1단 600)
         @NotNull
         @Min(1)
         Integer contentAmount,

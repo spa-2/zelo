@@ -244,24 +244,52 @@ class RefundCommandServiceTest {
     }
 
     @Test
-    void 포트원에서_결제가_그대로_완료_상태면_진행_중_환불을_실패로_확정하고_배송_보류를_푼다() {
+    void 결제가_완료_상태이고_취소_내역이_없으면_같은_취소_키로_다시_요청해_완료한다() {
         // given
-        given(portOneClient.getPayment(PORTONE_ID))
-                .willReturn(PortOnePayment.of(PORTONE_ID, PortOnePaymentStatus.PAID, 10_000L, null));
-        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
-        Refund refund = Refund.of(1L, RefundType.FULL, REASON);
-        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
-        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        givenPaidWithRequestedRefund();
 
         // when
         refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
 
         // then
+        then(portOneClient).should().cancelPaymentWithAmount(
+                PORTONE_ID, "refund-cancel-000000000010", 10_000L, 10_000L, REASON);
+        then(refundService).should().complete(eq(REFUND_ID), any());
+        then(deliveryService).should().cancelDelivery(ORDER_ID);
+        then(refundService).should(never()).fail(any());
+    }
+
+    @Test
+    void 결제가_완료_상태여도_취소가_처리_중이면_환불_요청과_배송_보류를_유지한다() {
+        // given
+        givenPaidWithRequestedRefund(cancellation(PortOneCancellationStatus.REQUESTED, 10_000L, 1));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
+        then(refundService).should(never()).fail(any());
+        then(refundService).should(never()).complete(any(), any());
+        then(deliveryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 결제가_완료_상태이고_취소가_실패로_있으면_환불을_실패로_두고_배송_보류를_푼다() {
+        // given
+        givenPaidWithRequestedRefund(cancellation(PortOneCancellationStatus.FAILED, 10_000L, 1));
+
+        // when
+        refundCommandService.syncCancellation(ORDER_ID, PORTONE_ID);
+
+        // then
+        then(portOneClient).should(never()).cancelPaymentWithAmount(any(), any(), any(), any(), any());
         then(refundService).should().fail(REFUND_ID);
         then(deliveryService).should().releaseHold(ORDER_ID);
-        then(paymentService).should(never()).cancel(any(), any());
         then(orderCommandService).shouldHaveNoInteractions();
     }
+
+
 
     @Test
     void 포트원에서_결제가_완료_상태이고_진행_중_환불이_없으면_아무것도_바꾸지_않는다() {
@@ -582,5 +610,17 @@ class RefundCommandServiceTest {
         payment.startConfirm();
         payment.complete(10_000L, LocalDateTime.now(), "TEST_CARD");
         return payment;
+    }
+
+    // 전체 환불을 요청했는데 포트원 결제가 아직 PAID로 보이는 상태
+    private void givenPaidWithRequestedRefund(PortOneCancellation... cancellations) {
+        given(portOneClient.getPayment(PORTONE_ID)).willReturn(new PortOnePayment(PORTONE_ID,
+                PortOnePaymentStatus.PAID, 10_000L, null, null, null, List.of(cancellations)));
+        given(paymentService.getPayment(PORTONE_ID)).willReturn(paidPayment());
+        Refund refund = Refund.of(1L, RefundType.FULL, REASON);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        ReflectionTestUtils.setField(refund, "createdAt", REFUND_REQUESTED_AT);
+        given(refundService.findRequestedRefund(1L)).willReturn(Optional.of(refund));
+        givenCancellationSucceeded();
     }
 }

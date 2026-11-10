@@ -160,11 +160,8 @@ public class RefundCommandService {
     // 취소 웹훅을 받으면 포트원에 다시 조회해, 결과를 모른 채 남은 환불이나 포트원에서 직접 취소한 결제를 맞춘다
     public void syncCancellation(Long orderId, String portoneId) {
         PortOnePayment pgPayment = portOneClient.getPayment(portoneId);
-        if (pgPayment.isPaid()) {
-            failRequestedRefund(orderId, portoneId);
-            return;
-        }
-        if (pgPayment.isPartiallyCancelled()) {
+        // 취소가 처리 중이어도 결제 상태는 PAID로 남으므로, 결제 상태가 아니라 이번 환불의 취소 내역으로 판단한다
+        if (pgPayment.isPaid() || pgPayment.isPartiallyCancelled()) {
             syncRequestedRefund(orderId, pgPayment);
             return;
         }
@@ -172,7 +169,6 @@ public class RefundCommandService {
             log.info("포트원에서 취소되지 않은 결제라 동기화하지 않음 portoneId={} status={}", portoneId, pgPayment.status());
             return;
         }
-
         transactionOperations.executeWithoutResult(status -> {
             Payment payment = paymentService.getPayment(portoneId);
             // 결제 확인이나 환불 요청에서 이미 취소까지 반영한 결제는 다시 바꾸지 않는다
@@ -211,8 +207,10 @@ public class RefundCommandService {
         Optional<RefundRetry> retry = Objects.requireNonNull(
                 transactionOperations.execute(status -> findRequestedRefundTarget(pgPayment.portoneId())));
         if (retry.isEmpty()) {
-            // DB에 반영하지 않고 끝나므로 사람이 맞춰야 한다
-            log.error("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={} portoneId={}", orderId, pgPayment.portoneId());
+            // 결제 완료 상태면 맞출 환불이 없을 뿐이고, 부분 취소인데 요청이 없으면 DB에 반영하지 않고 끝나므로 사람이 맞춰야 한다
+            if (pgPayment.isPartiallyCancelled()) {
+                log.error("환불 요청 없이 포트원에서 부분 취소된 결제 orderId={} portoneId={}", orderId, pgPayment.portoneId());
+            }
             return;
         }
         RefundTarget target = retry.get().target();
@@ -241,18 +239,6 @@ public class RefundCommandService {
     }
 
     private record RefundRetry(RefundTarget target, String reason, LocalDateTime requestedAt) {
-    }
-
-    private void failRequestedRefund(Long orderId, String portoneId) {
-        transactionOperations.executeWithoutResult(status -> {
-            Payment payment = paymentService.getPayment(portoneId);
-            refundService.findRequestedRefund(payment.getId()).ifPresent(refund -> {
-                refundService.fail(refund.getId());
-                deliveryService.releaseHold(orderId);
-                log.warn("포트원에서 취소되지 않아 환불 실패 처리 refundId={} orderId={}", refund.getId(), orderId);
-                countResult(RefundStatus.FAILED);
-            });
-        });
     }
 
     // 주문 내역의 결제 금액이 맞도록 남은 상품 전부를 환불한 기록을 완료 상태로 남긴다

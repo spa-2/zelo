@@ -6,13 +6,17 @@ import com.server.zelo.ai.plan.MenuPlan;
 import com.server.zelo.ai.plan.MenuPlanIngredient;
 import com.server.zelo.ai.plan.MenuPlanIntent;
 import com.server.zelo.ai.prompt.MenuPlanPrompt;
+import com.server.zelo.common.exception.BusinessException;
 import com.server.zelo.domain.chat.entity.ChatMessage;
 import com.server.zelo.domain.chat.entity.ChatSender;
 import com.server.zelo.domain.product.entity.BaseUnit;
 import com.server.zelo.domain.product.entity.Keyword;
 import com.server.zelo.domain.product.service.ProductService;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
@@ -28,6 +32,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = "sk-.+")
 @SpringBootTest(properties = {"zelo.llm.mode=real", "zelo.llm.timeout=30s"})
 class MenuPlanOpenAiTest {
+
+    private static final int UNIT_REPEATS = 5;
+    private static final int CUCUMBER_REPEATS = 10;
+    private static final int MIN_VEGETABLE_GRAMS = 10;
+    private static final int MAX_EACH_PER_SERVING = 3;
+    // #449에서 EA·BUNCH → G로 바꾼 채소 (ingredients.csv)
+    private static final Set<String> GRAM_VEGETABLES = Set.of(
+            "당근", "브로콜리", "파프리카", "양배추", "양파", "대파", "배추", "쪽파", "오이", "애호박", "단호박");
 
     // 검증·재시도까지 거친 결과를 본다
     @Autowired
@@ -124,6 +136,82 @@ class MenuPlanOpenAiTest {
 
         // then
         assertThat(menuPlan.intent()).isNotEqualTo(MenuPlanIntent.QUOTE_EDIT);
+    }
+
+    // #449에서 G로 바뀐 채소가 개수가 아니라 그램으로 나오는지, 남은 EA 재료에 그램을 적지 않는지 본다. 메뉴 3개 × 5회 = OpenAI 15회(검증에 걸리면 재시도 1회씩 더)
+    // 양은 흔들려서 정확한 값이 아니라 단위를 헷갈렸을 때만 나오는 값으로 본다: 채소 G가 10 미만(개·단 수를 적음), EA가 인원 × 3 초과(그램을 적음)
+    @Test
+    void 그램_단위_채소는_그램으로_개수_단위_재료는_개수로_적는다() {
+        // given
+        List<String> userTexts = List.of("김치볶음밥 4인분 재료 준비해 줘", "카레 4인분 재료 준비해 줘", "된장찌개 2인분 재료 준비해 줘");
+        Set<String> seenVegetables = new HashSet<>();
+
+        // when
+        List<String> wrongPlans = unitConfusions(userTexts, UNIT_REPEATS, seenVegetables);
+
+        // then
+        assertThat(wrongPlans).isEmpty();
+    }
+
+    // 위 메뉴에 나오지 않는 나머지 G 채소 7개를 본다. 메뉴 4개 × 5회 = OpenAI 20회(검증에 걸리면 재시도 1회씩 더)
+    @Test
+    void 나머지_그램_단위_채소도_그램으로_적는다() {
+        // given
+        List<String> userTexts = List.of(
+                "배추 겉절이 4인분 재료 준비해 줘",
+                "오이무침 2인분 재료 준비해 줘",
+                "단호박죽 3인분 재료 준비해 줘",
+                "브로콜리랑 파프리카 넣은 닭갈비 4인분 재료 준비해 줘");
+        Set<String> seenVegetables = new HashSet<>();
+
+        // when
+        List<String> wrongPlans = unitConfusions(userTexts, UNIT_REPEATS, seenVegetables);
+
+        // then: 채소가 아예 안 나오면 확인한 게 아니므로 나왔는지도 본다
+        assertThat(wrongPlans).isEmpty();
+        assertThat(seenVegetables).contains("배추", "쪽파", "오이", "단호박", "브로콜리", "파프리카", "양배추");
+    }
+
+    // 오이무침에서 오이 2개를 2G로 적은 적이 있다(5회 중 1회). 그램 최솟값 검증 → 고칠 점을 붙인 재시도로 고쳐지는지 본다. OpenAI 10회(검증에 걸리면 재시도 1회씩 더)
+    @Test
+    void 개수로_세던_채소를_그램_칸에_개수로_적어도_재시도로_그램이_된다() {
+        // given
+        Set<String> seenVegetables = new HashSet<>();
+
+        // when
+        List<String> wrongPlans = unitConfusions(List.of("오이무침 2인분 재료 준비해 줘"), CUCUMBER_REPEATS, seenVegetables);
+
+        // then
+        assertThat(wrongPlans).isEmpty();
+        assertThat(seenVegetables).contains("오이");
+    }
+
+    private List<String> unitConfusions(List<String> userTexts, int repeats, Set<String> seenVegetables) {
+        List<String> wrongPlans = new ArrayList<>();
+        for (String userText : userTexts) {
+            for (int i = 0; i < repeats; i++) {
+                try {
+                    MenuPlan menuPlan = planMenu(null, List.of(), userText);
+                    menuPlan.ingredients().stream()
+                            .map(MenuPlanIngredient::name)
+                            .filter(GRAM_VEGETABLES::contains)
+                            .forEach(seenVegetables::add);
+                    menuPlan.ingredients().stream()
+                            .filter(ingredient -> isUnitConfused(ingredient, menuPlan.servings()))
+                            .forEach(ingredient -> wrongPlans.add(userText + " → " + ingredient));
+                } catch (BusinessException e) {
+                    wrongPlans.add(userText + " → 재시도 뒤에도 검증 실패 " + e.getErrorCode());
+                }
+            }
+        }
+        return wrongPlans;
+    }
+
+    private boolean isUnitConfused(MenuPlanIngredient ingredient, int servings) {
+        if (GRAM_VEGETABLES.contains(ingredient.name())) {
+            return ingredient.unit() != BaseUnit.G || ingredient.amount() < MIN_VEGETABLE_GRAMS;
+        }
+        return ingredient.unit() == BaseUnit.EA && ingredient.amount() > servings * MAX_EACH_PER_SERVING;
     }
 
     private MenuPlan planMenu(String currentMenuName, List<ChatMessage> history, String userText) {

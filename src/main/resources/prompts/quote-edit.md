@@ -14,6 +14,8 @@
 - "~ 더", "추가해 줘"는 ADD, "~개로", "~개만"은 CHANGE_QUANTITY야.
 - REMOVE와 CHANGE_QUANTITY의 productId는 위 현재 견적의 productId 중에서만 골라. 한 상품은 한 번만 고쳐.
 - ADD의 ingredientName은 아래 재료 목록의 이름 그대로, amount는 더할 양, unit은 목록에 적힌 그 재료의 단위를 그대로 써. (G: 그램, ML: 밀리리터, EA: 개, BUNCH: 단)
+  - G·ML 재료는 개수로 말해도 그램·밀리리터로 바꿔 적어. (예: "양파 하나 더" → 양파 200 G)
+  - EA·BUNCH 재료는 그램이 아니라 사는 개수로 적어. (예: "계란 2개 더" → 계란 2 EA)
   - 양을 말하지 않았으면 현재 메뉴에 알맞은 양으로 정해.
 - 그 동작에 쓰지 않는 칸
   - REMOVE: quantity 0, ingredientName "", amount 0, unit EA

@@ -105,7 +105,7 @@ public class FakeLlmGateway implements LlmGateway {
                                 MenuPlanIngredient.of("김치", 400, BaseUnit.G),
                                 MenuPlanIngredient.of("밥", 800, BaseUnit.G),
                                 MenuPlanIngredient.of("계란", 4, BaseUnit.EA),
-                                MenuPlanIngredient.of("대파", 1, BaseUnit.BUNCH)),
+                                MenuPlanIngredient.of("대파", 100, BaseUnit.G)),
                         List.of(Keyword.NOT_SPICY),
                         List.of())
                 : MenuPlan.of(intent, "", 0, 0L, List.of(), List.of(), List.of());

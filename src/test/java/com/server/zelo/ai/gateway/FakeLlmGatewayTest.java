@@ -24,7 +24,7 @@ class FakeLlmGatewayTest {
 
     // 테스트에서 쓰는 재료만 담은 재료 목록 (실제로는 재료 테이블에서 읽는다)
     private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of(
-            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.BUNCH);
+            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.G);
 
     private final FakeLlmGateway fakeLlmGateway = new FakeLlmGateway();
 

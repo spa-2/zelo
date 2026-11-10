@@ -42,19 +42,20 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 // 재시도는 처음부터 새로 답해서, 알려 준 문제와 상관없는 새 실수(예: 다른 재료 단위)가 나올 수 있다.
 // 그건 고칠 점 기능의 실패가 아니라서 판정에 넣지 않고 따로 세어 출력한다 (2026-11-06 실측: 유형별 30번 중 2번)
 // 요금이 나가므로 키가 있는 로컬에서만 직접 실행한다. 상품 시드가 있는 로컬 DB가 필요하다
-//   대파 테스트 1번에 OpenAI 호출 10회, 유형별 테스트는 유형 10개 × 3회 = 30회
+//   계란 테스트 1번에 OpenAI 호출 10회, 유형별 테스트는 유형 10개 × 3회 = 30회
+// 대파·양파 등 채소 11개는 #449부터 G라서, 개수 칸에 그램을 적는 실수는 남은 EA 재료(계란)로 본다
 @DisabledIfEnvironmentVariable(named = "CI", matches = "true")
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = "sk-.+")
 @SpringBootTest(properties = {"zelo.llm.mode=real", "zelo.llm.timeout=30s"})
 class MenuPlanRetryOpenAiTest {
 
-    private static final int BUNCH_REPEATS = 10;
+    private static final int EACH_REPEATS = 10;
     private static final int CASE_REPEATS = 3;
     private static final String USER_TEXT = "김치볶음밥 재료 준비해 줘";
     // 틀린 답을 만들 때 바탕으로 쓰는 맞는 재료. 유형마다 한 곳만 틀리게 바꾼다
     private static final List<MenuPlanIngredient> VALID_INGREDIENTS = List.of(
             MenuPlanIngredient.of("밥", 300, BaseUnit.G), MenuPlanIngredient.of("김치", 100, BaseUnit.G),
-            MenuPlanIngredient.of("계란", 1, BaseUnit.EA), MenuPlanIngredient.of("대파", 1, BaseUnit.BUNCH),
+            MenuPlanIngredient.of("계란", 1, BaseUnit.EA), MenuPlanIngredient.of("대파", 30, BaseUnit.G),
             MenuPlanIngredient.of("식용유", 10, BaseUnit.ML));
 
     // 검증·재시도를 거치는 바깥 게이트웨이
@@ -78,20 +79,20 @@ class MenuPlanRetryOpenAiTest {
     void setUp() {
         ingredientUnits = productService.findIngredientUnits();
         assertThat(ingredientUnits).as("로컬 DB에 상품 시드가 없음")
-                .containsEntry("대파", BaseUnit.BUNCH).containsEntry("계란", BaseUnit.EA).containsEntry("밥", BaseUnit.G);
+                .containsEntry("대파", BaseUnit.G).containsEntry("계란", BaseUnit.EA).containsEntry("밥", BaseUnit.G);
         systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits, null);
     }
 
     @Test
-    void 검증에_걸린_뒤_고칠_점을_붙인_재시도는_대파를_단_수로_고쳐_통과한다() {
-        // given: 실제로 나왔던 틀린 답. 대파 BUNCH에 그램으로 생각한 30을 적었다
-        MenuPlan gramsAsBunch = shopping("김치볶음밥", 1, null, replace("대파", 30, BaseUnit.BUNCH));
+    void 검증에_걸린_뒤_고칠_점을_붙인_재시도는_계란을_개수로_고쳐_통과한다() {
+        // given: 계란 EA에 그램으로 생각한 120을 적었다
+        MenuPlan gramsAsEach = shopping("김치볶음밥", 1, null, replace("계란", 120, BaseUnit.EA));
 
         // when
-        int fixed = retryRepeatedly("대파 단 수", gramsAsBunch, "ingredient.amount", bunchWithin("대파"), BUNCH_REPEATS);
+        int fixed = retryRepeatedly("계란 개수", gramsAsEach, "ingredient.amount", eachWithin("계란"), EACH_REPEATS);
 
         // then
-        assertThat(fixed).isEqualTo(BUNCH_REPEATS);
+        assertThat(fixed).isEqualTo(EACH_REPEATS);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -108,21 +109,21 @@ class MenuPlanRetryOpenAiTest {
     // 유형마다 "알려 준 문제가 고쳐졌는가"를 따로 본다. 그 재료를 아예 빼도 알려 준 문제는 사라진 것으로 본다
     private static Stream<Arguments> invalidPlans() {
         return Stream.of(
-                Arguments.of("단위가 목록과 다름 (대파 10G)",
-                        shopping("김치볶음밥", 1, null, replace("대파", 10, BaseUnit.G)), "ingredient.unitMismatch",
-                        each("대파", ingredient -> ingredient.unit() == BaseUnit.BUNCH)),
+                Arguments.of("단위가 목록과 다름 (대파 1BUNCH)",
+                        shopping("김치볶음밥", 1, null, replace("대파", 1, BaseUnit.BUNCH)), "ingredient.unitMismatch",
+                        each("대파", ingredient -> ingredient.unit() == BaseUnit.G)),
                 Arguments.of("양이 0 (계란 0EA)",
                         shopping("김치볶음밥", 1, null, replace("계란", 0, BaseUnit.EA)), "ingredient.amount",
                         each("계란", ingredient -> ingredient.amount() != null && ingredient.amount() >= 1)),
                 Arguments.of("그램 상한 초과 (밥 200000G)",
                         shopping("김치볶음밥", 1, null, replace("밥", 200_000, BaseUnit.G)), "ingredient.amount",
                         each("밥", ingredient -> ingredient.amount() != null && ingredient.amount() <= 100_000)),
-                Arguments.of("같은 재료 합친 양 초과 (대파 8단 + 8단)",
-                        shopping("김치볶음밥", 1, null, withExtra(MenuPlanIngredient.of("대파", 8, BaseUnit.BUNCH),
-                                replace("대파", 8, BaseUnit.BUNCH))), "merged.ingredient.amount",
+                Arguments.of("같은 재료 합친 양 초과 (계란 40개 + 40개)",
+                        shopping("김치볶음밥", 1, null, withExtra(MenuPlanIngredient.of("계란", 40, BaseUnit.EA),
+                                replace("계란", 40, BaseUnit.EA))), "merged.ingredient.amount",
                         (Predicate<MenuPlan>) plan -> plan.ingredients().stream()
-                                .filter(ingredient -> ingredient.name().equals("대파"))
-                                .mapToInt(ingredient -> ingredient.amount() == null ? 0 : ingredient.amount()).sum() <= 10),
+                                .filter(ingredient -> ingredient.name().equals("계란"))
+                                .mapToInt(ingredient -> ingredient.amount() == null ? 0 : ingredient.amount()).sum() <= 60),
                 Arguments.of("재료 없음",
                         shopping("김치볶음밥", 1, null, List.of()), "ingredients",
                         (Predicate<MenuPlan>) plan -> plan.ingredients() != null && !plan.ingredients().isEmpty()),
@@ -208,9 +209,9 @@ class MenuPlanRetryOpenAiTest {
         return plan -> plan.ingredients().stream().filter(ingredient -> name.equals(ingredient.name())).allMatch(rule);
     }
 
-    private static Predicate<MenuPlan> bunchWithin(String name) {
-        return each(name, ingredient -> ingredient.unit() == BaseUnit.BUNCH
-                && ingredient.amount() != null && ingredient.amount() >= 1 && ingredient.amount() <= 10);
+    private static Predicate<MenuPlan> eachWithin(String name) {
+        return each(name, ingredient -> ingredient.unit() == BaseUnit.EA
+                && ingredient.amount() != null && ingredient.amount() >= 1 && ingredient.amount() <= 60);
     }
 
     private static MenuPlan shopping(String menuName, Integer servings, Long budget, List<MenuPlanIngredient> ingredients) {

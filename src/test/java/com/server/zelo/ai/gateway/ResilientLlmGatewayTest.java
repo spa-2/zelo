@@ -55,7 +55,7 @@ class ResilientLlmGatewayTest {
 
     // 테스트에서 쓰는 재료만 담은 재료 목록 (실제로는 재료 테이블에서 읽는다)
     private static final Map<String, BaseUnit> INGREDIENT_UNITS = Map.of(
-            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.BUNCH);
+            "김치", BaseUnit.G, "밥", BaseUnit.G, "계란", BaseUnit.EA, "대파", BaseUnit.G);
 
     private static final Duration TIMEOUT = Duration.ofMillis(200);
     private static final Duration OPEN_DURATION = Duration.ofMillis(300);
@@ -479,11 +479,11 @@ class ResilientLlmGatewayTest {
 
     @Test
     void 메뉴_계획이_검증에_걸리면_재시도_요청에만_고칠_점을_붙인다() {
-        // given: 대파는 BUNCH인데 그램으로 생각한 30을 적었다
-        MenuPlan gramsAsBunch = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
-                List.of(MenuPlanIngredient.of("대파", 30, BaseUnit.BUNCH)), List.of(), List.of());
+        // given: 계란은 EA인데 그램으로 생각한 120을 적었다
+        MenuPlan gramsAsEach = MenuPlan.of(MenuPlanIntent.SHOPPING_REQUEST, "김치볶음밥", 1, null,
+                List.of(MenuPlanIngredient.of("계란", 120, BaseUnit.EA)), List.of(), List.of());
         given(delegate.planMenu(anyString(), anyList(), anyString(), anyMap()))
-                .willReturn(planResult(gramsAsBunch))
+                .willReturn(planResult(gramsAsEach))
                 .willReturn(planResult(validPlan()));
 
         // when
@@ -493,7 +493,7 @@ class ResilientLlmGatewayTest {
         assertThat(result.content()).isEqualTo(validPlan());
         then(delegate).should(times(1)).planMenu("system", List.of(), "질문", INGREDIENT_UNITS);
         then(delegate).should(times(1)).planMenu(
-                "system\n\n## 직전 답에서 고칠 점\n" + gramsAsBunch.correction("ingredient.amount", INGREDIENT_UNITS),
+                "system\n\n## 직전 답에서 고칠 점\n" + gramsAsEach.correction("ingredient.amount", INGREDIENT_UNITS),
                 List.of(), "질문", INGREDIENT_UNITS);
     }
 

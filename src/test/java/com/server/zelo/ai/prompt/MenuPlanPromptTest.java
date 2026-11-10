@@ -36,7 +36,7 @@ class MenuPlanPromptTest {
         String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
 
         // then
-        assertThat(systemPrompt).contains("- 김치: G\n- 계란: EA\n- 대파: BUNCH");
+        assertThat(systemPrompt).contains("- 김치: G\n- 계란: EA\n- 대파: G");
     }
 
     @Test
@@ -134,7 +134,18 @@ class MenuPlanPromptTest {
         // then
         assertThat(systemPrompt)
                 .contains("EA·BUNCH 재료의 amount는 그램이 아니라 실제로 사는 개수야")
-                .contains("콩나물밥 3인분의 쪽파(BUNCH) → 1");
+                .contains("김치볶음밥 4인분의 계란(EA) → 4");
+    }
+
+    @Test
+    void 그램_단위_채소는_개수가_아니라_그램으로_적는_규칙이_들어_있다() {
+        // when
+        String systemPrompt = menuPlanPrompt.systemPrompt(ingredientUnits(), null);
+
+        // then
+        assertThat(systemPrompt)
+                .contains("대파·양파처럼 보통 개수로 세는 채소도 목록에 G로 적혀 있으면 개수가 아니라 그램으로 적어")
+                .contains("김치볶음밥 4인분의 대파(G) → 100");
     }
 
     @Test
@@ -150,7 +161,7 @@ class MenuPlanPromptTest {
         Map<String, BaseUnit> ingredientUnits = new LinkedHashMap<>();
         ingredientUnits.put("김치", BaseUnit.G);
         ingredientUnits.put("계란", BaseUnit.EA);
-        ingredientUnits.put("대파", BaseUnit.BUNCH);
+        ingredientUnits.put("대파", BaseUnit.G);
         return ingredientUnits;
     }
 }

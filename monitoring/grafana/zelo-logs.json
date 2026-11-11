@@ -1,0 +1,335 @@
+{
+  "uid": "zelo-logs",
+  "title": "Zelo 운영 로그 (CloudWatch)",
+  "tags": [
+    "logs",
+    "cloudwatch"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "레벨별 로그 수 (1분)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "parse @message /\\s(?<level>ERROR|WARN|INFO|DEBUG)\\s+\\d+ --- / | stats count() by bin(1m), level",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": [
+            "level"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "ERROR는 예상하지 못한 문제(스택트레이스 포함), WARN은 처리한 실패. ERROR가 0이 아니면 아래 목록에서 확인한다"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "서버별 ERROR 수 (1분)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "filter @message like / ERROR / | stats count() by bin(1m), @logStream",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": [
+            "@logStream"
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "description": "로그 스트림 이름이 서버(인스턴스) ID다"
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "ERROR / WARN 로그",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "fields @timestamp, @logStream, @message | filter @message like / ERROR / or @message like / WARN / | sort @timestamp desc | limit 200",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": []
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false
+      },
+      "description": "예외 스택트레이스는 한 이벤트로 묶여 있다"
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "로그 검색 (아래 search 변수에 글자나 정규식)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "fields @timestamp, @logStream, @message | filter @message like /$search/ | sort @timestamp desc | limit 200",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": []
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false
+      },
+      "description": "search 변수에 찾을 글자를 넣는다. 정규식도 된다(예: user=123 또는 결제|환불)"
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "한 요청의 로그 (trace 변수에 traceId)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "parse @message /\\[(?<trace>[^,\\]]*),/ | filter trace = '$trace' | sort @timestamp asc | limit 200 | fields @timestamp, @logStream, @message",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": []
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false
+      },
+      "description": "로그 한 줄의 첫 대괄호 값이 traceId다. 한 요청이 거친 모든 로그를 시간순으로 본다"
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "로거별 상위 (어느 클래스가 로그를 많이 남기나)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "parse @message /\\] (?<logger>[a-zA-Z0-9_.]+)\\s+: / | stats count() as cnt by logger | sort cnt desc | limit 15",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "서버별 로그 수",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "region": "default",
+          "id": "",
+          "expression": "stats count() as cnt by @logStream | sort cnt desc",
+          "logGroupNames": [
+            "/zelo/prod/app"
+          ],
+          "statsGroups": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "search",
+        "label": "search (글자/정규식)",
+        "type": "textbox",
+        "query": ".",
+        "current": {
+          "text": ".",
+          "value": "."
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".",
+            "value": "."
+          }
+        ]
+      },
+      {
+        "name": "trace",
+        "label": "trace (traceId)",
+        "type": "textbox",
+        "query": "none",
+        "current": {
+          "text": "none",
+          "value": "none"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "none",
+            "value": "none"
+          }
+        ]
+      }
+    ]
+  }
+}

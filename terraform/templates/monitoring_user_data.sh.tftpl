@@ -114,6 +114,13 @@ cat > /opt/monitoring/grafana/dashboards/zelo-ai.json <<'AI_DASHBOARD_EOF'
 ${ai_dashboard_json}
 AI_DASHBOARD_EOF
 
+%{ if !loki_enabled ~}
+# 운영 로그 대시보드(CloudWatch Logs). Loki를 쓰지 않는 환경에서만 만든다
+cat > /opt/monitoring/grafana/dashboards/zelo-logs.json <<'LOGS_DASHBOARD_EOF'
+${logs_dashboard_json}
+LOGS_DASHBOARD_EOF
+%{ endif ~}
+
 docker rm -f prometheus grafana loki 2>/dev/null || true
 
 # 호스트 네트워크를 쓰면 컨테이너가 인스턴스 메타데이터(IAM 역할)에 바로 닿아서 EC2 탐색 권한을 받는다

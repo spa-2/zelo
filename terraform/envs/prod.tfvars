@@ -10,10 +10,11 @@ spring_profile = "prod"
 frontend_enabled = true
 frontend_domain  = "zelo.wyshin.click"
 
-# 이미지 저장소와 SES 도메인 인증은 계정에 하나뿐이라 운영이 만든다. 읽기 전용 콘솔 계정도 계정 전체에서 이름이 하나라 부하 테스트 환경 쪽에서 만든다
+# 이미지 저장소, SES 도메인 인증, 프론트 도메인, 읽기 전용 콘솔 계정(IAM 사용자 이름이 계정 전체에서 하나)은 계정에 하나뿐이라 운영이 소유한다.
+# 부하 테스트 환경(dev)은 이 넷을 만들지 않는다
 create_ecr         = true
 ses_enabled        = true
-readonly_user_name = ""
+readonly_user_name = "zelo"
 
 # 시크릿과 모드는 CHANGE_ME로 시작한다. 모드(LLM/PORTONE/MAIL/SOCIAL)에 실제 값(real)을 넣기 전에는 앱이 시작하지 않는다.
 # 부하 테스트 전용 시드와 fake LLM 설정은 만들지 않는다
@@ -45,9 +46,9 @@ loadgen_enabled    = false
 # Grafana 알림 채널: slack 또는 discord. 웹훅 주소는 SSM(/zelo-monitoring/prod/alert_webhook_url)에 넣고 수집기에서 zelo-alert-contact.sh를 실행한다
 alert_channel = "slack"
 
-# ALB HTTPS: ap-northeast-2의 ACM 인증서 ARN을 넣으면 80은 443으로 리다이렉트된다.
-# CloudFront → ALB 구간을 HTTPS로 하려면 ALB용 도메인(예: api-origin.wyshin.click)과 그 인증서가 필요하다(아직 구현 전).
-# certificate_arn = ""
+# ALB HTTPS: CloudFront가 ALB에 HTTPS로 붙을 ALB 전용 도메인. 인증서(ACM, 서울)와 DNS는 Terraform이 만들고, 80은 443으로 리다이렉트된다.
+# CloudFront를 거치지 않은 직접 접근은 비밀 헤더로 막는다(alb_https.tf)
+origin_domain = "api-origin.wyshin.click"
 
 # 이 브랜치에서 실행된 GitHub Actions만 배포 역할을 받는다
 github_deploy_branch   = "main"

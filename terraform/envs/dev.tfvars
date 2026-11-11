@@ -10,6 +10,8 @@ spring_profile = "performance"
 frontend_enabled = false
 ses_enabled      = false
 create_ecr       = false
+# 읽기 전용 콘솔 계정(zelo)은 계정 전체에서 이름이 하나라 운영이 만든다
+readonly_user_name = ""
 # 나중에 부하 테스트 환경에도 화면을 올린다면 이 주소를 쓴다
 frontend_domain = "test.zelo.wyshin.click"
 

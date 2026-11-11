@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: zelo
+    metrics_path: /actuator/prometheus
+    file_sd_configs:
+      - files: [targets.json]

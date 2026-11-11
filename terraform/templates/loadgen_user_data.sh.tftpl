@@ -1,0 +1,24 @@
+#!/bin/bash
+# 부하기 부팅 스크립트(user_data): Docker와 k6 이미지를 준비한다. 테스트 스크립트는 접속해서 직접 복사한다(README 참고).
+exec > >(tee /var/log/zelo-loadgen-bootstrap.log) 2>&1
+set -euo pipefail
+
+# 기본 설정: 시간대(한국 시간)와 점검용 도구. 실패해도 서버 부팅은 계속되게 한다
+timedatectl set-timezone Asia/Seoul || echo "시간대 설정 실패(무시)"
+dnf install -y net-tools bind-utils nmap-ncat telnet htop sysstat lsof tcpdump jq || echo "기본 도구 설치 실패(무시)"
+
+dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# 동시 연결이 많아도 포트가 모자라지 않게 한다 (같은 ALB 주소로 연결이 몰리면 임시 포트가 먼저 바닥난다)
+cat > /etc/sysctl.d/99-loadgen.conf <<'SYSCTL_EOF'
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_tw_reuse = 1
+fs.file-max = 1000000
+SYSCTL_EOF
+sysctl --system
+
+docker pull grafana/k6:latest
+
+install -d -o ec2-user -g ec2-user /home/ec2-user/zelo

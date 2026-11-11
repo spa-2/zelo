@@ -1,3 +1,171 @@
 spring:
   application:
     name: zelo
+
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # ssm 리전
+      ses:
+        region: ap-northeast-2 # ses 리전
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/zelotest
+    username: postgres
+    password: postgres1234
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  data:
+    redis:
+      # Redis가 멈추면 이 시간 안에 실패해서 캐시는 DB 조회로 넘어가고 락·견적은 빨리 실패하게 한다
+      # 기본값(3초, 재시도 4번)이면 명령 하나 실패까지 약 7초가 걸렸다. 재시도 횟수는 RedissonConfig에서 줄인다
+      timeout: 1s
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: public
+        jdbc:
+          time_zone: Asia/Seoul
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      # 재시도는 ResilientLlmGateway가 직접 제어하므로 클라이언트 기본값(3회)을 끈다
+      max-retries: 0
+      # 실제 요청 타임아웃은 SpringAiLlmGateway가 zelo.llm.timeout으로 요청마다 넣는다. 클라이언트 기본값도 같은 값으로 맞춘다
+      timeout: ${zelo.llm.timeout}
+      chat:
+        # 메뉴 계획 실측에서 정확도·속도·비용이 가장 좋았던 조합. 단 gpt-6-luna는 Chat Completions에서 툴 호출을 추론 none일 때만 지원한다
+        model: gpt-6-luna
+        reasoning-effort: low
+
+zelo:
+  llm:
+    mode: ${LLM_MODE:fake}
+    # LLM 요청 하나를 기다리는 최대 시간. 실측에서 gpt-6-luna(low) 메뉴 계획 p95가 7.5초라 1.5배로 두었다 (팀 합의 후 조정)
+    timeout: 12s
+    # 답 하나의 최대 출력 토큰(max_completion_tokens). gpt-6-luna는 추론 토큰도 여기에 들어가서, 너무 작으면 생각만 하다 답을 쓰지 못한다.
+    # 넘으면 답이 잘려(finish_reason=length) AI_010으로 실패한다. 상한이 없으면 답이 길게 늘어질 때 시간·요금을 막을 장치가 시간 제한뿐이다.
+    # 실측 출력 최대(2026-11): 견적 수정 계획 726, 자세히 묻는 일반 답변 710, 메뉴 계획 502, 리뷰 요약 403. 작업끼리 차이가 크지 않아 하나로 두고 약 3배로 잡는다
+    max-completion-tokens: 2000
+    # 리뷰 요약도 일반 설정과 같은 모델을 쓴다. gpt-5-mini(medium)는 요약 한 건에 14~54초 걸려 위 시간 제한을 넘고 Deprecated라서 바꿨다 (2026-10-30 실측)
+    review-summary:
+      model: gpt-6-luna
+      reasoning-effort: low
+    retry:
+      # 첫 시도를 포함한 총 시도 횟수(재시도 1회). 최악의 경우 고정 문구까지 timeout × 2 + wait-duration
+      max-attempts: 2
+      wait-duration: 500ms
+    # 채팅 메시지 하나(LLM 2~3번)를 답하는 전체 시간 (LlmTimeBudget). 위 시간 제한·재시도는 호출 한 건 단위라 메시지 하나는 최악 73.5초까지 걸린다
+    time-budget:
+      # 견적 수정(LLM 3번)이 세 번 모두 p95(약 7.5초)로 느리고 견적 락을 3초 기다려도(약 25.5초) 끊기지 않는 값
+      total: 30s
+      # 남은 시간이 이보다 적으면 시도하지 않는다. 가장 빠른 답변 호출도 p50이 3.5초라 그보다 짧으면 답을 받기 어렵다
+      min-attempt: 3s
+    circuit-breaker:
+      # 트래픽이 적어도 판단할 수 있도록 시간이 아닌 최근 시도 횟수로 실패율을 본다
+      sliding-window-size: 10
+      # 시도가 이만큼 쌓이기 전에는 열지 않는다. 메시지 하나가 재시도까지 실패하면 2번으로 세므로 약 3개 연속 실패에 열린다
+      minimum-number-of-calls: 5
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 30s
+      # 반쯤 열린 상태에서 시험 삼아 보내 볼 호출 수. 한 번의 우연한 성공으로 닫혔다 다시 열리는 것을 줄인다
+      permitted-number-of-calls-in-half-open-state: 3
+
+  hash:
+    algorithm: SHA-256 # redis 와 같은 값 저장 시 사용 할 해쉬값
+
+  portone:
+    # real: 실제 포트원 호출, fake: MockPortOneClient (포트원 키 없이 로컬에서 돌릴 때)
+    mode: ${PORTONE_MODE:fake}
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}
+    store-id: ${PORTONE_STORE_ID:}
+    webhook-secret: ${PORTONE_WEBHOOK_SECRET:}
+    connect-timeout: 3s
+    read-timeout: 5s
+    time-zone: Asia/Seoul
+
+  delivery:
+    scheduler:
+      enabled: true
+      fixed-delay: 60000
+    ship-after: 10m
+    complete-after: 30m
+
+  social:
+    mode: ${SOCIAL_MODE:fake}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID}
+      client-secret: ${GOOGLE_CLIENT_SECRET}
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
+      connect-timeout: 3s
+      read-timeout: 5s
+    kakao:
+      client-id: ${KAKAO_CLIENT_ID}
+      client-secret: ${KAKAO_CLIENT_SECRET}
+      token-uri: https://kauth.kakao.com/oauth/token
+      user-info-uri: https://kapi.kakao.com/v2/user/me
+      connect-timeout: 3s
+      read-timeout: 5s
+
+  mail:
+    mode: ${MAIL_MODE:fake}
+    from: ${MAIL_FROM:} # ses 발신 주소
+
+logging:
+  pattern:
+    # 모든 로그 줄 앞에 요청 추적 값을 붙인다. traceId·spanId는 Micrometer Tracing이, userId·roomId는 LogContextInterceptor가 넣는다
+    correlation: "[%X{traceId:-},%X{spanId:-},user=%X{userId:-},room=%X{roomId:-}] "
+  level:
+    # SimpleLoggerAdvisor가 LLM 요청·응답을 DEBUG로 남기므로 이 클래스만 연다
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: debug
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
+
+jwt:
+  access-expiration: 600000 # 10분
+  refresh-expiration: 1209600000 # 2주
+  secret: ${JWT_SECRET}
+
+server:
+  port: 8080 # 서버 포트 명시
+  tomcat:
+    mbeanregistry: # 서버의 상태와 동작 정보 활성화
+      enabled: true
+  forward-headers-strategy: native # tomcat이 proxy가 보내는 x-forwarded-for을 해석한다.
+
+management:
+  server:
+    port: 9292
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: zelo   # 모든 지표에 앱 이름 태그
+    distribution:
+      # 응답 시간 분포를 Prometheus 히스토그램으로 내보내, 서버가 여러 대여도 합쳐서 p95를 계산할 수 있게 한다
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      # 아직 trace를 보낼 곳(Zipkin 등)이 없어 전부 남겨도 비용이 없다. 보낼 곳을 붙이면 낮춘다
+      probability: 1.0
+
+info:
+  app:
+    name: zelo
+    version: 1.0.0

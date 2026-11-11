@@ -1,0 +1,89 @@
+name: SonarQube
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'terraform/**'
+  # main/dev에 머지되면 deploy.yml이 이 워크플로를 호출해 테스트하고, 통과해야 배포한다
+  workflow_call:
+
+jobs:
+  build:
+    name: Build and analyze
+    runs-on: ubuntu-latest
+
+    # 테스트 전에 PostgreSQL, Redis 컨테이너를 같이 띄움 (둘 다 healthy 가 되어야 steps 가 시작됨)
+    services:
+      postgres:
+        image: postgres:16            # 로컬에서 쓰는 버전과 맞추기
+        env:
+          POSTGRES_DB: zelotest
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres1234
+        ports:
+          - 5432:5432                 # runner의 localhost:5432 로 접근 가능
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7                # 로컬 docker-compose 와 버전 맞추기
+        ports:
+          - 6379:6379                 # runner의 localhost:6379 로 접근 가능 (Redisson 기본 주소)
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: 21
+          distribution: 'zulu'
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache Gradle packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build and analyze
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # application.yml 값을 환경변수로 덮어씀 (Spring이 자동으로 매핑)
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/zelotest
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgres1234
+          # ${OPENAI_API_KEY} 가 비어 있으면 애플리케이션이 뜨지 않으므로 값을 넣어줌
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'dummy-key-for-ci' }}
+          # application.yaml의 ${JWT_SECRET}에 매핑됨 (Base64, 32바이트 이상)
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'Y2ktZHVtbXktand0LXNlY3JldC1rZXktMzJieXRlcy1sb25nISE=' }}
+          # 소셜 로그인 키: real 모드로 컨텍스트가 뜨는 테스트에서 비어 있으면 기동이 실패하므로 가짜 값을 넣어줌 (테스트 프로필은 fake 모드라 실제로는 쓰이지 않음)
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || 'dummy-google-client-id-for-ci' }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || 'dummy-google-client-secret-for-ci' }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID || 'dummy-kakao-client-id-for-ci' }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET || 'dummy-kakao-client-secret-for-ci' }}
+          # 추후에 추가할 예정
+          PORTONE_API_SECRET: ${{ secrets.PORTONE_API_SECRET || 'dummy-portone-secret-for-ci' }}
+          PORTONE_STORE_ID: ${{ secrets.PORTONE_STORE_ID || 'store-dummy-for-ci' }}
+          PORTONE_WEBHOOK_SECRET: ${{ secrets.PORTONE_WEBHOOK_SECRET || 'whsec_ZHVtbXk=' }}
+        run: ./gradlew build sonar --info

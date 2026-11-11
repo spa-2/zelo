@@ -1,0 +1,123 @@
+package com.server.zelo.domain.product.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
+
+import com.server.zelo.common.monitoring.BusinessMetrics;
+import com.server.zelo.domain.product.repository.PopularProductRepository;
+import com.server.zelo.domain.product.repository.ProductSalesQueryRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+@ExtendWith(MockitoExtension.class)
+class PopularProductServiceTest {
+
+    @Mock
+    private PopularProductRepository popularProductRepository;
+
+    @Mock
+    private ProductSalesQueryRepository productSalesQueryRepository;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    @Spy
+    private BusinessMetrics businessMetrics = new BusinessMetrics(meterRegistry);
+
+    @InjectMocks
+    private PopularProductService popularProductService;
+
+    @AfterEach
+    void tearDown() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void 트랜잭션_안이면_커밋된_뒤에_센다() {
+        // given
+        TransactionSynchronizationManager.initSynchronization();
+
+        // when
+        popularProductService.record(1L, 3);
+
+        // then
+        then(popularProductRepository).should(never()).increase(any(), anyInt(), any());
+        TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        then(popularProductRepository).should().increase(eq(1L), eq(3), any());
+    }
+
+    @Test
+    void 롤백되면_안_센다() {
+        // given
+        TransactionSynchronizationManager.initSynchronization();
+
+        // when
+        popularProductService.record(1L, 3);
+        TransactionSynchronizationManager.getSynchronizations()
+                .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+        // then
+        then(popularProductRepository).should(never()).increase(any(), anyInt(), any());
+    }
+
+    @Test
+    void Redis가_안_되면_기록은_건너뛴다() {
+        // given
+        willThrow(new QueryTimeoutException("timeout")).given(popularProductRepository).increase(any(), anyInt(), any());
+
+        // when & then
+        assertThatCode(() -> popularProductService.record(1L, 3)).doesNotThrowAnyException();
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_PRODUCT").tag("operation", "WRITE")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void Redis가_안_되면_오늘_포함_7일치를_DB로_계산한다() {
+        // given
+        given(popularProductRepository.findTop(any(), anyInt())).willThrow(new QueryTimeoutException("timeout"));
+        given(productSalesQueryRepository.findTopSince(LocalDate.now().minusDays(6).atStartOfDay(), 10))
+                .willReturn(Map.of(9L, 5L));
+
+        // when
+        Map<Long, Long> top = popularProductService.findTop(10);
+
+        // then
+        assertThat(top).containsExactly(Map.entry(9L, 5L));
+        assertThat(meterRegistry.get("zelo.redis.fallback").tag("target", "POPULAR_PRODUCT").tag("operation", "READ")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 많이_팔린_순서를_지켜서_상품_id와_수량을_준다() {
+        // given
+        given(popularProductRepository.findTop(any(), eq(10)))
+                .willReturn(List.of(TypedTuple.of("9", 5.0), TypedTuple.of("2", 3.0)));
+
+        // when
+        Map<Long, Long> top = popularProductService.findTop(10);
+
+        // then
+        assertThat(top).containsExactly(Map.entry(9L, 5L), Map.entry(2L, 3L));
+    }
+}

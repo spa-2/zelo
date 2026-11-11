@@ -1,0 +1,41 @@
+jwt:
+  # 테스트 전용 더미 키(운영 값 아님). 환경변수 JWT_SECRET이 없어도 컨텍스트가 뜨게 한다
+  secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LW5ldmVyLXVzZS1pbi1wcm9kdWN0aW9uIQ==
+
+spring:
+  ai:
+    model:
+      # 테스트에서는 OpenAI 클라이언트를 하나도 만들지 않는다 (API 키 없이 컨텍스트 로딩, 호출 비용 0)
+      chat: none
+      embedding: none
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
+
+zelo:
+  llm:
+    mode: fake
+    timeout: 500ms
+    retry:
+      wait-duration: 10ms
+
+  portone:
+    mode: fake
+    # 지연·재시도 테스트가 오래 걸리지 않도록 시도당 시간 제한과 재시도 대기를 줄인다 (서킷 브레이커 수치는 실제 설정 그대로)
+
+  social:
+    mode: fake
+    google:
+      client-id: test-client-id
+      client-secret: test-client-secret
+
+  # 테스트끼리 Redis 캐시가 남아서 앞 테스트 데이터가 보이지 않게 끈다
+  cache:
+    enabled: false
+
+  delivery:
+    scheduler:
+      # 테스트 중 스케줄러가 배송 데이터를 바꾸지 않도록 끈다
+      enabled: false

@@ -1,0 +1,48 @@
+package com.server.zelo.domain.payment.controller;
+
+import com.server.zelo.common.api.ApiResponse;
+import com.server.zelo.common.auth.Auth;
+import com.server.zelo.common.auth.AuthUser;
+import com.server.zelo.domain.payment.dto.request.CreateWithPaymentMethodRequest;
+import com.server.zelo.domain.payment.dto.request.RetryPaymentRequest;
+import com.server.zelo.domain.payment.dto.response.PaymentConfirmResponse;
+import com.server.zelo.domain.payment.dto.response.RetryPaymentResponse;
+import com.server.zelo.domain.payment.entity.PaymentStatus;
+import com.server.zelo.domain.payment.service.PaymentFacade;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/payments")
+public class PaymentController {
+
+    private final PaymentFacade paymentFacade;
+
+    // 프론트가 받은 결제 결과는 믿지 않고 포트원에 다시 조회해 반영한다
+    @PostMapping("/{portoneId}/confirm")
+    public ResponseEntity<ApiResponse<PaymentConfirmResponse>> confirmPayment(@Auth AuthUser authUser,
+                                                                              @PathVariable String portoneId) {
+        PaymentStatus status = paymentFacade.confirmPayment(authUser.id(), portoneId);
+        return ResponseEntity.ok(ApiResponse.ok(PaymentConfirmResponse.of(portoneId, status)));
+    }
+
+    // 등록한 카드로 결제창 없이 결제한다. 응답은 결제 확인과 같은 형식이다
+    @PostMapping("/{portoneId}/payment-method")
+    public ResponseEntity<ApiResponse<PaymentConfirmResponse>> payWithPaymentMethod(
+            @Auth AuthUser authUser,
+            @PathVariable String portoneId,
+            @Valid @RequestBody CreateWithPaymentMethodRequest request) {
+        PaymentStatus status = paymentFacade.payWithPaymentMethod(authUser.id(), portoneId, request.paymentMethodId());
+        return ResponseEntity.ok(ApiResponse.ok(PaymentConfirmResponse.of(portoneId, status)));
+    }
+
+    // 결제할 결제 ID를 돌려주고, 이미 결제됐으면 PAID를 돌려준다
+    @PostMapping
+    public ResponseEntity<ApiResponse<RetryPaymentResponse>> retryPayment(@Auth AuthUser authUser,
+                                                                          @Valid @RequestBody RetryPaymentRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(paymentFacade.retryPayment(authUser.id(), request.orderId())));
+    }
+}

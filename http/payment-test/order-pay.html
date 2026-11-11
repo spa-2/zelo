@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>주문하기 결제 흐름 테스트</title>
+  <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
+  <script src="config.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 680px; margin: 32px auto; padding: 0 16px; line-height: 1.6; }
+    h2 { margin-bottom: 4px; }
+    h3 { margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+    .hint { color: #666; font-size: 13px; }
+    label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; }
+    input { width: 100%; padding: 6px; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    button { margin-top: 12px; padding: 8px 14px; cursor: pointer; }
+    #order { width: 100%; padding: 14px; font-size: 17px; font-weight: bold; background: #ff6b35; color: #fff; border: none; border-radius: 8px; }
+    pre { background: #f4f4f4; padding: 12px; white-space: pre-wrap; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>주문하기 → KG이니시스 결제창 → 결제 확인</h2>
+  <p class="hint">
+    로컬 테스트 전용 페이지. 서버 빌드에 들어가지 않고 local 프로필에서만 서빙된다. 사용법은 같은 폴더의 README.md<br>
+    견적은 실제 OpenAI 키(llm.mode: real)와 상품 시드가 있어야 만들어진다.
+  </p>
+
+  <h3>1. 회원가입·로그인</h3>
+  <p class="hint">처음이면 [회원가입 후 로그인]. 가입할 때 기본 배송지도 같이 만들어진다. 이미 가입했으면 [로그인]</p>
+  <div class="row">
+    <input id="email" placeholder="이메일">
+    <input id="password" value="Zelo1234!" placeholder="비밀번호 (영문·숫자·특수문자 8자 이상)">
+    <input id="name" value="결제테스트" placeholder="이름">
+  </div>
+  <button id="signup">회원가입 후 로그인</button>
+  <button id="login">로그인</button>
+  <label for="token">액세스 토큰 (로그인하면 자동 입력)</label>
+  <input id="token">
+
+  <h3>2. 채팅으로 견적 받기</h3>
+  <input id="chatText" value="김치볶음밥 2인분 재료 2만 원 안에서 준비해 줘">
+  <button id="chat">견적 받기</button>
+  <label for="roomId">roomId (견적 받으면 자동 입력)</label>
+  <input id="roomId">
+  <label for="quoteId">quoteId (견적 받으면 자동 입력)</label>
+  <input id="quoteId">
+
+  <h3>3. 주문하기</h3>
+  <label>구매자 정보 (이니시스 필수)</label>
+  <div class="row">
+    <input id="customerName" value="결제테스트">
+    <input id="customerEmail" value="test@zelo.com">
+    <input id="customerPhone" value="01012345678">
+  </div>
+  <button id="order">주문하기</button>
+
+  <h3>진행 기록</h3>
+  <pre id="log">아직 실행하지 않음</pre>
+
+  <script>
+    const log = document.getElementById("log");
+    const value = id => document.getElementById(id).value.trim();
+    const setValue = (id, v) => { document.getElementById(id).value = v ?? ""; };
+    const write = message => { log.textContent += "\n" + message; };
+
+    if (typeof CONFIG === "undefined") {
+      log.textContent = "config.js를 불러오지 못했어요. 같은 폴더에 config.js가 있는지 확인해 주세요.";
+    }
+
+    // 우리 API는 ApiResponse로 감싸서 응답하므로 data만 꺼낸다. 실패하면 응답 그대로 보여 준다
+    async function callApi(method, path, body, withToken = true) {
+      const headers = { "Content-Type": "application/json" };
+      if (withToken) {
+        headers["Authorization"] = "Bearer " + value("token");
+      }
+      const response = await fetch(CONFIG.apiHost + path, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(method + " " + path + " → " + response.status + " " + JSON.stringify(json));
+      }
+      return json.data;
+    }
+
+    // 실행할 때마다 새 계정을 쓸 수 있게 비어 있으면 시각으로 이메일을 만든다
+    if (!value("email")) {
+      setValue("email", "pay" + Date.now() + "@zelo.com");
+    }
+
+    async function login() {
+      const data = await callApi("POST", "/api/users/login",
+          { email: value("email"), password: value("password") }, false);
+      setValue("token", data.accessToken);
+      write("로그인 완료: " + value("email"));
+    }
+
+    document.getElementById("signup").addEventListener("click", async () => {
+      log.textContent = "회원가입 중...";
+      try {
+        await callApi("POST", "/api/users", {
+          email: value("email"),
+          password: value("password"),
+          passwordConfirm: value("password"),
+          name: value("name"),
+          phoneNumber: value("customerPhone"),
+          place: "집",
+          addresses: "서울특별시 강남구 테헤란로 123",
+          zipCode: "06236",
+        }, false);
+        write("회원가입 완료 (기본 배송지 포함)");
+        await login();
+      } catch (e) {
+        write("에러: " + e.message);
+      }
+    });
+
+    document.getElementById("login").addEventListener("click", async () => {
+      log.textContent = "로그인 중...";
+      try {
+        await login();
+      } catch (e) {
+        write("에러: " + e.message);
+      }
+    });
+
+    document.getElementById("chat").addEventListener("click", async () => {
+      log.textContent = "견적 요청 중... (LLM 응답까지 몇 초 걸려요)";
+      try {
+        const data = await callApi("POST", "/api/chat/messages", { text: value("chatText") });
+        setValue("roomId", data.roomId);
+        const card = data.message && data.message.payload;
+        if (!card || card.type !== "QUOTE_CARD") {
+          write("견적 카드가 없어요. AI 답변: " + (data.message && data.message.content));
+          return;
+        }
+        setValue("quoteId", card.quoteId);
+        write("견적 받음: quoteId=" + card.quoteId + ", 총액=" + card.totalAmount
+            + ", 상품 " + card.items.length + "개");
+      } catch (e) {
+        write("에러: " + e.message);
+      }
+    });
+
+    document.getElementById("order").addEventListener("click", async () => {
+      log.textContent = "주문 시작";
+      try {
+        const confirmation = await callApi("POST", "/api/orders/confirmations", {
+          roomId: Number(value("roomId")),
+          quoteId: value("quoteId"),
+        });
+        write("1. 구매 확인 정보 발급: " + confirmation.confirmationId);
+
+        const order = await callApi("POST", "/api/orders", {
+          quoteId: value("quoteId"),
+          confirmationId: confirmation.confirmationId,
+        });
+        write("2. 주문 생성: orderId=" + order.orderId + ", portoneId=" + order.portoneId
+            + ", 금액=" + order.totalAmount);
+
+        write("3. KG이니시스 결제창 여는 중...");
+        const payment = await PortOne.requestPayment({
+          storeId: CONFIG.storeId,
+          channelKey: CONFIG.channelKey,
+          paymentId: order.portoneId,
+          orderName: order.orderName,
+          totalAmount: order.totalAmount,
+          currency: "CURRENCY_KRW",
+          payMethod: "CARD",
+          // 이니시스 V2는 구매자 이메일·이름·휴대폰이 없으면 결제창을 열지 않는다
+          customer: {
+            fullName: value("customerName"),
+            email: value("customerEmail"),
+            phoneNumber: value("customerPhone"),
+          },
+        });
+        // code가 있으면 실패나 사용자 취소. 그래도 서버가 어떻게 반영하는지 보려고 결제 확인은 호출한다
+        write("   결제창 결과: " + (payment && payment.code
+            ? "실패/취소 " + payment.code + " " + payment.message
+            : "결제 완료"));
+
+        const confirm = await callApi("POST", "/api/payments/" + order.portoneId + "/confirm");
+        write("4. 결제 확인: " + confirm.status + " (" + confirm.message + ")");
+      } catch (e) {
+        write("에러: " + e.message);
+      }
+    });
+  </script>
+</body>
+</html>

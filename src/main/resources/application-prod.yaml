@@ -1,0 +1,22 @@
+# 운영용. mode는 기본값 없이 SSM 파라미터(파라미터 이름 = 프로퍼티 이름)로만 받는다. 빠뜨리면 fake로 조용히 뜨지 않고 시작이 실패한다.
+# DB·Redis 접속 정보와 zelo.mail.from은 SSM에 spring.datasource.* 같은 이름으로 이미 들어 있어 여기서 다시 받지 않는다.
+zelo:
+  llm:
+    mode: ${LLM_MODE}
+  portone:
+    mode: ${PORTONE_MODE}
+  social:
+    mode: ${SOCIAL_MODE}
+  mail:
+    mode: ${MAIL_MODE}
+  # 시드가 운영에서 켜지지 않게 명시적으로 끈다
+  seed:
+    enabled: false
+    load-test:
+      enabled: false
+
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: info
+    org.hibernate.SQL: info
+    org.hibernate.orm.jdbc.bind: info

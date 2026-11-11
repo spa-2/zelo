@@ -1,0 +1,170 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "로그인 200": {
+                    "name": "로그인 200",
+                    "path": "::로그인 200",
+                    "id": "d863a8d08bb8f25724e48d7d609fdb4b",
+                    "passes": 26,
+                    "fails": 0
+                },
+                "결제수단 조회 200": {
+                    "fails": 0,
+                    "name": "결제수단 조회 200",
+                    "path": "::결제수단 조회 200",
+                    "id": "3c7fc7cc5f220e4f3779f7a83a23b9f3",
+                    "passes": 26
+                },
+                "결제 PAID": {
+                    "id": "fadf73f6b138911f66fed0873cfa6dc6",
+                    "passes": 26,
+                    "fails": 0,
+                    "name": "결제 PAID",
+                    "path": "::결제 PAID"
+                },
+                "재결제 200": {
+                    "name": "재결제 200",
+                    "path": "::재결제 200",
+                    "id": "0b2a8ba6ec2d7d884e79d1168cad3733",
+                    "passes": 3,
+                    "fails": 0
+                }
+            }
+    },
+    "metrics": {
+        "http_req_blocked": {
+            "avg": 0.11846049382716049,
+            "min": 0,
+            "med": 0,
+            "max": 9.5953,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_receiving": {
+            "avg": 0.34147037037037037,
+            "min": 0,
+            "med": 0.5135,
+            "max": 1.7095,
+            "p(90)": 0.5324,
+            "p(95)": 0.6615
+        },
+        "http_req_waiting": {
+            "avg": 188.50989753086435,
+            "min": 3.1022,
+            "med": 69.3805,
+            "max": 901.6925,
+            "p(90)": 891.5153,
+            "p(95)": 897.0606
+        },
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_duration": {
+            "p(95)": 897.5704,
+            "avg": 188.8513679012346,
+            "min": 3.1304,
+            "med": 69.6064,
+            "max": 902.2188,
+            "p(90)": 891.5153
+        },
+        "http_req_sending": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_reqs": {
+            "count": 81,
+            "rate": 0.2691416640808659
+        },
+        "http_req_connecting": {
+            "avg": 0.012396296296296296,
+            "min": 0,
+            "med": 0,
+            "max": 1.0041,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "data_received": {
+            "count": 52352,
+            "rate": 173.95190614767276
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 1
+        },
+        "http_req_duration{kind:payment}": {
+            "p(90)": 896.04706,
+            "p(95)": 898.29681,
+            "avg": 241.82562909090913,
+            "min": 3.1304,
+            "med": 23.203,
+            "max": 902.2188,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "iterations": {
+            "count": 26,
+            "rate": 0.08639115143336439
+        },
+        "http_req_failed{kind:payment}": {
+            "passes": 0,
+            "fails": 55,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "iteration_duration": {
+            "min": 171.2423,
+            "med": 740.1451,
+            "max": 978.4265,
+            "p(90)": 973.2727,
+            "p(95)": 974.744475,
+            "avg": 589.5490653846155
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 81,
+            "value": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 188.8513679012346,
+            "min": 3.1304,
+            "med": 69.6064,
+            "max": 902.2188,
+            "p(90)": 891.5153,
+            "p(95)": 897.5704
+        },
+        "data_sent": {
+            "rate": 90.36846713589273,
+            "count": 27197
+        },
+        "checks": {
+            "passes": 81,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        }
+    }
+}

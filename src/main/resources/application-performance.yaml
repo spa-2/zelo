@@ -1,0 +1,40 @@
+# 부하 테스트용. base(로컬 기본값) 위에 달라지는 값만 둔다. DB·시크릿 설정은 변경하지 않는다.
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 30
+
+zelo:
+  # 주문 만료·배송·정산 대조 스케줄러가 부하 중에 데이터를 바꾸지 않게 전부 끈다
+  scheduler:
+    enabled: false
+  seed:
+    enabled: true
+    load-test:
+      enabled: true
+  social:
+    # 외부 소셜 로그인 지연을 흉내 내 부하 측정이 실제와 비슷해지게 한다
+    fake-latency-ms: 900
+  portone:
+    # 포트원 fake 응답 지연. 테스트 채널 실측 평균이다 (load-test/payment/README.md, load-test/refund/README.md)
+    fake-delay: 63ms
+    fake-billing-delay: 773ms
+    fake-cancel-delay: 807ms
+
+jwt:
+  # 부하 테스트 중 토큰이 만료되지 않도록 base(10분)보다 길게 둔다
+  access-expiration: 3600000 # 1시간
+
+# 부하 측정 전후에 동일한 로그 수준을 사용한다
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: info
+    org.hibernate.SQL: info
+    org.hibernate.orm.jdbc.bind: info
+
+management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        hikaricp.connections.acquire: true
+        hikaricp.connections.usage: true

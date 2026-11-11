@@ -1,0 +1,179 @@
+#!/bin/bash
+# 수집기 부팅 스크립트(user_data): Prometheus, Grafana, Loki를 Docker로 띄운다.
+# Grafana(3000)는 보안그룹에서 허용한 IP에만 열린다. Prometheus(9090)는 부하기가 없으면 서버 안에서만 열리고,
+# 부하기가 있으면 k6 지표를 받기 위해 밖으로 열되 보안그룹이 부하기 고정 IP만 통과시킨다.
+exec > >(tee /var/log/zelo-monitoring-bootstrap.log) 2>&1
+set -euo pipefail
+
+# 기본 설정: 시간대(한국 시간)와 점검용 도구. 실패해도 서버 부팅은 계속되게 한다
+timedatectl set-timezone Asia/Seoul || echo "시간대 설정 실패(무시)"
+dnf install -y net-tools bind-utils nmap-ncat telnet htop sysstat lsof tcpdump jq || echo "기본 도구 설치 실패(무시)"
+
+dnf install -y docker
+systemctl enable --now docker
+
+GRAFANA_PASSWORD=$(aws ssm get-parameter --region ${region} --name "${grafana_password_parameter}" \
+  --with-decryption --query Parameter.Value --output text)
+
+install -d /opt/monitoring/prometheus
+install -d /opt/monitoring/grafana/provisioning/datasources /opt/monitoring/grafana/provisioning/dashboards /opt/monitoring/grafana/dashboards
+# 컨테이너 안의 사용자(prometheus는 nobody, grafana는 472)가 데이터를 쓸 수 있게 한다
+install -d -o 65534 -g 65534 /opt/monitoring/prometheus-data
+install -d -o 472 -g 472 /opt/monitoring/grafana-data
+install -d /opt/monitoring/loki
+install -d -o 10001 -g 10001 /opt/monitoring/loki-data
+
+cat > /opt/monitoring/prometheus/prometheus.yml <<'PROMETHEUS_EOF'
+${prometheus_config}
+PROMETHEUS_EOF
+
+cat > /opt/monitoring/grafana/provisioning/datasources/prometheus.yml <<'DATASOURCE_EOF'
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+%{ if loki_enabled ~}
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://localhost:3100
+%{ endif ~}
+  # AWS 관리형 지표(RDS, ALB, ElastiCache)와 CloudWatch Logs를 Grafana에서 본다. 인스턴스 역할로 인증한다
+  - name: CloudWatch
+    uid: cloudwatch
+    type: cloudwatch
+    access: proxy
+    jsonData:
+      authType: default
+      defaultRegion: ${region}
+DATASOURCE_EOF
+
+%{ if loki_enabled ~}
+# 단일 서버용 Loki 설정: 로그를 로컬 디스크에 두고 7일이 지나면 지운다
+cat > /opt/monitoring/loki/loki.yml <<'LOKI_EOF'
+auth_enabled: false
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+limits_config:
+  retention_period: 168h
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+analytics:
+  reporting_enabled: false
+LOKI_EOF
+%{ endif ~}
+
+cat > /opt/monitoring/grafana/provisioning/dashboards/zelo.yml <<'PROVIDER_EOF'
+apiVersion: 1
+providers:
+  - name: zelo
+    type: file
+    options:
+      path: /var/lib/grafana-dashboards
+PROVIDER_EOF
+
+cat > /opt/monitoring/grafana/dashboards/zelo-overview.json <<'DASHBOARD_EOF'
+${dashboard_json}
+DASHBOARD_EOF
+
+# 부하기(k6)가 보낸 지표를 흐름(journey)별로 보는 대시보드
+cat > /opt/monitoring/grafana/dashboards/zelo-k6.json <<'K6_DASHBOARD_EOF'
+${k6_dashboard_json}
+K6_DASHBOARD_EOF
+
+# 채팅·LLM 대시보드(LLM 호출, 토큰, 재시도, 서킷 브레이커, FALLBACK)
+cat > /opt/monitoring/grafana/dashboards/zelo-ai.json <<'AI_DASHBOARD_EOF'
+${ai_dashboard_json}
+AI_DASHBOARD_EOF
+
+docker rm -f prometheus grafana loki 2>/dev/null || true
+
+# 호스트 네트워크를 쓰면 컨테이너가 인스턴스 메타데이터(IAM 역할)에 바로 닿아서 EC2 탐색 권한을 받는다
+docker run -d --name prometheus --restart unless-stopped --network host \
+  -v /opt/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  -v /opt/monitoring/prometheus-data:/prometheus \
+  prom/prometheus:v2.55.1 \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --storage.tsdb.retention.time=7d \
+  --web.listen-address=${prometheus_listen_address}%{ if remote_write_enabled } \
+  --web.enable-remote-write-receiver%{ endif }
+
+%{ if loki_enabled ~}
+docker run -d --name loki --restart unless-stopped --network host \
+  -v /opt/monitoring/loki/loki.yml:/etc/loki/loki.yml:ro \
+  -v /opt/monitoring/loki-data:/loki \
+  grafana/loki:3.3.2 \
+  -config.file=/etc/loki/loki.yml
+%{ endif ~}
+
+docker run -d --name grafana --restart unless-stopped --network host \
+  -e GF_SECURITY_ADMIN_PASSWORD="$GRAFANA_PASSWORD" \
+  -e GF_USERS_ALLOW_SIGN_UP=false \
+  -e GF_AUTH_ANONYMOUS_ENABLED=false \
+  -v /opt/monitoring/grafana-data:/var/lib/grafana \
+  -v /opt/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro \
+  -v /opt/monitoring/grafana/dashboards:/var/lib/grafana-dashboards:ro \
+  grafana/grafana:11.3.1
+
+# Grafana 알림을 보낼 연락처(Slack 또는 Discord 웹훅). 웹훅 주소는 SSM 파라미터에 있고 처음에는 CHANGE_ME다.
+# 주소를 넣은 뒤 이 스크립트를 다시 실행하면(sudo /usr/local/bin/zelo-alert-contact.sh) 연락처가 만들어지고 Grafana가 다시 시작된다.
+cat > /usr/local/bin/zelo-alert-contact.sh <<'CONTACT_EOF'
+#!/bin/bash
+set -euo pipefail
+URL=$(aws ssm get-parameter --region ${region} --name "${alert_webhook_parameter}" --with-decryption --query Parameter.Value --output text)
+DIR=/opt/monitoring/grafana/provisioning/alerting
+mkdir -p "$DIR"
+if [ "$URL" = "CHANGE_ME" ] || [ -z "$URL" ]; then
+  echo "웹훅 주소가 아직 없어서 연락처를 만들지 않는다"
+  rm -f "$DIR/contact-points.yml"
+  exit 0
+fi
+cat > "$DIR/contact-points.yml" <<YAML_EOF
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: team-alerts
+    receivers:
+      - uid: team-alerts-webhook
+        type: ${alert_channel}
+        settings:
+          url: "$URL"
+policies:
+  - orgId: 1
+    receiver: team-alerts
+    group_by: ["alertname"]
+YAML_EOF
+docker restart grafana
+echo "연락처를 만들었다 (${alert_channel})"
+CONTACT_EOF
+chmod 755 /usr/local/bin/zelo-alert-contact.sh
+/usr/local/bin/zelo-alert-contact.sh || echo "알림 연락처 설정 실패(무시)"

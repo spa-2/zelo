@@ -1,0 +1,2 @@
+time,tomcat_busy,hikari_active,hikari_pending,chat_inflight,circuit,not_permitted,fallback_timeout,fallback_circuit,reply_success
+12:37:56,,,,,,0,0,0,0

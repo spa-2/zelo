@@ -154,6 +154,26 @@ resource "aws_cloudfront_function" "spa_fallback" {
   EOT
 }
 
+# 접속자 IP를 x-viewer-ip 헤더로 ALB 뒤의 앱에 전달한다.
+# 앱은 X-Forwarded-For 끝에 붙는 CloudFront 엣지 IP를 접속자 IP로 착각하기 때문이다(로그인, 이메일 인증 횟수 제한이 IP 기준).
+# CloudFront-Viewer-Address 헤더는 Host를 제외하는 정책(all_viewer_except_host)과 함께 쓸 수 없어서 함수로 같은 값을 넣는다.
+# 클라이언트가 보낸 x-viewer-ip는 이 함수가 덮어쓰므로 위조할 수 없다.
+resource "aws_cloudfront_function" "viewer_ip" {
+  count = var.frontend_enabled ? 1 : 0
+
+  name    = "${local.name}-viewer-ip"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "접속자 IP를 x-viewer-ip 헤더로 넣는다"
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      request.headers['x-viewer-ip'] = { value: event.viewer.ip };
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "frontend" {
   count = var.frontend_enabled ? 1 : 0
 
@@ -222,6 +242,11 @@ resource "aws_cloudfront_distribution" "frontend" {
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
     origin_request_policy_id = local.alb_origin_request_policy_id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.viewer_ip[0].arn
+    }
   }
 
   restrictions {

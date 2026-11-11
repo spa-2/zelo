@@ -362,3 +362,9 @@ variable "ses_enabled" {
   type        = bool
   default     = true
 }
+
+variable "origin_domain" {
+  description = "CloudFront가 ALB에 HTTPS로 붙을 ALB 전용 도메인(예: api-origin.wyshin.click). 비우면 ALB는 HTTP로만 연다(부하 테스트). ALB 기본 주소(*.elb.amazonaws.com)에는 인증서를 못 만들어서 도메인이 따로 필요하다"
+  type        = string
+  default     = ""
+}

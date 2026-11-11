@@ -38,8 +38,9 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+// @Transactional을 걸지 않는다: 견적은 Redis에 있어서, 묶으면 Redis를 기다리는 동안 DB 커넥션을 잡고 있게 된다
+// DB 조회는 상품·재고·리뷰 서비스가 각자 짧은 읽기 트랜잭션으로 하고, 받아 온 상품은 재료·카테고리까지 미리 읽어 둔다
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -57,7 +58,6 @@ public class QuoteCommandService {
     private final InventoryService inventoryService;
     private final UserBlockedCategoryService userBlockedCategoryService;
 
-    @Transactional(readOnly = true)
     public Quote createQuote(Long userId, Long roomId, MenuPlan menuPlan) {
         Set<Keyword> conditions = new HashSet<>(menuPlan.conditions());
         Set<Long> blockedCategoryIds = userBlockedCategoryService.findBlockedCategoryIds(userId);
@@ -89,7 +89,6 @@ public class QuoteCommandService {
                 quote.substitutes(), quote.budget(), keepOptions(quote, items)), "REMOVE_ITEM");
     }
 
-    @Transactional(readOnly = true)
     public Quote changeQuantity(Long userId, Long roomId, Long productId, Integer quantity) {
         if (quantity == null || quantity < 1) {
             throw new BusinessException(ErrorCode.INVALID_QUANTITY);
@@ -107,7 +106,6 @@ public class QuoteCommandService {
     }
 
     // 못 담으면 예외 대신 excludedItems에 사유를 넣어서 돌려줌 (발급 때랑 똑같이)
-    @Transactional(readOnly = true)
     public Quote addItem(Long userId, Long roomId, String ingredientName, Integer amount, BaseUnit unit) {
         if (amount == null || amount <= 0) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -153,7 +151,6 @@ public class QuoteCommandService {
     }
 
     // 계산만 하고 견적은 안 바꿈. 사용자가 담기를 누르면 addItem으로 담음
-    @Transactional(readOnly = true)
     public QuoteRecommendation recommendItems(Long userId, Long roomId, List<MenuPlanIngredient> ingredients) {
         Quote quote = getQuote(userId, roomId);
         Selection selection = select(ingredients, quote.conditions(), userBlockedCategoryService.findBlockedCategoryIds(userId));
@@ -162,7 +159,6 @@ public class QuoteCommandService {
     }
 
     // 후보를 보여준 사이에 팔렸을 수 있어서 재고를 다시 봄. 모자라면 addItem처럼 품절로 돌려줌
-    @Transactional(readOnly = true)
     public Quote acceptSubstitute(Long userId, Long roomId, String name) {
         Quote quote = getQuote(userId, roomId);
         SubstituteItem target = getSubstitute(quote, name);
@@ -194,7 +190,6 @@ public class QuoteCommandService {
     }
 
     // 고른 상품 하나만 더 싼 걸로 바꿈. 나머지 상품 후보는 그대로 둠
-    @Transactional(readOnly = true)
     public Quote applyBudgetOption(Long userId, Long roomId, Long productId) {
         Quote quote = getQuote(userId, roomId);
         BudgetOption target = quote.budgetOptions().stream()

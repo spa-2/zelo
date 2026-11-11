@@ -109,6 +109,11 @@ cat > /opt/monitoring/grafana/dashboards/zelo-k6.json <<'K6_DASHBOARD_EOF'
 ${k6_dashboard_json}
 K6_DASHBOARD_EOF
 
+# 채팅·LLM 대시보드(LLM 호출, 토큰, 재시도, 서킷 브레이커, FALLBACK)
+cat > /opt/monitoring/grafana/dashboards/zelo-ai.json <<'AI_DASHBOARD_EOF'
+${ai_dashboard_json}
+AI_DASHBOARD_EOF
+
 docker rm -f prometheus grafana loki 2>/dev/null || true
 
 # 호스트 네트워크를 쓰면 컨테이너가 인스턴스 메타데이터(IAM 역할)에 바로 닿아서 EC2 탐색 권한을 받는다

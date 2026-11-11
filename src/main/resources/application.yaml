@@ -19,6 +19,12 @@ spring:
       minimum-idle: 2
       connection-timeout: 30000
 
+  data:
+    redis:
+      # Redis가 멈추면 이 시간 안에 실패해서 캐시는 DB 조회로 넘어가고 락·견적은 빨리 실패하게 한다
+      # 기본값(3초, 재시도 4번)이면 명령 하나 실패까지 약 7초가 걸렸다. 재시도 횟수는 RedissonConfig에서 줄인다
+      timeout: 1s
+
   jpa:
     hibernate:
       ddl-auto: update

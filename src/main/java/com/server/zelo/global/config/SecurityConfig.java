@@ -1,5 +1,6 @@
 package com.server.zelo.global.config;
 
+import org.springframework.http.HttpMethod;
 import com.server.zelo.global.security.JwtAccessDeniedHandler;
 import com.server.zelo.global.security.JwtAuthenticationEntryPoint;
 import com.server.zelo.global.security.JwtFilter;
@@ -30,10 +31,18 @@ public class SecurityConfig {
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
-                // 개발 중에는 모든 url 허용, 인증 API 완성되면 authenticated()로 되돌리고 permitAll 경로만 열어야 함
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .anyRequest().permitAll())
+                        // 회원가입, 로그인, 패스워드 초기화 허용
+                        .requestMatchers("/api/users", "/api/users/login" ,"/api/auth/**", "/api/users/password-reset").permitAll()
+                        // 카테고리, 상품 조회 허용
+                        .requestMatchers("/api/categories", "/api/products").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products/*").permitAll()
+                        // 웹훅 수신
+                        .requestMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()
+                        // 프로메테우스, 헬스체크
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus", "/actuator/info").permitAll()
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

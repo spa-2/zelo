@@ -227,7 +227,16 @@ terraform apply -var-file=envs/dev.tfvars
 6. 알림: `alarm_email`을 넣고 오는 구독 확인 메일의 링크를 누른다. Grafana 알림은 웹훅 주소를 SSM `/zelo-monitoring/prod/alert_webhook_url`에 넣고 수집기에서 `sudo /usr/local/bin/zelo-alert-contact.sh`를 실행한다
 7. 소셜 로그인 리다이렉트 주소와 포트원 웹훅 주소를 운영 도메인(HTTPS)으로 바꾼다
 
+### ALB HTTPS (alb_https.tf)
+
+`origin_domain`(운영: `api-origin.wyshin.click`)을 정하면 켜진다. 사용자 ─HTTPS─▶ CloudFront ─HTTPS─▶ ALB(443) ─▶ 앱 으로 전 구간이 암호화된다.
+
+- ACM 인증서(서울)와 DNS(Route53) 레코드는 Terraform이 만든다. ALB 80은 443으로 리다이렉트된다.
+- CloudFront가 ALB에 붙을 때는 Host 헤더를 오리진 도메인으로 보낸다(`Managed-AllViewerExceptHostHeader`). 인증서가 오리진 도메인에만 맞아서다. 나머지 헤더, 쿠키, 쿼리는 그대로 전달된다.
+- **ALB로 직접 들어오는 요청은 403이다.** CloudFront가 비밀 헤더(`X-Origin-Verify`)를 붙여 보내고 ALB는 이 헤더가 맞는 요청만 앱으로 보낸다. 보안그룹의 CloudFront prefix list는 규칙 한도(기본 60)를 55개씩 써서 쓰지 않았다.
+- 부하 테스트(dev)는 `origin_domain`이 비어 있어서 예전처럼 HTTP로 ALB에 직접 붙는다.
+- 80 리스너는 하나(`aws_lb_listener.http`)이고 동작만 forward → redirect로 바뀐다. CloudFront 변경 반영에 5~15분 걸린다.
+
 ### 아직 안 된 것
-- ALB의 HTTPS(`certificate_arn`)와 CloudFront → ALB 구간의 HTTPS. 후자는 ALB용 도메인과 인증서가 필요하다.
-- 상태 파일 S3 백엔드, DB 스키마 마이그레이션 도구(운영 프로필도 `ddl-auto: update`).
+- DB 스키마 마이그레이션 도구(운영 프로필도 `ddl-auto: update`).
 - 새 장애 전환 구성(RDS Multi-AZ, ElastiCache 복제본)이 실제 장애에서 의도대로 동작하는지 검증.

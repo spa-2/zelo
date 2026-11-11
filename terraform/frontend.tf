@@ -123,6 +123,15 @@ data "aws_cloudfront_origin_request_policy" "all_viewer" {
   name = "Managed-AllViewer"
 }
 
+# ALB에 HTTPS로 붙을 때 쓴다. Host 헤더는 viewer 값(zelo.wyshin.click)이 아니라 오리진 도메인으로 보내서 ALB 인증서와 맞춘다. 나머지 헤더, 쿼리, 쿠키는 그대로 전달한다
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
+  name = "Managed-AllViewerExceptHostHeader"
+}
+
+locals {
+  alb_origin_request_policy_id = local.origin_https ? data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id : data.aws_cloudfront_origin_request_policy.all_viewer.id
+}
+
 # 화면 경로 새로고침 대응(SPA 폴백). 파일 확장자가 없는 주소(/products/1 같은 화면 경로)는 index.html로 바꿔서 받는다.
 # 403/404 오류 응답을 index.html로 바꾸는 방식(custom_error_response)은 배포 전체에 적용되어
 # /api/* 의 실제 403, 404 응답까지 index.html(200)로 덮어써서 API 오류가 사라지므로 쓰지 않는다.
@@ -140,6 +149,26 @@ resource "aws_cloudfront_function" "spa_fallback" {
       if (request.uri.indexOf('.') === -1) {
         request.uri = '/index.html';
       }
+      return request;
+    }
+  EOT
+}
+
+# 접속자 IP를 x-viewer-ip 헤더로 ALB 뒤의 앱에 전달한다.
+# 앱은 X-Forwarded-For 끝에 붙는 CloudFront 엣지 IP를 접속자 IP로 착각하기 때문이다(로그인, 이메일 인증 횟수 제한이 IP 기준).
+# CloudFront-Viewer-Address 헤더는 Host를 제외하는 정책(all_viewer_except_host)과 함께 쓸 수 없어서 함수로 같은 값을 넣는다.
+# 클라이언트가 보낸 x-viewer-ip는 이 함수가 덮어쓰므로 위조할 수 없다.
+resource "aws_cloudfront_function" "viewer_ip" {
+  count = var.frontend_enabled ? 1 : 0
+
+  name    = "${local.name}-viewer-ip"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "접속자 IP를 x-viewer-ip 헤더로 넣는다"
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      request.headers['x-viewer-ip'] = { value: event.viewer.ip };
       return request;
     }
   EOT
@@ -163,16 +192,25 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend[0].id
   }
 
-  # CloudFront → ALB 구간은 HTTP다 (AWS가 인터넷으로 보내는 구간이라 임시 구성이다).
-  # ALB에 HTTPS를 붙이면 https-only로 바꾸고 ALB 보안그룹을 CloudFront에서 오는 요청만 받게 좁힌다
+  # CloudFront → ALB 구간: origin_domain이 있으면 그 도메인으로 HTTPS(https-only)로, 없으면 ALB 기본 주소로 HTTP로 붙는다(부하 테스트).
+  # HTTPS일 때는 비밀 헤더(X-Origin-Verify)를 붙여서 ALB가 CloudFront를 거친 요청만 받게 한다(alb_https.tf)
   origin {
     origin_id   = "alb"
-    domain_name = aws_lb.main.dns_name
+    domain_name = local.origin_https ? var.origin_domain : aws_lb.main.dns_name
+
+    dynamic "custom_header" {
+      for_each = local.origin_verify ? [1] : []
+
+      content {
+        name  = local.origin_verify_header
+        value = random_password.origin_verify[0].result
+      }
+    }
 
     custom_origin_config {
       http_port                = 80
       https_port               = 443
-      origin_protocol_policy   = "http-only"
+      origin_protocol_policy   = local.origin_https ? "https-only" : "http-only"
       origin_ssl_protocols     = ["TLSv1.2"]
       origin_read_timeout      = 60
       origin_keepalive_timeout = 5
@@ -203,7 +241,12 @@ resource "aws_cloudfront_distribution" "frontend" {
     cached_methods           = ["GET", "HEAD"]
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+    origin_request_policy_id = local.alb_origin_request_policy_id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.viewer_ip[0].arn
+    }
   }
 
   restrictions {

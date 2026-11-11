@@ -229,7 +229,7 @@ terraform apply -var-file=envs/dev.tfvars
 
 ### ALB HTTPS (alb_https.tf)
 
-`origin_domain`(운영: `api-origin.wyshin.click`)을 정하면 켜진다. 사용자 ─HTTPS─▶ CloudFront ─HTTPS─▶ ALB(443) ─▶ 앱 으로 전 구간이 암호화된다.
+`origin_domain`(운영: `api-origin.wyshin.click`)을 정하면 켜진다. 사용자 ─HTTPS─▶ CloudFront ─HTTPS─▶ ALB(443) ─HTTP─▶ 앱 이다. 인터넷을 지나는 구간(사용자→CloudFront, CloudFront→ALB)만 암호화되고, VPC 안의 ALB→앱 구간은 HTTP다.
 
 - ACM 인증서(서울)와 DNS(Route53) 레코드는 Terraform이 만든다. ALB 80은 443으로 리다이렉트된다.
 - CloudFront가 ALB에 붙을 때는 Host 헤더를 오리진 도메인으로 보낸다(`Managed-AllViewerExceptHostHeader`). 인증서가 오리진 도메인에만 맞아서다. 나머지 헤더, 쿠키, 쿼리는 그대로 전달된다.

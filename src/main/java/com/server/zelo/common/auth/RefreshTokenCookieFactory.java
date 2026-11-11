@@ -18,7 +18,6 @@ public class RefreshTokenCookieFactory {
         this.refreshTokenExpiration = refreshTokenExpiration;
     }
 
-    // Todo SameSite는 프론트 확정 후 추가
     public ResponseCookie create(String refreshToken) {
         return createCookie(refreshToken, Duration.ofMillis(refreshTokenExpiration));
     }
@@ -31,6 +30,7 @@ public class RefreshTokenCookieFactory {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE, refreshToken)
                 .httpOnly(true)
                 .secure(true)
+                .sameSite("Strict")
                 .path(REFRESH_TOKEN_COOKIE_PATH)
                 .maxAge(expiration)
                 .build();

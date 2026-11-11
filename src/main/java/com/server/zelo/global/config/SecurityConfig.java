@@ -33,7 +33,13 @@ public class SecurityConfig {
                 // 개발 중에는 모든 url 허용, 인증 API 완성되면 authenticated()로 되돌리고 permitAll 경로만 열어야 함
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .anyRequest().permitAll())
+                        // 회원가입, 로그인, 패스워드 초기화 허용
+                        .requestMatchers("/api/users", "/api/auth/**", "/api/users/password-reset").permitAll()
+                        // 카테고리, 상품 조회 허용
+                        .requestMatchers("/api/categories", "/api/products").permitAll()
+                        // 웹훅 수신
+                        .requestMatchers("/api/webhook/portones").permitAll()
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

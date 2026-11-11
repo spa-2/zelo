@@ -122,7 +122,14 @@ class ResilientLlmGatewayTest {
         // given
         var release = new java.util.concurrent.CountDownLatch(1);
         var finished = new java.util.concurrent.CountDownLatch(2);
+        var started = new java.util.concurrent.Semaphore(0);
+        // 느린 CI에서는 재시도 작업이 시간 제한(200ms) 안에 시작조차 못 해, 시작 전에 취소되면 진행수가 1로 끝난다.
+        // 작업이 실제로 시작한 뒤에 시간 제한을 재도록, 넘긴 작업이 이 답에 들어올 때까지 submit을 기다리게 한다.
+        // 같은 레지스트리에는 setUp의 게이트웨이가 진행수 게이지를 먼저 등록해 두어서, 새 게이트웨이용으로 레지스트리를 새로 만든다
+        meterRegistry = new SimpleMeterRegistry();
+        ResilientLlmGateway gateway = gatewayWith(retryWaiting(Duration.ofMillis(10)), returningAfterStart(started));
         given(delegate.explain(anyString(), anyList(), anyString())).willAnswer(invocation -> {
+            started.release();
             while (release.getCount() > 0) {
                 try {
                     release.await();
@@ -135,7 +142,7 @@ class ResilientLlmGatewayTest {
         });
         try {
             // when
-            assertThatThrownBy(() -> resilientLlmGateway.explain("system", List.of(), "질문"))
+            assertThatThrownBy(() -> gateway.explain("system", List.of(), "질문"))
                     .isInstanceOf(BusinessException.class);
             // then
             assertThat(meterRegistry.get("zelo.llm.inflight").tag("operation", "CHAT_ANSWER").gauge().value()).isEqualTo(2);
@@ -950,8 +957,50 @@ class ResilientLlmGatewayTest {
     }
 
     private ResilientLlmGateway gatewayWith(Retry retry) {
+        return gatewayWith(retry, executorService);
+    }
+
+    private ResilientLlmGateway gatewayWith(Retry retry, ExecutorService executor) {
         return new ResilientLlmGateway(retry, CONFIGURED_MODEL, REVIEW_SUMMARY_MODEL, delegate, timeLimiter,
-                circuitBreaker, new BusinessMetrics(meterRegistry), llmTimeBudget, executorService, quoteExplainPrompt);
+                circuitBreaker, new BusinessMetrics(meterRegistry), llmTimeBudget, executor, quoteExplainPrompt);
+    }
+
+    // 넘긴 작업이 started를 한 번 놓을 때(=delegate 답에 들어왔을 때)까지 기다렸다가 돌려준다.
+    // 그래서 TimeLimiter가 재는 시간은 항상 작업이 시작된 뒤부터다. 실행과 종료는 executorService에 맡긴다
+    private ExecutorService returningAfterStart(java.util.concurrent.Semaphore started) {
+        return new java.util.concurrent.AbstractExecutorService() {
+
+            @Override
+            public void execute(Runnable command) {
+                executorService.execute(command);
+                started.acquireUninterruptibly();
+            }
+
+            @Override
+            public void shutdown() {
+                executorService.shutdown();
+            }
+
+            @Override
+            public List<Runnable> shutdownNow() {
+                return executorService.shutdownNow();
+            }
+
+            @Override
+            public boolean isShutdown() {
+                return executorService.isShutdown();
+            }
+
+            @Override
+            public boolean isTerminated() {
+                return executorService.isTerminated();
+            }
+
+            @Override
+            public boolean awaitTermination(long timeout, java.util.concurrent.TimeUnit unit) throws InterruptedException {
+                return executorService.awaitTermination(timeout, unit);
+            }
+        };
     }
 
     private double budgetExceeded(String operation, String stage) {

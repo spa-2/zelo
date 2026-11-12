@@ -78,6 +78,24 @@ class PortOneBillingKeyTest {
         assertThat(billingKey.isOwnedBy(1L)).isFalse();
     }
 
+    @Test
+    void 발급_고객이_user_접두어와_사용자_ID면_본인_빌링키다() {
+        // given
+        PortOneBillingKey billingKey = PortOneBillingKey.of("billing-key-1", PaymentMethodType.CARD, "신한카드 1234", "user-1");
+
+        // when // then
+        assertThat(billingKey.isOwnedBy(1L)).isTrue();
+    }
+
+    @Test
+    void 접두어가_있어도_다른_사용자_ID면_본인_빌링키가_아니다() {
+        // given
+        PortOneBillingKey billingKey = PortOneBillingKey.of("billing-key-1", PaymentMethodType.CARD, "신한카드 1234", "user-2");
+
+        // when // then
+        assertThat(billingKey.isOwnedBy(1L)).isFalse();
+    }
+
     private PortOneBillingKeyResponse response(String status, PortOneBillingKeyResponse.Method method) {
         return new PortOneBillingKeyResponse(status, "billing-key-1", List.of(method), CUSTOMER);
     }

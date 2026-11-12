@@ -1,0 +1,4 @@
+2026-11-12T14:01:48.880+09:00,baseline_start,정상 상태 기록 60초
+2026-11-12T14:02:48.942+09:00,inject,elasticache test-failover zelo-prod-redis
+2026-11-12T14:03:15.052+09:00,group_available,ElastiCache 상태 available
+2026-11-12T14:03:15.693+09:00,after_start,복구 후 120초 더 기록

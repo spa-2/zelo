@@ -1,0 +1,4 @@
+2026-11-12T12:54:09.445+09:00,baseline_start,정상 상태 기록 20초
+2026-11-12T12:54:29.514+09:00,inject,docker stop zelotest-postgres
+2026-11-12T12:54:44.934+09:00,restore,docker start zelotest-postgres
+2026-11-12T12:54:45.162+09:00,after_start,복구 후 60초 더 기록

@@ -1,0 +1,42 @@
+{
+    "Events": [
+        {
+            "SourceIdentifier": "zelo-prod-postgres",
+            "SourceType": "db-instance",
+            "Message": "Multi-AZ instance failover started. ",
+            "EventCategories": [
+                "failover"
+            ],
+            "Date": "2026-11-12T05:15:36.870000+00:00",
+            "SourceArn": "arn:aws:rds:ap-northeast-2:000000000000:db:zelo-prod-postgres"
+        },
+        {
+            "SourceIdentifier": "zelo-prod-postgres",
+            "SourceType": "db-instance",
+            "Message": "DB instance restarted",
+            "EventCategories": [
+                "availability"
+            ],
+            "Date": "2026-11-12T05:15:51.700000+00:00",
+            "SourceArn": "arn:aws:rds:ap-northeast-2:000000000000:db:zelo-prod-postgres"
+        },
+        {
+            "SourceIdentifier": "zelo-prod-postgres",
+            "SourceType": "db-instance",
+            "Message": "The user requested a failover of the DB instance.",
+            "EventCategories": [],
+            "Date": "2026-11-12T05:16:26.764000+00:00",
+            "SourceArn": "arn:aws:rds:ap-northeast-2:000000000000:db:zelo-prod-postgres"
+        },
+        {
+            "SourceIdentifier": "zelo-prod-postgres",
+            "SourceType": "db-instance",
+            "Message": "Multi-AZ instance failover completed",
+            "EventCategories": [
+                "failover"
+            ],
+            "Date": "2026-11-12T05:16:26.764000+00:00",
+            "SourceArn": "arn:aws:rds:ap-northeast-2:000000000000:db:zelo-prod-postgres"
+        }
+    ]
+}

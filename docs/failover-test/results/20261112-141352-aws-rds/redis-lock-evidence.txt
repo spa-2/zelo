@@ -1,0 +1,6 @@
+# RDS failover 테스트 후 Redis에 남은 분산락 (2026-11-12, bastion에서 primary 엔드포인트로 조회)
+ROLE master
+KEYS lock:*            -> lock:user:address:2
+PTTL  29756 / 29811 ms (4초 간격 두 번. 30초 락인데 줄지 않고 계속 연장됨 = watchdog이 붙잡고 있음)
+HGETALL                -> 6ed49e4a-9988-4c53-8e39-753cb6acce10:97 (소유자 앱UUID:스레드)
+DEL lock:user:address:2 -> 1, 이후 EXISTS 0

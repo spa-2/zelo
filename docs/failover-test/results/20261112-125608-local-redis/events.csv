@@ -1,0 +1,4 @@
+2026-11-12T12:56:09.187+09:00,baseline_start,정상 상태 기록 20초
+2026-11-12T12:56:29.236+09:00,inject,docker stop zelotest-redis
+2026-11-12T12:56:44.795+09:00,restore,docker start zelotest-redis
+2026-11-12T12:56:45.046+09:00,after_start,복구 후 90초 더 기록

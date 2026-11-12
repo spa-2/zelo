@@ -192,3 +192,41 @@ resource "aws_cloudwatch_metric_alarm" "redis_memory" {
     CacheClusterId = "${aws_elasticache_replication_group.redis[0].replication_group_id}-001"
   }
 }
+
+# ───────── 로그에서 지표 만들기: ERROR 로그 수 ─────────
+# 앱 로그 규칙상 ERROR는 "예상하지 못한 문제"다(스택트레이스 포함). 로그를 직접 보지 않아도 늘어나면 알림이 오게 한다.
+# 패턴 " ERROR "는 앞뒤에 공백이 있는 ERROR 토큰만 잡는다(로그 레벨 위치). 메시지 안의 다른 단어는 잡지 않는다.
+resource "aws_cloudwatch_log_metric_filter" "app_error" {
+  count = var.log_backend == "cloudwatch" ? 1 : 0
+
+  name           = "${local.name}-app-error"
+  log_group_name = aws_cloudwatch_log_group.app[0].name
+  pattern        = "\" ERROR \""
+
+  metric_transformation {
+    name          = "ErrorLogCount"
+    namespace     = "Zelo/App"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "app_error_logs" {
+  count = var.log_backend == "cloudwatch" ? 1 : 0
+
+  alarm_name          = "${local.name}-app-error-logs"
+  alarm_description   = "앱이 ERROR 로그를 남겼다 (예상하지 못한 예외). Logs Insights에서 filter @message like /ERROR/ 로 확인한다"
+  namespace           = "Zelo/App"
+  metric_name         = "ErrorLogCount"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = var.error_log_alarm_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
+
+  depends_on = [aws_cloudwatch_log_metric_filter.app_error]
+}

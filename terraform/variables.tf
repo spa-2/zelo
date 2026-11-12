@@ -368,3 +368,15 @@ variable "origin_domain" {
   type        = string
   default     = ""
 }
+
+variable "error_log_alarm_threshold" {
+  description = "5분 동안 ERROR 로그가 이 수를 넘으면 알람(운영 로그 backend가 cloudwatch일 때). ERROR는 예상하지 못한 문제라서 작은 값이 맞다"
+  type        = number
+  default     = 2
+}
+
+variable "alert_forwarder_enabled" {
+  description = "CloudWatch 알람을 Slack/Discord로 보내는 Lambda를 만들지. 웹훅 주소가 SSM에 없으면(CHANGE_ME) 아무것도 보내지 않는다"
+  type        = bool
+  default     = true
+}

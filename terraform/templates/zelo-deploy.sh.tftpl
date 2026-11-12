@@ -24,7 +24,8 @@ if docker inspect zelo > /dev/null 2>&1; then
 fi
 
 %{ if log_group != "" ~}
-# 컨테이너 로그를 CloudWatch Logs로 보낸다. 서버마다 로그 스트림이 따로 생기도록 인스턴스 ID를 이름으로 쓴다
+# 컨테이너 로그를 CloudWatch Logs로 보낸다. 서버마다 로그 스트림이 따로 생기도록 인스턴스 ID를 이름으로 쓴다.
+# multiline-pattern: 시각(2026-01-01T...)으로 시작하는 줄부터 다음 시각까지를 한 이벤트로 묶는다. 예외 스택트레이스가 줄마다 쪼개지지 않는다
 # (서버 역할에 logs:CreateLogStream, logs:PutLogEvents 권한이 있어야 컨테이너가 시작된다)
 TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
@@ -33,6 +34,7 @@ INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.2
 docker run -d --name zelo --restart unless-stopped \
 %{ if log_group != "" ~}
   --log-driver awslogs --log-opt awslogs-region="$REGION" --log-opt awslogs-group="${log_group}" --log-opt awslogs-stream="$INSTANCE_ID" \
+  --log-opt awslogs-multiline-pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}T' \
 %{ endif ~}
   -e SPRING_CONFIG_IMPORT="aws-parameterstore:$PREFIX/" \
   -e SPRING_CLOUD_AWS_REGION_STATIC="$REGION" \

@@ -175,7 +175,7 @@
         "enableLogDetails": true,
         "prettifyLogMessage": false
       },
-      "description": "search 변수에 찾을 글자를 넣는다. 정규식도 된다(예: user=123 또는 결제|환불)"
+      "description": "search 변수에 찾을 글자를 넣는다. 정규식도 된다(예: user=123 또는 결제|환불). 경로의 /는 \\/로 쓴다(예: \\/api\\/orders)"
     },
     {
       "id": 5,
@@ -211,7 +211,7 @@
       "options": {
         "showTime": true,
         "wrapLogMessage": true,
-        "sortOrder": "Descending",
+        "sortOrder": "Ascending",
         "enableLogDetails": true,
         "prettifyLogMessage": false
       },

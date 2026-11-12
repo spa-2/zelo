@@ -38,7 +38,7 @@ class LockDistributeServiceTest {
     void 락을_얻으면_로직을_실행하고_결과를_반환한다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willReturn(true);
         given(lock.isHeldByCurrentThread()).willReturn(true);
 
         // when
@@ -53,7 +53,7 @@ class LockDistributeServiceTest {
     void 반환값이_없는_로직도_락_안에서_실행한다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willReturn(true);
         given(lock.isHeldByCurrentThread()).willReturn(true);
         AtomicBoolean executed = new AtomicBoolean(false);
 
@@ -69,7 +69,7 @@ class LockDistributeServiceTest {
     void 락을_얻지_못하면_예외가_발생하고_로직은_실행하지_않는다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(false);
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willReturn(false);
         AtomicBoolean executed = new AtomicBoolean(false);
 
         // when & then
@@ -86,7 +86,7 @@ class LockDistributeServiceTest {
     void 로직에서_예외가_발생해도_락을_해제한다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willReturn(true);
         given(lock.isHeldByCurrentThread()).willReturn(true);
         Supplier<String> failing = () -> {
             throw new IllegalStateException("fail");
@@ -102,7 +102,7 @@ class LockDistributeServiceTest {
     void 현재_스레드가_락을_보유하지_않으면_해제하지_않는다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willReturn(true);
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willReturn(true);
         given(lock.isHeldByCurrentThread()).willReturn(false);
 
         // when
@@ -117,7 +117,7 @@ class LockDistributeServiceTest {
     void 락_대기_중_인터럽트되면_예외가_발생하고_인터럽트_상태를_유지한다() throws InterruptedException {
         // given
         given(redissonClient.getLock(KEY)).willReturn(lock);
-        given(lock.tryLock(3, TimeUnit.SECONDS)).willThrow(new InterruptedException());
+        given(lock.tryLock(3, 60, TimeUnit.SECONDS)).willThrow(new InterruptedException());
 
         try {
             // when & then

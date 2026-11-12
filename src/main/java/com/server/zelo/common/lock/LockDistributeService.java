@@ -14,6 +14,10 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 public class LockDistributeService {
 
+    private static final long WAIT_TIME_SECONDS = 3;
+    // leaseTime을 주면 watchdog이 꺼져서, 해제가 안 된 락도 이 시간 뒤에 저절로 사라진다. 없으면 watchdog이 락을 계속 연장해서 DB 장애(failover) 뒤에 락이 영구히 남았다
+    private static final long LEASE_TIME_SECONDS = 60;
+
     private final RedissonClient redissonClient;
 
     public <T> T execute(String key, Supplier<T> supplier) {
@@ -21,7 +25,7 @@ public class LockDistributeService {
 
         boolean acquired;
         try {
-            acquired = lock.tryLock(3, TimeUnit.SECONDS);
+            acquired = lock.tryLock(WAIT_TIME_SECONDS, LEASE_TIME_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BusinessException(ErrorCode.TIMEOUT_EXCEPTION);

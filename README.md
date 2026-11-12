@@ -18,7 +18,7 @@ AI 에이전트가 장보기를 대신합니다
 ![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=for-the-badge&logo=gradle&logoColor=white)
 
-[**📖 Wiki**](https://github.com/spa-2/zelo/wiki) · [서비스 시나리오](https://github.com/spa-2/zelo/wiki/서비스-시나리오) · [아키텍처](https://github.com/spa-2/zelo/wiki/아키텍처) · [API 명세](https://github.com/spa-2/zelo/wiki/API-명세)
+[**📖 Wiki**](https://github.com/spa-2/zelo/wiki) · [서비스 시나리오](https://github.com/spa-2/zelo/wiki/서비스-시나리오) · [아키텍처](https://github.com/spa-2/zelo/wiki/아키텍처) · [API 명세](https://github.com/spa-2/zelo/wiki/API-명세) · [AWS 인프라](https://github.com/spa-2/zelo/wiki/AWS-인프라-구성)
 
 </div>
 
@@ -82,6 +82,31 @@ sequenceDiagram
 
 <br>
 
+## ☁️ 인프라 구성
+
+```mermaid
+flowchart LR
+    U([사용자]) --> CF[CloudFront]
+    CF -->|화면| S3[(S3)]
+    CF -->|"/api/* · HTTPS + 비밀 헤더"| ALB[ALB]
+    subgraph VPC["VPC · 가용영역 2개"]
+        ALB --> APP["Spring Boot 앱<br/>ASG 2~4대 (Private)"]
+        APP --> RDS[("RDS PostgreSQL<br/>Multi-AZ")]
+        APP --> REDIS[("ElastiCache Redis<br/>Primary + Replica")]
+    end
+    GH[GitHub Actions] -. "OIDC → ECR → Instance Refresh" .-> APP
+```
+
+- **진입점은 CloudFront 하나**입니다. ALB는 CloudFront만 아는 비밀 헤더가 없는 직접 요청을 403으로 막습니다.
+- **가용영역 2개에 이중화**했습니다. 앱은 Private 서브넷의 Auto Scaling Group, DB는 RDS Multi-AZ, Redis는 복제본을 두어 한쪽이 죽어도 자동으로 전환됩니다.
+- **설정과 시크릿은 SSM**, 이미지는 ECR에 둡니다. 배포는 GitHub Actions가 OIDC로 로그인하므로 AWS 액세스 키를 저장하지 않습니다.
+- **dev(부하 테스트)와 prod(운영)를 분리**했고, Terraform workspace로 상태를 따로 관리합니다.
+- 로그와 알람은 CloudWatch, 지표는 Prometheus + Grafana로 봅니다.
+
+> 서브넷 구조, 배포·접속 흐름, 보안 경계, 한계는 [Wiki · AWS 인프라 구성](https://github.com/spa-2/zelo/wiki/AWS-인프라-구성)에, 선택 이유는 [AWS 인프라 선택 근거](https://github.com/spa-2/zelo/wiki/aws-인프라)에 있습니다.
+
+<br>
+
 ## ⚒️ 기술 스택
 
 | 분류 | 사용 기술 |
@@ -91,7 +116,7 @@ sequenceDiagram
 | **Data** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=flat-square&logo=redis&logoColor=white) ![Redisson](https://img.shields.io/badge/Redisson-C9302C?style=flat-square) |
 | **Payment** | ![PortOne](https://img.shields.io/badge/PortOne-0B1EFF?style=flat-square) |
 | **Test · Quality** | ![JUnit5](https://img.shields.io/badge/JUnit_5-25A162?style=flat-square&logo=junit5&logoColor=white) ![Mockito](https://img.shields.io/badge/Mockito-78A641?style=flat-square) ![SonarCloud](https://img.shields.io/badge/SonarCloud-F3702A?style=flat-square&logo=sonarqubecloud&logoColor=white) |
-| **Build · Infra** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) |
+| **Build · Infra** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white) |
 
 <br>
 
@@ -114,6 +139,9 @@ sequenceDiagram
 | [기획서](https://github.com/spa-2/zelo/wiki/기획서) | 서비스 목표와 주요 기능, 기획 내용 |
 | [ERD](https://github.com/spa-2/zelo/wiki/ERD) | 테이블 구조와 관계 |
 | [기술 선택 근거](https://github.com/spa-2/zelo/wiki/기술-선택-근거) | 기술·설계 대안 비교와 선택 이유 |
+| [AWS 인프라 구성](https://github.com/spa-2/zelo/wiki/AWS-인프라-구성) | 구성도, 배포·접속 흐름, 보안 경계, 한계 |
+| [AWS 인프라 선택 근거](https://github.com/spa-2/zelo/wiki/aws-인프라) | 왜 AWS, EC2, SES, S3+CloudFront인가 |
+| [Terraform 구성](https://github.com/spa-2/zelo/wiki/테라폼-구성) | 파일 구성, 변수, 실행 순서 |
 | [회원 · 인프라 블로그](https://github.com/spa-2/zelo/wiki/회원-인프라) | 회원·인증과 인프라 개발 기록 |
 | [상품 · 견적 블로그](https://github.com/spa-2/zelo/wiki/상품-견적) | 상품 관리와 견적 개발 기록 |
 | [재고 · 주문 블로그](https://github.com/spa-2/zelo/wiki/재고-주문) | 재고 처리와 주문 개발 기록 |

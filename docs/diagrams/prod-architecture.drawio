@@ -1,0 +1,187 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36">
+  <diagram name="prod-architecture" id="zelo-prod">
+    <mxGraphModel dx="2093" dy="921" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1450" pageHeight="919" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=0;dashed=1;strokeColor=#147EBA;fillColor=none;fontColor=#147EBA;fontStyle=1;" value="Region ap-northeast-2 (Seoul)" vertex="1">
+          <mxGeometry height="880" width="1120" x="270" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=0;strokeColor=#8C4FFF;fillColor=none;fontColor=#8C4FFF;fontStyle=1;" value="VPC zelo-prod 10.0.0.0/16" vertex="1">
+          <mxGeometry height="690" width="1080" x="290" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#7AA116;fillColor=#E9F3D2;fontColor=#3A5100;" value="Public subnet A  10.0.0.0/24  (ap-northeast-2a)" vertex="1">
+          <mxGeometry height="190" width="510" x="310" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#7AA116;fillColor=#E9F3D2;fontColor=#3A5100;" value="Public subnet C  10.0.1.0/24  (ap-northeast-2c)" vertex="1">
+          <mxGeometry height="190" width="510" x="840" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#147EBA;fillColor=#E6F2F8;fontColor=#0D4F73;" value="Private subnet A  10.0.10.0/24  (2a)" vertex="1">
+          <mxGeometry height="170" width="510" x="310" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#147EBA;fillColor=#E6F2F8;fontColor=#0D4F73;" value="Private subnet C  10.0.11.0/24  (2c)" vertex="1">
+          <mxGeometry height="170" width="510" x="840" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#D79B00;fillColor=#FFF2E0;fontColor=#7A4B00;" value="Data subnet A  10.0.20.0/24  (2a)  인터넷 경로 없음" vertex="1">
+          <mxGeometry height="200" width="510" x="310" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=3;strokeColor=#D79B00;fillColor=#FFF2E0;fontColor=#7A4B00;" value="Data subnet C  10.0.21.0/24  (2c)  인터넷 경로 없음" vertex="1">
+          <mxGeometry height="200" width="510" x="840" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" parent="1" style="shape=actor;whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" value="사용자 브라우저" vertex="1">
+          <mxGeometry height="55" width="40" x="30" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.route_53;" value="Route 53" vertex="1">
+          <mxGeometry height="50" width="50" x="165" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.cloudfront;" value="CloudFront /* → S3, /api/* → ALB" vertex="1">
+          <mxGeometry height="50" width="50" x="165" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" value="S3 프론트 버킷 (OAC로만 접근)" vertex="1">
+          <mxGeometry height="50" width="50" x="165" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" value="Bastion EC2 (SSH, 허용 IP만)" vertex="1">
+          <mxGeometry height="50" width="50" x="450" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" value="Monitoring EC2 Prometheus + Grafana" vertex="1">
+          <mxGeometry height="50" width="50" x="630" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elastic_load_balancing;" value="ALB (2 AZ) HTTPS 443" vertex="1">
+          <mxGeometry height="56" width="56" x="795" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" value="Spring Boot 앱 (Docker) ASG EC2" vertex="1">
+          <mxGeometry height="50" width="50" x="540" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" value="Spring Boot 앱 (Docker) ASG EC2" vertex="1">
+          <mxGeometry height="50" width="50" x="1050" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#232F3E;fontColor=#0D4F73;" value="Auto Scaling Group min 2 / max 4, 두 AZ 분산 8080 서비스 / 9292 헬스·메트릭" vertex="1">
+          <mxGeometry height="60" width="200" x="730" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" value="RDS PostgreSQL 16 Primary" vertex="1">
+          <mxGeometry height="50" width="50" x="400" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" value="RDS Standby (Multi-AZ)" vertex="1">
+          <mxGeometry height="50" width="50" x="930" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elasticache;" value="ElastiCache Redis Primary (TLS)" vertex="1">
+          <mxGeometry height="50" width="50" x="600" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c25" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elasticache;" value="ElastiCache Redis Replica" vertex="1">
+          <mxGeometry height="50" width="50" x="1130" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" parent="1" style="fontSize=12;verticalAlign=top;align=left;spacingLeft=10;whiteSpace=wrap;html=1;rounded=1;arcSize=4;strokeColor=#999999;fillColor=#F7F7F7;fontColor=#555555;" value="AWS 관리형 서비스 (앱 EC2가 IAM 역할로 접근)" vertex="1">
+          <mxGeometry height="120" width="1040" x="310" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecr;" value="ECR 이미지 pull" vertex="1">
+          <mxGeometry height="50" width="50" x="340" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#E7157B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.systems_manager;" value="SSM Parameter Store 설정·시크릿" vertex="1">
+          <mxGeometry height="50" width="50" x="480" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#E7157B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.cloudwatch_2;" value="CloudWatch Logs + 알람" vertex="1">
+          <mxGeometry height="50" width="50" x="640" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#E7157B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.sns;" value="SNS 이메일·Slack" vertex="1">
+          <mxGeometry height="50" width="50" x="820" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="c31" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.simple_email_service;" value="SES 메일 발송" vertex="1">
+          <mxGeometry height="50" width="50" x="980" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="c32" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c12" value="HTTPS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c33" edge="1" parent="1" source="c11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#8C4FFF;fontColor=#8C4FFF;labelBackgroundColor=#ffffff;dashed=1;" target="c12" value="DNS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c34" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c13" value="정적 파일">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c35" edge="1" parent="1" source="c17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#C7131F;fontColor=#C7131F;labelBackgroundColor=#ffffff;" value="/api/* HTTPS + X-Origin-Verify">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points" />
+            <mxPoint x="215" y="330" as="sourcePoint" />
+            <mxPoint x="795" y="115" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c36" edge="1" parent="1" source="c18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c19" value="HTTP 8080">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="760" y="138" />
+              <mxPoint x="760" y="360" />
+            </Array>
+            <mxPoint x="945" y="188" as="sourcePoint" />
+            <mxPoint x="715" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c37" edge="1" parent="1" source="c18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c20" value="HTTP 8080">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c38" edge="1" parent="1" source="c19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c22" value="5432">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c39" edge="1" parent="1" source="c20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c22" value="5432">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1075" y="470" />
+              <mxPoint x="425" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c40" edge="1" parent="1" source="c19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c24" value="6379 TLS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c41" edge="1" parent="1" source="c20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c24" value="6379 TLS">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1075" y="480" />
+              <mxPoint x="645" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c42" edge="1" parent="1" source="c22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#C925D1;fontColor=#C925D1;labelBackgroundColor=#ffffff;" target="c23" value="동기 복제">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c43" edge="1" parent="1" source="c24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#C925D1;fontColor=#C925D1;labelBackgroundColor=#ffffff;" target="c25" value="복제">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c44" edge="1" parent="1" source="c16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;dashed=1;" target="c19" value="메트릭 9292">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c45" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;dashed=1;" target="c14" value="외부 호출">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="570" y="320" />
+              <mxPoint x="370" y="320" />
+            </Array>
+            <mxPoint x="570" y="350" as="sourcePoint" />
+            <mxPoint x="370" y="190" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c46" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;dashed=1;" target="c22" value="SSH 터널 5432">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c47" edge="1" parent="1" source="c29" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#232F3E;fontColor=#232F3E;labelBackgroundColor=#ffffff;" target="c30" value="알람">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;strokeColor=#C7131F;fontColor=#C7131F;labelBackgroundColor=#ffffff;" target="c17" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="260" y="355" />
+            </Array>
+            <mxPoint x="215" y="355" as="sourcePoint" />
+            <mxPoint x="795" y="115" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c17" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc;" value="Internet Gateway" vertex="1">
+          <mxGeometry height="50" width="50" x="270" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#8C4FFF;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc;" value="NAT Gateway" vertex="1">
+          <mxGeometry height="50" width="50" x="340" y="120" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

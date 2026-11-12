@@ -1,0 +1,2 @@
+zelo-prod-redis-001	ap-northeast-2c	primary
+zelo-prod-redis-002	ap-northeast-2a	replica

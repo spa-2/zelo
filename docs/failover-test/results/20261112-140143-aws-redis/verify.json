@@ -1,0 +1,9 @@
+{
+  "checked": true,
+  "created_acked": 687,
+  "deleted_acked": 207,
+  "lost": [],
+  "resurrected": [],
+  "session_lost": 0,
+  "cleaned": 480
+}

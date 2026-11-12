@@ -1,0 +1,16 @@
+{
+    "Events": [
+        {
+            "SourceIdentifier": "zelo-prod-redis",
+            "SourceType": "replication-group",
+            "Message": "Failover from master node zelo-prod-redis-001 to replica node zelo-prod-redis-002 completed",
+            "Date": "2026-11-12T05:03:11.251000+00:00"
+        },
+        {
+            "SourceIdentifier": "zelo-prod-redis",
+            "SourceType": "replication-group",
+            "Message": "Test Failover API called for node group 0001",
+            "Date": "2026-11-12T05:02:51.052000+00:00"
+        }
+    ]
+}

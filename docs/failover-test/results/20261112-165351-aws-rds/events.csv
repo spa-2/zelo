@@ -1,0 +1,4 @@
+2026-11-12T16:54:31.702+09:00,baseline_start,정상 상태 기록 60초
+2026-11-12T16:55:31.776+09:00,inject,rds reboot-db-instance --force-failover zelo-prod-postgres
+2026-11-12T16:56:41.647+09:00,db_available,RDS 상태 available
+2026-11-12T16:56:42.189+09:00,after_start,복구 후 180초 더 기록

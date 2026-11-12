@@ -51,7 +51,7 @@ class State:
         self.created = set()  # 성공(201)을 받은 배송지 id
         self.deleted = set()  # 삭제 성공(204)을 받은 배송지 id
         self.pool = []  # 미리 만들어 둔, 삭제 프로브가 지울 배송지 id (지우다 실패하면 다시 넣는다)
-        self.session_lost = 0  # 리프레시 토큰이 사라져서 재발급이 401로 끝난 횟수
+        self.session_lost = 0  # 재발급이 401로 끝난 횟수. 원인은 모른다(토큰 소실로 단정하지 않는다)
 
 
 def http(method, url, body=None, headers=None, timeout=10.0):
@@ -174,7 +174,7 @@ class Prober:
                 if new_cookie:
                     self.state.cookie = new_cookie
             elif status == 401:
-                # 서버가 이 토큰을 모른다 = Redis에서 토큰이 사라졌다. 다음 로그인으로 세션을 다시 만든다
+                # 401 원인은 확인하지 못했다. 횟수만 센 뒤 다음 로그인으로 세션을 다시 만든다
                 self.state.session_lost += 1
                 self.state.cookie = None
 
@@ -211,7 +211,7 @@ class Prober:
             if self.record("addr_delete", status, ms, err):
                 self.state.deleted.add(address_id)
             else:
-                self.state.pool.insert(0, address_id)  # 실패한 것은 다음에 다시 지운다
+                self.state.pool.append(address_id)  # 실패한 것은 뒤에 넣어 나중에 다시 지운다(앞에 넣으면 같은 ID만 반복한다)
 
     def prefill(self, header):
         """삭제 프로브가 쓸 배송지를 장애 전에 미리 만든다."""

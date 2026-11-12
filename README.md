@@ -99,7 +99,7 @@ flowchart LR
 
 - **진입점은 CloudFront 하나**입니다. ALB는 CloudFront만 아는 비밀 헤더가 없는 직접 요청을 403으로 막습니다.
 - **가용영역 2개에 이중화**했습니다. 앱은 Private 서브넷의 Auto Scaling Group, DB는 RDS Multi-AZ, Redis는 복제본을 두어 한쪽이 죽어도 자동으로 전환됩니다.
-- **장애 복구를 운영에서 직접 검증**했습니다. Redis와 RDS에 장애 전환(failover)을 일으켜 측정했고, 확인 응답을 받은 쓰기는 하나도 유실되지 않았습니다. Redis는 요청 실패가 없었고 RDS는 DB를 쓰는 요청이 20~30초 지연됐습니다. 테스트 중 찾은 분산락 누수(영구 → 최대 60초)도 고쳤습니다. → [장애 복구 테스트 보고서](docs/failover-test/REPORT.md)
+- **장애 복구를 운영에서 직접 검증**했습니다. Redis와 RDS에 장애 전환(failover)을 일으켜 측정했고, 확인 응답을 받은 쓰기는 하나도 유실되지 않았습니다. Redis는 요청 실패가 없었고, RDS는 DB 조회·로그인이 20~30초 지연됐으며 배송지 등록·삭제는 분산락 문제로 약 60초 동안 실패했습니다. 테스트 중 찾은 분산락 누수(영구 → 최대 60초)도 고쳤습니다. → [장애 복구 테스트 보고서](docs/failover-test/REPORT.md)
 - **설정과 시크릿은 SSM**, 이미지는 ECR에 둡니다. 배포는 GitHub Actions가 OIDC로 로그인하므로 AWS 액세스 키를 저장하지 않습니다.
 - **dev(부하 테스트)와 prod(운영)를 분리**했고, Terraform workspace로 상태를 따로 관리합니다.
 - 로그와 알람은 CloudWatch, 지표는 Prometheus + Grafana로 봅니다.

@@ -18,7 +18,7 @@ Redis나 DB에 장애를 일으키고, **핵심 기능이 무엇이 언제부터
 | `read` | `GET /api/categories` | Redis 캐시 | Redis 장애 중에도 **성공**(DB로 우회, `zelo.redis.fallback` 증가) |
 | `db_read` | `GET /api/users/me/addresses` | DB만 | Redis 장애와 무관하게 성공, DB 장애 때만 실패 |
 | `login` | `POST /api/users/login` | Redis(리프레시 토큰) + DB | Redis, DB 장애 때 실패 후 자동 복구 |
-| `reissue` | `POST /api/auth/reissue` | Redis | Redis 장애 때 실패. 승격 직전에 쓴 토큰이 사라지면 401 |
+| `reissue` | `POST /api/auth/reissue` | Redis | Redis 장애 때 실패. 승격 중 401이 날 수 있음(원인 미확인) |
 | `addr_create` | `POST /api/users/me/addresses` | Redis 분산락 + DB 쓰기 | 락, DB 장애 때 실패 후 자동 복구 |
 | `addr_delete` | `DELETE .../addresses/{id}` | Redis 분산락 + DB 쓰기 | 위와 같음(만든 배송지를 바로 지운다) |
 

@@ -212,7 +212,7 @@ def build(folder):
                       f"- 삭제 성공을 받았는데 남아 있음: {len(verify['resurrected'])}건 {verify['resurrected'] or ''}"]
         else:
             lines.append("- 종료 시점에 서버 조회를 하지 못해 확인하지 못했다")
-        lines.append(f"- 재발급이 401로 끝난 횟수(리프레시 토큰이 서버에서 사라진 횟수): {verify.get('session_lost', 0)}")
+        lines.append(f"- 재발급이 401로 끝난 횟수(원인 미확인): {verify.get('session_lost', 0)}")
         lines.append("")
     markdown = "\n".join(lines)
 
@@ -233,7 +233,7 @@ def build(folder):
     if verify.get("checked"):
         verify_html = (f"<h2>쓰기 유실 확인</h2><p>성공 응답을 받은 배송지 {verify['created_acked']}건 중 서버에 없는 것: "
                        f"<b>{len(verify['lost'])}건</b>. 삭제 성공을 받았는데 남아 있는 것: <b>{len(verify['resurrected'])}건</b>. "
-                       f"리프레시 토큰이 사라진 횟수(재발급 401): <b>{verify.get('session_lost', 0)}</b></p>")
+                       f"재발급이 401로 끝난 횟수(원인 미확인): <b>{verify.get('session_lost', 0)}</b></p>")
     page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>body{{font-family:-apple-system,Segoe UI,sans-serif;margin:24px;color:#222;max-width:1040px}}
 table{{border-collapse:collapse;width:100%;font-size:13px}}th,td{{border:1px solid #ddd;padding:6px 8px;text-align:right}}

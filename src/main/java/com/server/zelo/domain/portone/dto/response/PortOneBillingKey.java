@@ -18,6 +18,7 @@ public record PortOneBillingKey(
     private static final String DEFAULT_CARD_NAME = "카드";
     private static final int SUFFIX_LENGTH = 4;
     private static final int DISPLAY_NAME_MAX_LENGTH = 50;
+    private static final String CUSTOMER_ID_PREFIX = "user-";
 
     public static PortOneBillingKey of(String billingKey, PaymentMethodType type, String displayName, String customerId) {
         return new PortOneBillingKey(billingKey, type, displayName, customerId);
@@ -38,9 +39,10 @@ public record PortOneBillingKey(
         return of(response.billingKey(), PaymentMethodType.CARD, name, customerId);
     }
 
-    // 프론트가 빌링키를 발급할 때 customer.customerId에 사용자 ID를 넣는다
+    // 토스페이먼츠는 고객 ID를 2자 이상만 받아서 "user-{id}"로 발급한다.
     public boolean isOwnedBy(Long userId) {
-        return String.valueOf(userId).equals(customerId);
+        String id = String.valueOf(userId);
+        return (CUSTOMER_ID_PREFIX + id).equals(customerId) || id.equals(customerId);
     }
 
     // 예: 신한카드 1234. 카드번호는 끝 4자리만 남긴다

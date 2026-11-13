@@ -3,6 +3,11 @@ jwt:
   secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQta2V5LW5ldmVyLXVzZS1pbi1wcm9kdWN0aW9uIQ==
 
 spring:
+  jpa:
+    hibernate:
+      # CI의 테스트 DB는 매번 비어 있어서 validate로는 컨텍스트가 뜨지 않는다. 테이블은 엔티티로 만든다
+      ddl-auto: update
+
   ai:
     model:
       # 테스트에서는 OpenAI 클라이언트를 하나도 만들지 않는다 (API 키 없이 컨텍스트 로딩, 호출 비용 0)

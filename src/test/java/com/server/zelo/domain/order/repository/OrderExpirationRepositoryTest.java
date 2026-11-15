@@ -70,6 +70,7 @@ import static org.mockito.Mockito.mock;
 
 // 실행마다 별도 스키마를 만들어 실제 PostgreSQL 쿼리와 잠금을 검증한다.
 @DataJpaTest(properties = {
+        "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true",
         "spring.sql.init.mode=never",

@@ -17,6 +17,8 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.util.StringUtils;
 
 @Getter
@@ -44,6 +46,8 @@ public class Review extends BaseCreatedEntity {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    // validate가 Integer를 INTEGER로 기대해서 smallint 컬럼과 어긋난다. 컬럼은 그대로 두고 타입 코드만 SMALLINT로 맞춘다
+    @JdbcTypeCode(SqlTypes.SMALLINT)
     @Column(name = "rating", nullable = false, columnDefinition = "smallint")
     private Integer rating;
 

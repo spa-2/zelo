@@ -51,6 +51,10 @@ spring:
         model: gpt-6-luna
         reasoning-effort: low
 
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
+
 zelo:
   llm:
     mode: ${LLM_MODE:fake}

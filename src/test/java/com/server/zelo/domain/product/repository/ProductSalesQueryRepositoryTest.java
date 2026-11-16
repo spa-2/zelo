@@ -30,6 +30,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 // 실행마다 별도 스키마를 만들어 실제 PostgreSQL에서 집계 쿼리를 확인함
 @DataJpaTest(properties = {
+        "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true",
         "spring.sql.init.mode=never",

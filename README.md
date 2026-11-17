@@ -10,14 +10,6 @@ AI 에이전트가 장보기를 대신합니다
 
 <br>
 
-![Java](https://img.shields.io/badge/Java_21-007396?style=for-the-badge&logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot_4.1-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
-![Spring AI](https://img.shields.io/badge/Spring_AI_2.0-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
-![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openaigym&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Gradle](https://img.shields.io/badge/Gradle-02303A?style=for-the-badge&logo=gradle&logoColor=white)
-
 [**📖 Wiki**](https://github.com/spa-2/zelo/wiki) · [서비스 시나리오](https://github.com/spa-2/zelo/wiki/서비스-시나리오) · [아키텍처](https://github.com/spa-2/zelo/wiki/아키텍처) · [API 명세](https://github.com/spa-2/zelo/wiki/API-명세) · [AWS 인프라](https://github.com/spa-2/zelo/wiki/AWS-인프라-구성)
 
 </div>
@@ -82,31 +74,6 @@ sequenceDiagram
 
 <br>
 
-## ☁️ 인프라 구성
-
-```mermaid
-flowchart LR
-    U([사용자]) --> CF[CloudFront]
-    CF -->|화면| S3[(S3)]
-    CF -->|"/api/* · HTTPS + 비밀 헤더"| ALB[ALB]
-    subgraph VPC["VPC · 가용영역 2개"]
-        ALB --> APP["Spring Boot 앱<br/>ASG 2~4대 (Private)"]
-        APP --> RDS[("RDS PostgreSQL<br/>Multi-AZ")]
-        APP --> REDIS[("ElastiCache Redis<br/>Primary + Replica")]
-    end
-    GH[GitHub Actions] -. "OIDC → ECR → Instance Refresh" .-> APP
-```
-
-- **진입점은 CloudFront 하나**입니다. ALB는 CloudFront만 아는 비밀 헤더가 없는 직접 요청을 403으로 막습니다.
-- **가용영역 2개에 이중화**했습니다. 앱은 Private 서브넷의 Auto Scaling Group, DB는 RDS Multi-AZ, Redis는 복제본을 두어 한쪽이 죽어도 자동으로 전환됩니다.
-- **장애 복구를 운영에서 직접 검증**했습니다. Redis와 RDS에 장애 전환(failover)을 일으켜 측정했고, 확인 응답을 받은 쓰기는 하나도 유실되지 않았습니다. Redis는 요청 실패가 없었고, RDS는 DB 조회·로그인이 20~30초 지연됐으며 배송지 등록·삭제는 분산락 문제로 약 60초 동안 실패했습니다. 테스트 중 찾은 분산락 누수(영구 → 최대 60초)도 고쳤습니다. → [장애 복구 테스트 보고서](docs/failover-test/REPORT.md)
-- **설정과 시크릿은 SSM**, 이미지는 ECR에 둡니다. 배포는 GitHub Actions가 OIDC로 로그인하므로 AWS 액세스 키를 저장하지 않습니다.
-- **dev(부하 테스트)와 prod(운영)를 분리**했고, Terraform workspace로 상태를 따로 관리합니다.
-- 로그와 알람은 CloudWatch, 지표는 Prometheus + Grafana로 봅니다.
-
-> 서브넷 구조, 배포·접속 흐름, 보안 경계, 한계는 [Wiki · AWS 인프라 구성](https://github.com/spa-2/zelo/wiki/AWS-인프라-구성)에, 선택 이유는 [AWS 인프라 선택 근거](https://github.com/spa-2/zelo/wiki/aws-인프라)에 있습니다.
-
-<br>
 
 ## ⚒️ 기술 스택
 
@@ -118,18 +85,6 @@ flowchart LR
 | **Payment** | ![PortOne](https://img.shields.io/badge/PortOne-0B1EFF?style=flat-square) |
 | **Test · Quality** | ![JUnit5](https://img.shields.io/badge/JUnit_5-25A162?style=flat-square&logo=junit5&logoColor=white) ![Mockito](https://img.shields.io/badge/Mockito-78A641?style=flat-square) ![SonarCloud](https://img.shields.io/badge/SonarCloud-F3702A?style=flat-square&logo=sonarqubecloud&logoColor=white) |
 | **Build · Infra** | ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=flat-square&logo=gradle&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white) |
-
-<br>
-
-## 👤 작업 파트
-
-| 파트 | 맡은 일 |
-|---|---|
-| 회원 · 인프라 | 가입 · 로그인 · JWT, 공통 응답 · 에러 코드, Docker, CI/CD |
-| 상품 · 견적 | 상품 · 재료 · 카테고리, 상품 매칭, 견적 발급 |
-| 재고 · 주문 | 재고 선점 · 동시성, 주문 생성 · 상태 관리 |
-| 결제 · 배송 | 포트원 결제, 웹훅, 환불, 배송 |
-| AI · 채팅 · 리뷰 | 채팅, LLM 연동 · 장애 대응, 견적 요청, 리뷰 근거 |
 
 <br>
 
